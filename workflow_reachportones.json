@@ -1,0 +1,342 @@
+{
+  "createdAt": "2026-03-18T19:36:16.276Z",
+  "updatedAt": "2026-04-07T00:52:51.000Z",
+  "id": "6ynuaCSGhQp76IqO",
+  "name": "reachportones",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "23e11fb1-e953-43ae-93f0-7fcbfbe6f87c",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        64
+      ],
+      "id": "dbc97938-839e-43fa-8854-93d443a86ffe",
+      "name": "Reach Portones - Agendamiento",
+      "webhookId": "23e11fb1-e953-43ae-93f0-7fcbfbe6f87c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Detectamos el horario de ejecución\nconst horaActual = $now.hour;\nconst esReporteNocturno = horaActual >= 18; \n\n// 2. Extraemos los datos de entrada\nconst citas = $input.all();\n\n// 3. Definimos encabezados según el momento\nlet tituloAgenda = esReporteNocturno ? \"MAÑANA\" : \"HOY\";\nlet subtitulo = esReporteNocturno \n  ? \"_Revisa tus servicios programados para el siguiente día._\" \n  : \"_Estos son tus servicios confirmados para la jornada actual._\";\n\nlet mensaje = `📝 *AGENDA PARA ${tituloAgenda}* 🗓️\\n${subtitulo}\\n\\n`;\n\n// 4. Construcción del listado\nif (citas.length === 0) {\n  mensaje += \"✅ *Sin pendientes:* No hay citas registradas para este periodo.\";\n} else {\n  citas.forEach((cita, index) => {\n    const json = cita.json;\n    const hora = json.time || 'Hora por confirmar';\n    const titulo = (json.title || 'Servicio Técnico').toUpperCase();\n    const lugar = json.location || 'Consultar ubicación';\n    const desc = json.description ? `\\n📝 *Detalles:* ${json.description}` : '';\n\n    mensaje += `*${index + 1}. ⏰ ${hora}* - *${titulo}*\\n`;\n    mensaje += `📍 *Lugar:* ${lugar}${desc}\\n`;\n    mensaje += `--------------------------\\n`;\n  });\n  \n  mensaje += \"\\n💪 _¡Buen camino, OneControl te desea un gran día!_\";\n}\n\nreturn { texto_final: mensaje };"
+      },
+      "id": "a9b97d39-6371-4299-8b9a-bdc93aa0557d",
+      "name": "Agrupar Tareas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        464,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "reach",
+        "remoteJid": "50255572346@s.whatsapp.net",
+        "messageText": "={{ $json.texto_final }}",
+        "options_message": {}
+      },
+      "id": "4fa589b7-12a2-4d01-9781-e04ef369a448",
+      "name": "Enviar WhatsApp Luis",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        560,
+        320
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "Cfz6Pr9CGUkPSBKu",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "appointments",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "date",
+              "keyValue": "=={{ $now.hour >= 18 ? $now.plus({ days: 1 }).toISODate() : $now.toISODate() }}"
+            }
+          ]
+        }
+      },
+      "id": "fff1c3a2-caee-4882-a535-27f91d00b73d",
+      "name": "Leer Supabase1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        32
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "x5wNByLaAWswMpGU",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 23
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        -32
+      ],
+      "id": "99fec1cc-b88d-4c36-a332-b0793dcc678e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -48,
+        176
+      ],
+      "id": "b01f76f7-99c2-42d5-a080-e71011176c61",
+      "name": "Schedule Trigger1"
+    }
+  ],
+  "connections": {
+    "Reach Portones - Agendamiento": {
+      "main": [
+        []
+      ]
+    },
+    "Agrupar Tareas": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp Luis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer Supabase1": {
+      "main": [
+        [
+          {
+            "node": "Agrupar Tareas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Leer Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Leer Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    },
+    "node:Revisar Agenda 8AM": {
+      "recurrenceRules": []
+    },
+    "node:Enviar Agenda 10PM": {
+      "recurrenceRules": []
+    },
+    "node:Schedule Trigger1": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {
+    "Reach Portones - Agendamiento": [
+      {
+        "json": {
+          "headers": {
+            "host": "appn8n-n8n.83aqlq.easypanel.host",
+            "user-agent": "axios/1.10.0",
+            "content-length": "8213",
+            "accept": "application/json, text/plain, */*",
+            "accept-encoding": "gzip, compress, deflate, br",
+            "content-type": "application/json",
+            "x-forwarded-for": "172.18.0.1",
+            "x-forwarded-host": "appn8n-n8n.83aqlq.easypanel.host",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "1fc8ffe4ff89",
+            "x-real-ip": "172.18.0.1"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "event": "messages.upsert",
+            "instance": "reach",
+            "data": {
+              "key": {
+                "remoteJid": "120363409632010539@g.us",
+                "fromMe": false,
+                "id": "3A1D4D4FBE9E788807A2",
+                "participant": "32006230561011@lid",
+                "participantPn": "50259291701@s.whatsapp.net"
+              },
+              "pushName": "Lu",
+              "status": "DELIVERY_ACK",
+              "message": {
+                "senderKeyDistributionMessage": {
+                  "groupId": "120363409632010539@g.us",
+                  "axolotlSenderKeyDistributionMessage": "MwighY7EBBAAGiCKsr4lyklC88kKm1hhZHbVNzATuk3TGolFitl5SpVVViIhBYF/RWJ9oQN66fS7iYSpANFxvWHI0A1u/XI/S5fomf1A"
+                },
+                "messageContextInfo": {
+                  "messageSecret": "1IrkCym19CL/PQ/bbdepynEyd7QgWM+2ULWBuIXY5ZY="
+                },
+                "conversation": "Hola! Yo solo tengo acceso al google drive, como puedo acceder a classroom?"
+              },
+              "contextInfo": {
+                "stanzaId": "3EB0E79E1C4A2D928B89D1",
+                "participant": "131259099529443@lid",
+                "quotedMessage": {
+                  "imageMessage": {
+                    "url": "https://mmg.whatsapp.net/o1/v/t24/f2/m231/AQPqWaB1SvYPx_FbGVyecpoMmPlqFqWecYiV_sI2Wzg-F8WC67YDVrenQ1jXR8UjzzdaAftKMxZVnu0XjR-ShsQsJ14QVeNi9c0y3xYjRg?ccb=9-4&oh=01_Q5Aa4AHZEca84Gi2Usj4ftuVYS4erzIiID-Lr4gNfzXGkJGmuA&oe=69DFFE79&_nc_sid=e6ed6c&mms3=true",
+                    "mimetype": "image/jpeg",
+                    "caption": "Hola, en la comunidad en la sección de Classroom hay un curso que se llama \"emprende en carpintería\". Ahorita estoy subiendo algunos videos y en el transcurso de la semana estarán ya todos disponibles. Ahí encontrarán los tutoriales de cómo armar todos los muebles.",
+                    "fileSha256": "4t4f4QpTyNhby6L3Jd1qanpK/XND/JZg5ma8AYsSuq0=",
+                    "fileLength": "33542",
+                    "height": 368,
+                    "width": 386,
+                    "mediaKey": "rYm8zyG3yw7tKXCqDx1/KAv+RbmMRm4rLS6YHJGAAgY=",
+                    "fileEncSha256": "EpjLEXp7qaD5XW5ANIoUerfE3rtHXNu7BGSTzG7pUKM=",
+                    "directPath": "/o1/v/t24/f2/m231/AQPqWaB1SvYPx_FbGVyecpoMmPlqFqWecYiV_sI2Wzg-F8WC67YDVrenQ1jXR8UjzzdaAftKMxZVnu0XjR-ShsQsJ14QVeNi9c0y3xYjRg?ccb=9-4&oh=01_Q5Aa4AHZEca84Gi2Usj4ftuVYS4erzIiID-Lr4gNfzXGkJGmuA&oe=69DFFE79&_nc_sid=e6ed6c",
+                    "mediaKeyTimestamp": "1773696333",
+                    "jpegThumbnail": "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",
+                    "imageSourceType": "USER_IMAGE"
+                  }
+                }
+              },
+              "messageType": "conversation",
+              "messageTimestamp": 1773864689,
+              "instanceId": "6e48ca31-da3c-4592-94dd-8d091ace83cb",
+              "source": "ios"
+            },
+            "destination": "https://appn8n-n8n.83aqlq.easypanel.host/webhook/23e11fb1-e953-43ae-93f0-7fcbfbe6f87c",
+            "date_time": "2026-03-18T17:11:30.067Z",
+            "sender": "50235154362@s.whatsapp.net",
+            "server_url": "https://appn8n-evolution-api.83aqlq.easypanel.host",
+            "apikey": "27A9D1E9E3C2-4EBE-9504-EB651981D527"
+          },
+          "webhookUrl": "https://appn8n-n8n.83aqlq.easypanel.host/webhook/23e11fb1-e953-43ae-93f0-7fcbfbe6f87c",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "versionId": "c7ef8c9b-ca15-4770-9364-f83db8e12562",
+  "triggerCount": 3,
+  "shared": [
+    {
+      "createdAt": "2026-03-18T19:36:16.280Z",
+      "updatedAt": "2026-03-18T19:36:16.280Z",
+      "role": "workflow:owner",
+      "workflowId": "6ynuaCSGhQp76IqO",
+      "projectId": "n1upLnwbcGFYe5md",
+      "project": {
+        "createdAt": "2026-03-09T07:18:36.467Z",
+        "updatedAt": "2026-03-09T07:22:41.568Z",
+        "id": "n1upLnwbcGFYe5md",
+        "name": "ferni padilla  <fernidarck@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "projectRelations": [
+          {
+            "createdAt": "2026-03-09T07:18:36.467Z",
+            "updatedAt": "2026-03-09T07:18:36.467Z",
+            "role": "project:personalOwner",
+            "userId": "caf1c75e-58c7-4567-8f88-e5caac8ad151",
+            "projectId": "n1upLnwbcGFYe5md",
+            "user": {
+              "createdAt": "2026-03-09T07:18:36.151Z",
+              "updatedAt": "2026-05-03T19:27:28.000Z",
+              "id": "caf1c75e-58c7-4567-8f88-e5caac8ad151",
+              "email": "fernidarck@gmail.com",
+              "firstName": "ferni",
+              "lastName": "padilla ",
+              "personalizationAnswers": {
+                "version": "v4",
+                "personalization_survey_submitted_at": "2026-03-09T07:23:12.102Z",
+                "personalization_survey_n8n_version": "1.103.2",
+                "companySize": "<20",
+                "companyType": "ecommerce",
+                "role": "customer-support",
+                "reportedSource": "google"
+              },
+              "settings": {
+                "userActivated": true,
+                "firstSuccessfulWorkflowId": "oQtWGnOi6icw3ytC",
+                "userActivatedAt": 1773100765233,
+                "easyAIWorkflowOnboarded": true,
+                "npsSurvey": {
+                  "responded": true,
+                  "lastShownAt": 1773997542858
+                }
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "lastActiveAt": "2026-05-03",
+              "isPending": false
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

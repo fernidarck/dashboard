@@ -38,17 +38,31 @@ const App = () => {
   });
 
   // --- DATOS DE LEADS / CONTACTOS ---
-  const [leads] = useState([
-    { id: 1, nombre: 'Erik Manuel Taveras', phone: '15613744309', email: 'eriktaveras@gmail.com', score: 20, estado: 'Nuevo', origen: 'WhatsApp', time: '10:30 AM', botActive: true, captura: { motor: 'N/A', falla: 'N/A', zona: 'N/A' } },
-    { id: 2, nombre: 'Carlos Ruiz', phone: '19362242209', email: 'Gasperic.r@gmail.com', score: 55, estado: 'Interesado', origen: 'Facebook Ads', time: '09:15 AM', botActive: true, captura: { motor: 'FAAC 740', falla: 'No abre', zona: 'Mixco' } },
-    { id: 3, nombre: 'Luis Méndez', phone: '+502 4433 1122', email: 'luis@construcciones.gt', score: 92, estado: 'Calificado', origen: 'Facebook Ads', time: 'Ayer', botActive: true, captura: { motor: 'Liftmaster', falla: 'Mantenimiento', zona: 'Zona 10' } },
-  ]);
+  const [leads, setLeads] = useState([]);
 
   // --- DATOS DE AGENDA ---
-  const [agenda] = useState([
-    { id: 1, fecha: '2026-05-12', hora: '10:00 AM', cliente: 'Carlos Ruiz', phone: '19362242209', servicio: 'Instalación Motor', duracion: '2 horas', estado: 'Pendiente', day: 12 },
-    { id: 2, fecha: '2026-05-13', hora: '03:30 PM', cliente: 'Marta Estrada', phone: '50244332211', servicio: 'Mantenimiento', duracion: '45 min', estado: 'Confirmado', day: 13 },
-  ]);
+  const [agenda, setAgenda] = useState([]);
+
+  useEffect(() => {
+    fetch('http://localhost:3001/api/leads')
+      .then(res => res.json())
+      .then(data => setLeads(data))
+      .catch(console.error);
+      
+    fetch('http://localhost:3001/api/agenda')
+      .then(res => res.json())
+      .then(data => setAgenda(data))
+      .catch(console.error);
+      
+    // Polling for real-time updates
+    const interval = setInterval(() => {
+      fetch('http://localhost:3001/api/leads')
+        .then(res => res.json())
+        .then(data => setLeads(data))
+        .catch(console.error);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // --- CONFIGURACIÓN DEL AGENTE IA ---
   const [agentConfig, setAgentConfig] = useState({
@@ -78,7 +92,9 @@ const App = () => {
     }
   };
 
-  const selectedLead = leads.find(l => l.id === selectedChatId) || leads[0];
+  const selectedLead = leads.find(l => l.id === selectedChatId) || leads[0] || {
+    id: 0, nombre: 'Cargando...', score: 0, botActive: false, captura: {}
+  };
 
   // --- COMPONENTES DE UI ---
   const SidebarItem = ({ icon: Icon, label, id }) => (

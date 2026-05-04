@@ -1,0 +1,72 @@
+[
+  {
+    "id": "5537mcUjW8GdaxF4",
+    "name": "ycloud",
+    "active": true
+  },
+  {
+    "id": "6Ca4Pdu6n3wS5aM1",
+    "name": "My workflow 2",
+    "active": false
+  },
+  {
+    "id": "6ynuaCSGhQp76IqO",
+    "name": "reachportones",
+    "active": true
+  },
+  {
+    "id": "AAbHf7XOsQTLSRBk",
+    "name": "Viernes - Agenda Diaria (Cron 7am)",
+    "active": false
+  },
+  {
+    "id": "EHhx46IZ8v3lkM31",
+    "name": "Viernes - Agente Principal v2",
+    "active": false
+  },
+  {
+    "id": "RwEJBFWAmpWNao8W",
+    "name": "My workflow 3",
+    "active": false
+  },
+  {
+    "id": "ZftPFhkweEDBBUMA",
+    "name": "ycloud copy",
+    "active": false
+  },
+  {
+    "id": "bJQWknjKvMQBDvk1",
+    "name": "Viernes - Agenda Diaria (Cron 7am)",
+    "active": false
+  },
+  {
+    "id": "iO08NaTkPBPuKEFp",
+    "name": "My workflow 4",
+    "active": false
+  },
+  {
+    "id": "oQtWGnOi6icw3ytC",
+    "name": "My workflow",
+    "active": false
+  },
+  {
+    "id": "prJwyJeR3RIgFjkH",
+    "name": "Viernes - Reporte Semanal Gastos (Sábado 9am)",
+    "active": false
+  },
+  {
+    "id": "qCHbkEyEtkE1reFK",
+    "name": "VIERNES — Bot Telegram OneControl",
+    "active": false
+  },
+  {
+    "id": "u0MnFD3j3zGgZV98",
+    "name": "Bot Vendedor Telegram — AI Agent",
+    "active": true
+  },
+  {
+    "id": "vkOh59nc5ece8pgF",
+    "name": "onecontrol",
+    "active": false
+  }
+]
