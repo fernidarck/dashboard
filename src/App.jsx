@@ -18,6 +18,7 @@ import {
  */
 const N8N_WEBHOOK_URL = ""; 
 const CURRENT_USER_ID = "user_777_guatemala"; 
+const API_BASE_URL = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -43,20 +44,41 @@ const App = () => {
   // --- DATOS DE AGENDA ---
   const [agenda, setAgenda] = useState([]);
 
+  // --- DATOS DE MENSAJES ---
+  const [messages, setMessages] = useState([]);
+  const [messageText, setMessageText] = useState("");
+
   useEffect(() => {
-    fetch('http://localhost:3001/api/leads')
+    if (activeTab === 'conversaciones' && selectedChatId) {
+      fetch(`${API_BASE_URL}/api/messages/${selectedChatId}`)
+        .then(res => res.json())
+        .then(data => setMessages(data))
+        .catch(console.error);
+        
+      const interval = setInterval(() => {
+        fetch(`${API_BASE_URL}/api/messages/${selectedChatId}`)
+          .then(res => res.json())
+          .then(data => setMessages(data))
+          .catch(console.error);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, selectedChatId]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/leads`)
       .then(res => res.json())
       .then(data => setLeads(data))
       .catch(console.error);
       
-    fetch('http://localhost:3001/api/agenda')
+    fetch(`${API_BASE_URL}/api/agenda`)
       .then(res => res.json())
       .then(data => setAgenda(data))
       .catch(console.error);
       
     // Polling for real-time updates
     const interval = setInterval(() => {
-      fetch('http://localhost:3001/api/leads')
+      fetch(`${API_BASE_URL}/api/leads`)
         .then(res => res.json())
         .then(data => setLeads(data))
         .catch(console.error);
@@ -89,6 +111,35 @@ const App = () => {
     } catch (e) {
       setLoading(false);
       setNotification("Error de conexión");
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !selectedChatId) return;
+    
+    const textToSend = messageText.trim();
+    setMessageText(""); // Optimistic clear
+
+    // Optimistic UI update
+    const optimisticMessage = {
+      id: Date.now(),
+      lead_id: selectedChatId,
+      sender: 'agent',
+      text: textToSend,
+      timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/messages/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selectedChatId, text: textToSend })
+      });
+      if (!res.ok) throw new Error("Error enviando mensaje");
+    } catch (error) {
+      console.error(error);
+      setNotification("Error enviando mensaje");
     }
   };
 
@@ -307,7 +358,9 @@ const App = () => {
                                  </p>
                               </div>
                            </div>
-                           <p className="text-[11px] text-slate-500 truncate italic mt-1 font-medium italic leading-none">"Me gustaría saber si tienen el FAAC..."</p>
+                           <p className="text-[11px] text-slate-500 truncate mt-1 font-medium italic leading-none">
+                              {lead.lastMessage ? `"${lead.lastMessage}"` : "Sin mensajes recientes"}
+                           </p>
                         </button>
                      ))}
                   </div>
@@ -329,24 +382,32 @@ const App = () => {
                      </button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar bg-slate-50/20">
-                     <div className="flex justify-start">
-                        <div className="max-w-[70%] bg-white border border-slate-200 p-5 rounded-[28px] rounded-tl-none text-sm shadow-sm font-medium italic leading-relaxed italic">
-                           Hola, me gustaría saber si tienen el motor FAAC 740 disponible y si hacen instalaciones en Mixco.
+                     {messages.length === 0 ? (
+                        <div className="flex h-full items-center justify-center">
+                           <p className="text-slate-400 text-xs italic font-bold">No hay mensajes grabados en esta conversación.</p>
                         </div>
-                     </div>
-                     <div className="flex justify-end">
-                        <div className="max-w-[70%] bg-slate-800 text-white p-5 rounded-[28px] rounded-tr-none text-sm shadow-lg border-r-4 border-[#FF6B00] font-medium leading-relaxed italic italic">
-                           ¡Hola! Sí, tenemos el FAAC 740 en stock y realizamos instalaciones en todo Mixco. ¿Te gustaría agendar una evaluación técnica?
-                        </div>
-                     </div>
+                     ) : messages.map((msg) => (
+                       <div key={msg.id} className={`flex ${msg.sender === 'client' ? 'justify-start' : 'justify-end'}`}>
+                          <div className={`max-w-[70%] p-5 rounded-[28px] text-sm font-medium italic leading-relaxed shadow-sm ${msg.sender === 'client' ? 'bg-white border border-slate-200 rounded-tl-none' : 'bg-slate-800 text-white rounded-tr-none border-r-4 border-[#FF6B00]'}`}>
+                             {msg.text}
+                          </div>
+                       </div>
+                     ))}
                   </div>
                   <div className="p-8 bg-white border-t border-slate-100">
                      <div className="max-w-4xl mx-auto flex space-x-4">
                         <div className="flex-1 relative flex items-center">
                            <Paperclip size={18} className="absolute left-4 text-slate-400 cursor-pointer" />
-                           <input type="text" placeholder="Intervenir chat..." className="w-full bg-slate-50 border border-slate-200 pl-12 pr-6 py-4 rounded-3xl text-sm outline-none font-medium italic" />
+                           <input 
+                             type="text" 
+                             placeholder="Intervenir chat..." 
+                             className="w-full bg-slate-50 border border-slate-200 pl-12 pr-6 py-4 rounded-3xl text-sm outline-none font-medium italic"
+                             value={messageText}
+                             onChange={(e) => setMessageText(e.target.value)}
+                             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                           />
                         </div>
-                        <button className="bg-slate-800 text-[#FF6B00] p-4 rounded-2xl shadow-xl hover:bg-black transition-all active:scale-95"><SendHorizontal size={20} /></button>
+                        <button onClick={handleSendMessage} className="bg-slate-800 text-[#FF6B00] p-4 rounded-2xl shadow-xl hover:bg-black transition-all active:scale-95"><SendHorizontal size={20} /></button>
                      </div>
                   </div>
                </div>

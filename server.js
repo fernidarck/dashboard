@@ -10,6 +10,9 @@ const __dirname = dirname(__filename);
 const app = express();
 const port = 3001;
 
+// Configuración del Webhook saliente hacia n8n para enviar mensajes por YCloud
+const N8N_OUTBOUND_WEBHOOK = "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
+
 app.use(cors());
 app.use(express.json());
 
@@ -46,6 +49,14 @@ db.serialize(() => {
     day INTEGER
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    sender TEXT,
+    text TEXT,
+    timestamp TEXT
+  )`);
+
   // Insert mock data if empty
   db.get("SELECT COUNT(*) as count FROM leads", (err, row) => {
     if (row && row.count === 0) {
@@ -69,7 +80,11 @@ db.serialize(() => {
 
 // GET endpoints
 app.get('/api/leads', (req, res) => {
-  db.all("SELECT * FROM leads ORDER BY id DESC", [], (err, rows) => {
+  db.all(`
+    SELECT leads.*, 
+           (SELECT text FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessage 
+    FROM leads ORDER BY leads.id DESC
+  `, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     // Parse boolean and JSON fields
     const parsedRows = rows.map(r => ({
@@ -116,17 +131,42 @@ app.post('/webhook/n8n', (req, res) => {
       db.run(`UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?`, 
         [estado, time, botActive, row.id], (updateErr) => {
           if (updateErr) console.error(updateErr);
+          
+          if (data.mensaje) {
+             db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", [row.id, 'client', data.mensaje, time]);
+          }
+          if (data.respuesta_bot) {
+             db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", [row.id, 'bot', data.respuesta_bot, time]);
+          }
+
           res.json({ success: true, action: "updated" });
       });
     } else {
       // Insert new
       db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-        [nombre, data.phone, email, score, estado, origen, time, botActive, motor, falla, zona], (insertErr) => {
+        [nombre, data.phone, email, score, estado, origen, time, botActive, motor, falla, zona], function(insertErr) {
           if (insertErr) console.error(insertErr);
+          const newLeadId = this.lastID;
+          
+          if (data.mensaje) {
+             db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", [newLeadId, 'client', data.mensaje, time]);
+          }
+          if (data.respuesta_bot) {
+             db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", [newLeadId, 'bot', data.respuesta_bot, time]);
+          }
+
           res.json({ success: true, action: "created" });
       });
     }
+  });
+});
+
+app.get('/api/messages/:leadId', (req, res) => {
+  const { leadId } = req.params;
+  db.all("SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC", [leadId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
   });
 });
 
@@ -137,6 +177,45 @@ app.post('/api/bot/toggle', (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true });
   });
+});
+
+// Send Message Endpoint (Dashboard -> n8n -> YCloud)
+app.post('/api/messages/send', (req, res) => {
+  const { leadId, text } = req.body;
+  const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+  // Primero obtenemos el telefono del lead
+  db.get("SELECT phone FROM leads WHERE id = ?", [leadId], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: "Lead no encontrado" });
+
+    const phone = row.phone;
+
+    // Guardar en base de datos local como remitente "agent"
+    db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", [leadId, 'agent', text, time], function(insertErr) {
+      if (insertErr) return res.status(500).json({ error: insertErr.message });
+      
+      const savedMessage = { id: this.lastID, lead_id: leadId, sender: 'agent', text, timestamp: time };
+
+      // Opcional: Enviar el webhook a n8n para que dispare YCloud
+      // Si la URL está configurada, hacemos el fetch (no bloqueamos la respuesta al frontend)
+      if (N8N_OUTBOUND_WEBHOOK) {
+        fetch(N8N_OUTBOUND_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, text })
+        }).catch(err => console.error("Error enviando a n8n:", err));
+      }
+
+      res.json({ success: true, message: savedMessage });
+    });
+  });
+});
+
+// Serve React App in production
+app.use(express.static(join(__dirname, 'dist')));
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(port, () => {
