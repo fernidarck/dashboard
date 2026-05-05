@@ -7,18 +7,22 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+console.log("🚀 Iniciando servidor del Dashboard...");
 const app = express();
 const port = process.env.PORT || 3001;
-
-// Configuración del Webhook saliente hacia n8n para enviar mensajes por YCloud
 const N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
+
+console.log(`📌 Puerto detectado: ${port}`);
+console.log(`📌 Webhook detectado: ${N8N_OUTBOUND_WEBHOOK}`);
 
 app.use(cors());
 app.use(express.json());
 
 // Initialize SQLite DB
+console.log("📦 Inicializando Base de Datos...");
 const dbFile = join(__dirname, 'database.sqlite');
 const db = new sqlite3.Database(dbFile);
+console.log(`📂 Archivo de DB: ${dbFile}`);
 
 db.serialize(() => {
   // Create tables if they don't exist
@@ -221,3 +225,5 @@ app.get('*', (req, res) => {
 app.listen(port, () => {
   console.log(`🚀 Backend del Dashboard escuchando en http://localhost:${port}`);
 });
+/ /   F o r c e   r e f r e s h   1  
+ 
