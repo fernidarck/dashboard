@@ -3,6 +3,9 @@ import cors from 'cors';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import multer from 'multer';
+import pdf from 'pdf-parse';
+import fs from 'fs';
 
 process.on('uncaughtException', (err) => {
   console.error('❌ UNCAUGHT EXCEPTION:', err.message);
@@ -47,6 +50,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS leads (
   motor TEXT,
   falla TEXT,
   zona TEXT
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT,
+  category TEXT,
+  content TEXT,
+  timestamp TEXT
 )`);
 
 db.exec(`CREATE TABLE IF NOT EXISTS agenda (
@@ -242,6 +253,64 @@ app.post('/api/messages/send', (req, res) => {
     }
 
     res.json({ success: true, message: savedMessage });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- RAG SYSTEM ---
+const upload = multer({ dest: 'uploads/' });
+
+app.get('/api/rag/documents', (_req, res) => {
+  try {
+    const rows = db.prepare("SELECT id, name, category, timestamp FROM documents ORDER BY id DESC").all();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
+  try {
+    const { name, category } = req.body;
+    const filePath = req.file.path;
+    let content = "";
+
+    if (req.file.mimetype === 'application/pdf') {
+      const dataBuffer = fs.readFileSync(filePath);
+      const data = await pdf(dataBuffer);
+      content = data.text;
+    } else {
+      content = fs.readFileSync(filePath, 'utf8');
+    }
+
+    db.prepare("INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)")
+      .run(name || req.file.originalname, category || 'General', content, new Date().toLocaleString());
+
+    fs.unlinkSync(filePath); // Delete temp file
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ RAG Upload Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/rag/documents/:id', (req, res) => {
+  try {
+    db.prepare("DELETE FROM documents WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/rag/query', (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json({ context: "" });
+    const rows = db.prepare("SELECT content FROM documents WHERE content LIKE ? LIMIT 3").all(`%${q}%`);
+    const context = rows.map(r => r.content).join("\n\n---\n\n");
+    res.json({ context });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

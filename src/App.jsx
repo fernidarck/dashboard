@@ -48,6 +48,43 @@ const App = () => {
   // --- DATOS DE MENSAJES ---
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
+  const [documents, setDocuments] = useState([]);
+
+  const fetchDocuments = useCallback(() => {
+    fetch(`${API_BASE_URL}/api/rag/documents`)
+      .then(res => res.json())
+      .then(data => setDocuments(data))
+      .catch(console.error);
+  }, []);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', file.name);
+
+    setLoading(true);
+    fetch(`${API_BASE_URL}/api/rag/upload`, {
+      method: 'POST',
+      body: formData
+    })
+    .then(res => res.json())
+    .then(() => {
+      setNotification("Documento subido y procesado");
+      fetchDocuments();
+    })
+    .catch(err => setNotification(`Error: ${err.message}`))
+    .finally(() => setLoading(false));
+  };
+
+  const handleDeleteDocument = (id) => {
+    if (!confirm("¿Eliminar este documento?")) return;
+    fetch(`${API_BASE_URL}/api/rag/documents/${id}`, { method: 'DELETE' })
+      .then(() => fetchDocuments())
+      .catch(console.error);
+  };
 
   useEffect(() => {
     if (activeTab === 'conversaciones' && selectedChatId) {
@@ -142,7 +179,8 @@ const App = () => {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    fetchDocuments();
+  }, [fetchSettings, fetchDocuments]);
 
   // --- LOGICA DE COMUNICACIÓN CON N8N ---
   const handleAction = async (action, data = {}) => {
@@ -688,32 +726,54 @@ const App = () => {
                     <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic">Base de Conocimientos (RAG)</h2>
                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Entrenamiento de la IA con manuales y PDF</p>
                   </div>
-                  <button className="bg-emerald-500 text-white px-8 py-3 rounded-2xl text-[11px] font-black uppercase shadow-xl flex items-center space-x-2">
-                     <Link2 size={16} />
-                     <span>Subir Documento</span>
-                  </button>
+                  <div className="flex space-x-3">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleFileUpload} 
+                      className="hidden" 
+                      accept=".pdf,.txt"
+                    />
+                    <button 
+                      onClick={() => fileInputRef.current.click()}
+                      className="bg-emerald-500 text-white px-8 py-3 rounded-2xl text-[11px] font-black uppercase shadow-xl flex items-center space-x-2"
+                    >
+                       <Link2 size={16} />
+                       <span>Subir Documento</span>
+                    </button>
+                  </div>
                </div>
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {[
-                    { t: 'Precios Motores 2026', c: 'Ventas', s: 'Sincronizado' },
-                    { t: 'Manual Instalación FAAC', c: 'Técnico', s: 'Sincronizado' },
-                    { t: 'Políticas de Garantía', c: 'Legal', s: 'Sincronizado' },
-                  ].map((doc, i) => (
-                    <div key={i} className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:border-[#FF6B00]/30 transition-all flex flex-col justify-between group">
-                       <div>
-                          <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-4 block">{doc.c}</span>
-                          <h4 className="text-lg font-black text-slate-800 mb-2 italic group-hover:text-[#FF6B00] transition-colors">{doc.t}</h4>
-                       </div>
-                       <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-50">
-                          <div className="flex items-center space-x-2 text-emerald-500">
-                             <CheckCircle2 size={14} />
-                             <span className="text-[10px] font-black uppercase tracking-widest">{doc.s}</span>
-                          </div>
-                          <button className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-                       </div>
-                    </div>
-                  ))}
-               </div>
+
+               {documents.length === 0 ? (
+                 <div className="bg-white p-20 rounded-[40px] border border-dashed border-slate-200 text-center">
+                    <Database size={48} className="mx-auto text-slate-200 mb-4" />
+                    <p className="text-slate-400 font-bold italic">No hay documentos cargados todavía.</p>
+                 </div>
+               ) : (
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {documents.map((doc) => (
+                      <div key={doc.id} className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:border-[#FF6B00]/30 transition-all flex flex-col justify-between group">
+                         <div>
+                            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-4 block">{doc.category}</span>
+                            <h4 className="text-lg font-black text-slate-800 mb-2 italic group-hover:text-[#FF6B00] transition-colors truncate">{doc.name}</h4>
+                            <p className="text-[10px] text-slate-400 font-medium">{doc.timestamp}</p>
+                         </div>
+                         <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-50">
+                            <div className="flex items-center space-x-2 text-emerald-500">
+                               <CheckCircle2 size={14} />
+                               <span className="text-[10px] font-black uppercase tracking-widest">Sincronizado</span>
+                            </div>
+                            <button 
+                              onClick={() => handleDeleteDocument(doc.id)}
+                              className="text-slate-300 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                         </div>
+                      </div>
+                    ))}
+                 </div>
+               )}
             </div>
           )}
 
