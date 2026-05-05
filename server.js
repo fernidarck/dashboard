@@ -169,33 +169,32 @@ app.post('/webhook/n8n', (req, res) => {
 
   try {
     const existingLead = db.prepare("SELECT id FROM leads WHERE phone = ?").get(data.phone);
+    let leadId;
 
     if (existingLead) {
       db.prepare("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?")
         .run(estado, time, botActive, existingLead.id);
-      if (data.mensaje) {
-        db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-          .run(existingLead.id, 'client', data.mensaje, time);
-      }
-      if (data.respuesta_bot) {
-        db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-          .run(existingLead.id, 'bot', data.respuesta_bot, time);
-      }
-      res.json({ success: true, action: "updated" });
+      leadId = existingLead.id;
     } else {
       const result = db.prepare(`INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(nombre, data.phone, email, score, estado, origen, time, botActive, motor, falla, zona);
-      const newLeadId = result.lastInsertRowid;
-      if (data.mensaje) {
-        db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-          .run(newLeadId, 'client', data.mensaje, time);
-      }
-      if (data.respuesta_bot) {
-        db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-          .run(newLeadId, 'bot', data.respuesta_bot, time);
-      }
-      res.json({ success: true, action: "created" });
+      leadId = result.lastInsertRowid;
     }
+
+    // --- GUARDADO INTELIGENTE DE MENSAJES ---
+    // Solo guardamos el mensaje del cliente si existe y NO es igual a la respuesta del bot (para evitar espejos)
+    if (data.mensaje && data.mensaje.trim() !== "" && data.mensaje !== data.respuesta_bot) {
+      db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
+        .run(leadId, 'client', data.mensaje, time);
+    }
+    
+    // Guardamos la respuesta del bot siempre que exista
+    if (data.respuesta_bot && data.respuesta_bot.trim() !== "") {
+      db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
+        .run(leadId, 'agent', data.respuesta_bot, time);
+    }
+
+    res.json({ success: true, action: existingLead ? "updated" : "created" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
