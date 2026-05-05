@@ -147,8 +147,24 @@ app.get('/api/leads', (_req, res) => {
 
 app.get('/api/agenda', (_req, res) => {
   try {
-    const rows = db.prepare("SELECT * FROM agenda ORDER BY id DESC").all();
+    const rows = db.prepare("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC").all();
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/agenda', (req, res) => {
+  try {
+    const { fecha, hora, cliente, phone, servicio, duracion } = req.body;
+    if (!fecha || !cliente || !phone) return res.status(400).json({ error: "Faltan datos de la cita" });
+
+    const day = parseInt(fecha.split('-')[2]); // Extraer el día del formato YYYY-MM-DD
+    
+    const stmt = db.prepare("INSERT INTO agenda (fecha, hora, cliente, phone, servicio, duracion, estado, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    stmt.run(fecha, hora || "Pendiente", cliente, phone, servicio || "Revisión", duracion || "1 hora", 'Confirmado', day);
+    
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
