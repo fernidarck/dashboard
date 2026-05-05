@@ -203,33 +203,38 @@ app.post('/webhook/n8n', (req, res) => {
       leadId = result.lastInsertRowid;
     }
 
-    // --- ESCUDO REFINADO (NO BLOQUEA AL CLIENTE) ---
+    // --- ESCUDO INTELIGENTE V4 (AUTO-CLASIFICACIÓN) ---
     const saveSmartMessage = (lId, sndr, txt, tm) => {
       if (!txt || txt.trim() === "" || txt === "N/A") return;
       const cleanTxt = txt.trim();
       
-      // Solo bloqueamos si el ÚLTIMO mensaje es idéntico al que queremos guardar ahora
-      const lastMsg = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1").get(lId);
+      // Normalización agresiva para evitar duplicados por espacios o saltos de línea
+      const normalize = (t) => t.replace(/\s+/g, ' ').trim().toLowerCase();
+      const currentNormalized = normalize(cleanTxt);
       
-      if (lastMsg && lastMsg.text.trim() === cleanTxt) {
-        console.log(`🚫 DUPLICADO EVITADO: ${sndr} - ${cleanTxt.substring(0, 20)}...`);
+      // Revisamos los últimos 5 mensajes
+      const recent = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5").all(lId);
+      if (recent.some(m => normalize(m.text) === currentNormalized)) {
+        console.log(`🚫 DUPLICADO BLOQUEADO: ${cleanTxt.substring(0, 30)}...`);
         return;
+      }
+
+      // AUTO-CLASIFICACIÓN: Si el mensaje es muy largo y viene como 'client', 
+      // probablemente sea un error de n8n y deba ser 'agent'.
+      let finalSender = sndr;
+      if (sndr === 'client' && cleanTxt.length > 200) {
+        finalSender = 'agent';
       }
       
       db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-        .run(lId, sndr, cleanTxt, tm);
+        .run(lId, finalSender, cleanTxt, tm);
     };
 
     const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-    // Guardamos ambos por separado. Si n8n manda los dos, el servidor decidirá si son duplicados uno por uno.
-    if (data.mensaje) {
-      saveSmartMessage(leadId, 'client', data.mensaje, time);
-    }
-    
-    if (data.respuesta_bot) {
-      saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
-    }
+    // Procesamos mensaje y respuesta
+    if (data.mensaje) saveSmartMessage(leadId, 'client', data.mensaje, time);
+    if (data.respuesta_bot) saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });
   } catch (err) {
