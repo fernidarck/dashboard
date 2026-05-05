@@ -181,7 +181,7 @@ app.post('/api/agenda', (req, res) => {
 
 app.post('/webhook/n8n', (req, res) => {
   const data = req.body;
-  console.log("Recibido webhook de n8n:", data);
+  console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
 
   if (!data.phone) {
     return res.status(400).json({ error: "Falta el campo 'phone'" });
