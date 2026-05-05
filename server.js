@@ -210,9 +210,13 @@ app.get('/api/settings', (_req, res) => {
 app.post('/api/settings', (req, res) => {
   try {
     const { key, value } = req.body;
-    db.prepare("INSERT INTO settings (key, value) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+    if (!key) throw new Error("Key is required");
+    console.log(`💾 Guardando ajuste: ${key}`);
+    const stmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    stmt.run(key, value || "");
     res.json({ success: true });
   } catch (err) {
+    console.error("❌ Error en POST /api/settings:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

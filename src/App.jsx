@@ -121,14 +121,22 @@ const App = () => {
     fetch(`${API_BASE_URL}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value })
+      body: JSON.stringify({ key, value: value || "" })
     })
-    .then(res => res.json())
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al guardar');
+      return data;
+    })
     .then(() => {
       setNotification({ type: 'success', message: `Prompt de ${selectedAgent} guardado` });
       setTimeout(() => setNotification(null), 3000);
     })
-    .catch(console.error);
+    .catch(err => {
+      console.error(err);
+      setNotification({ type: 'error', message: `Error: ${err.message}` });
+      setTimeout(() => setNotification(null), 5000);
+    });
   };
 
   useEffect(() => {
