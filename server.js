@@ -33,15 +33,21 @@ app.use(cors());
 app.use(express.json());
 
 console.log("📦 Inicializando Base de Datos...");
-// Asegurar que la carpeta de datos existe para el volumen persistente
-const dataDir = join(__dirname, 'data');
+const dataDir = '/app/data';
 if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir);
+  console.log("📂 Creando carpeta de datos...");
+  fs.mkdirSync(dataDir, { recursive: true });
 }
 
 const dbFile = join(dataDir, 'database.sqlite');
+const isNew = !fs.existsSync(dbFile);
 const db = new Database(dbFile);
-console.log(`📂 Archivo de DB Persistente: ${dbFile}`);
+
+if (isNew) {
+  console.log("⚠️ ALERTA: Base de datos NUEVA creada. La persistencia podría estar fallando.");
+} else {
+  console.log("✅ Base de datos EXISTENTE cargada con éxito.");
+}
 
 db.exec(`CREATE TABLE IF NOT EXISTS leads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
