@@ -181,18 +181,24 @@ app.post('/webhook/n8n', (req, res) => {
       leadId = result.lastInsertRowid;
     }
 
-    // --- GUARDADO INTELIGENTE DE MENSAJES ---
-    // Solo guardamos el mensaje del cliente si existe y NO es igual a la respuesta del bot (para evitar espejos)
-    if (data.mensaje && data.mensaje.trim() !== "" && data.mensaje !== data.respuesta_bot) {
+    // --- ESCUDO ANTI-DUPLICADOS POTENTE ---
+    const saveSmartMessage = (lId, sndr, txt, tm) => {
+      if (!txt || txt.trim() === "") return;
+      
+      // Buscamos si el último mensaje guardado para este lead es idéntico
+      const lastMsg = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1").get(lId);
+      
+      if (lastMsg && lastMsg.text.trim() === txt.trim()) {
+        console.log(`🚫 Bloqueado mensaje duplicado para lead ${lId}`);
+        return;
+      }
+      
       db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-        .run(leadId, 'client', data.mensaje, time);
-    }
-    
-    // Guardamos la respuesta del bot siempre que exista
-    if (data.respuesta_bot && data.respuesta_bot.trim() !== "") {
-      db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-        .run(leadId, 'agent', data.respuesta_bot, time);
-    }
+        .run(lId, sndr, txt.trim(), tm);
+    };
+
+    saveSmartMessage(leadId, 'client', data.mensaje, time);
+    saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });
   } catch (err) {
