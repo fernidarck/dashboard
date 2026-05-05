@@ -622,8 +622,8 @@ const App = () => {
 
                      <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
                         <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">
-                              🧠 Prompt del {selectedAgent}
+                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                              <span>🧠 Prompt del {selectedAgent}</span>
                            </h3>
                            <button 
                              onClick={() => saveSetting(`prompt_${selectedAgent.toLowerCase().replace(' ', '_')}`, prompts[selectedAgent])}
@@ -636,7 +636,7 @@ const App = () => {
                           value={prompts[selectedAgent]} 
                           onChange={(e) => setPrompts({...prompts, [selectedAgent]: e.target.value})} 
                           className="w-full h-[500px] p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed"
-                          placeholder={`Escribe aquí las instrucciones para el ${selectedAgent}...`}
+                          placeholder={`Escribe aquí las instrucciones maestras para el ${selectedAgent}...`}
                         />
                      </div>
                   </div>
