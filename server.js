@@ -8,10 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 3001;
 
 // Configuración del Webhook saliente hacia n8n para enviar mensajes por YCloud
-const N8N_OUTBOUND_WEBHOOK = "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
+const N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
 
 app.use(cors());
 app.use(express.json());
