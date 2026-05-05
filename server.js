@@ -233,22 +233,29 @@ app.post('/api/settings', (req, res) => {
 });
 
 app.post('/api/messages/send', (req, res) => {
-  const { leadId, text } = req.body;
-  const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
   try {
-    const lead = db.prepare("SELECT phone FROM leads WHERE id = ?").get(leadId);
-    if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
+    const { leadId, text, sender } = req.body; // Añadimos 'sender'
+    if (!leadId || !text) throw new Error("Faltan datos");
 
-    const result = db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-      .run(leadId, 'agent', text, time);
-    const savedMessage = { id: result.lastInsertRowid, lead_id: leadId, sender: 'agent', text, timestamp: time };
+    const msgSender = sender || 'agent'; // Por defecto es agent si viene del dashboard
+    
+    const stmt = db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)");
+    const info = stmt.run(leadId, msgSender, text, new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+    
+    const savedMessage = {
+      id: info.lastInsertRowid,
+      lead_id: leadId,
+      sender: msgSender,
+      text,
+      timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+    };
 
-    if (N8N_OUTBOUND_WEBHOOK) {
-      fetch(N8N_OUTBOUND_WEBHOOK, {
+    // Si viene del Dashboard (humano), avisamos a n8n para que lo mande por WhatsApp
+    if (msgSender === 'agent' && N8N_WEBHOOK_URL) {
+      fetch(N8N_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: lead.phone, text })
+        body: JSON.stringify({ phone: req.body.phone, text })
       }).catch(err => console.error("Error enviando a n8n:", err));
     }
 
