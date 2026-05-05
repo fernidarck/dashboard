@@ -239,8 +239,6 @@ app.post('/webhook/n8n', (req, res) => {
         .run(lId, finalSender, cleanTxt, tm);
     };
 
-    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
     // Procesamos mensaje y respuesta
     if (data.mensaje) saveSmartMessage(leadId, 'client', data.mensaje, time);
     if (data.respuesta_bot) saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
