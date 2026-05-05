@@ -220,13 +220,20 @@ app.post('/webhook/n8n', async (req, res) => {
   const zona = data.zona || "N/A";
 
   try {
-    const existingLead = await db.get("SELECT id FROM leads WHERE phone = ?", data.phone);
+    // Normalización del número de teléfono (quitar todo lo que no sea dígito)
+    const cleanPhone = String(data.phone).replace(/\D/g, '');
+    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
+
+    // Buscar el lead comparando solo los dígitos
+    const existingLead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
     let leadId;
 
     if (existingLead) {
+      console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id}`);
       await db.run("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?", estado, time, botActive, existingLead.id);
       leadId = existingLead.id;
     } else {
+      console.log("   🆕 Creando nuevo lead...");
       const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
         nombre, data.phone, email, score, estado, origen, botActive, motor, falla, zona);
       leadId = result.lastID;
