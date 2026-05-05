@@ -116,6 +116,15 @@ if (leadCount.count === 0) {
   stmt.run('Erik Manuel Taveras', '15613744309', 'eriktaveras@gmail.com', 20, 'Nuevo', 'WhatsApp', '10:30 AM', 1, 'N/A', 'N/A', 'N/A');
   stmt.run('Carlos Ruiz', '19362242209', 'Gasperic.r@gmail.com', 55, 'Interesado', 'Facebook Ads', '09:15 AM', 1, 'FAAC 740', 'No abre', 'Mixco');
   stmt.run('Luis Méndez', '+502 4433 1122', 'luis@construcciones.gt', 92, 'Calificado', 'Facebook Ads', 'Ayer', 1, 'Liftmaster', 'Mantenimiento', 'Zona 10');
+
+  // Mensajes de prueba para Carlos Ruiz (lead id 2)
+  const msgStmt = db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)");
+  msgStmt.run(2, 'client', 'Hola buenas, tengo un portón FAAC 740 que no abre', '09:15 AM');
+  msgStmt.run(2, 'bot', 'Hola! Soy Eryum, asistente de OneControl. Entiendo que tu motor FAAC 740 no está funcionando. ¿Cuándo fue la última vez que funcionó correctamente?', '09:15 AM');
+  msgStmt.run(2, 'client', 'Ayer en la noche funcionaba bien, hoy en la mañana ya no abrió', '09:16 AM');
+  msgStmt.run(2, 'bot', 'Gracias por el detalle. Puede ser un problema eléctrico o del sensor de límite. ¿Ves alguna luz parpadeando en el motor?', '09:16 AM');
+  msgStmt.run(2, 'client', 'Sí, hay una luz roja que parpadea 3 veces', '09:17 AM');
+  msgStmt.run(2, 'agent', '3 parpadeos en FAAC 740 indica falla en el encoder. Te agendamos una visita técnica.', '09:18 AM');
 }
 
 const agendaCount = db.prepare("SELECT COUNT(*) as count FROM agenda").get();
