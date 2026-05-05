@@ -203,28 +203,38 @@ app.post('/webhook/n8n', (req, res) => {
       leadId = result.lastInsertRowid;
     }
 
-    // --- CERCA ELÉCTRICA ANTI-DUPLICADOS (AGRESIVA) ---
+    // --- ESCUDO ATÓMICO ANTI-DUPLICADOS ---
     const saveSmartMessage = (lId, sndr, txt, tm) => {
       if (!txt || txt.trim() === "") return;
-      const cleanTxt = txt.trim();
       
-      // Revisamos los últimos 5 mensajes de este lead
-      const recentMsgs = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5").all(lId);
+      // Limpiamos el texto de forma agresiva para comparar (quitamos espacios y saltos de línea)
+      const cleanCompare = (t) => t.replace(/\s+/g, '').toLowerCase();
+      const currentClean = cleanCompare(txt);
       
-      // Si el texto ya existe en los últimos 5 mensajes, lo bloqueamos
-      const exists = recentMsgs.some(m => m.text.trim() === cleanTxt);
+      // Revisamos los últimos 10 mensajes
+      const recentMsgs = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 10").all(lId);
       
-      if (exists) {
-        console.log(`🚫 BLOQUEADO DUPLICADO: El texto ya existe en el historial reciente del lead ${lId}`);
+      const isDuplicate = recentMsgs.some(m => cleanCompare(m.text) === currentClean);
+      
+      if (isDuplicate) {
+        console.log(`🚫 BLOQUEO ATÓMICO: Duplicado detectado para lead ${lId}`);
         return;
       }
       
       db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-        .run(lId, sndr, cleanTxt, tm);
+        .run(lId, sndr, txt.trim(), tm);
     };
 
-    saveSmartMessage(leadId, 'client', data.mensaje, time);
-    saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
+    // Si n8n manda lo mismo en ambos campos, lo arreglamos aquí mismo
+    let finalMensaje = data.mensaje;
+    let finalRespuesta = data.respuesta_bot;
+    
+    if (finalMensaje && finalRespuesta && finalMensaje.trim() === finalRespuesta.trim()) {
+      finalMensaje = null; // Priorizamos la respuesta del bot como agente
+    }
+
+    saveSmartMessage(leadId, 'client', finalMensaje, time);
+    saveSmartMessage(leadId, 'agent', finalRespuesta, time);
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });
   } catch (err) {
