@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import Database from 'better-sqlite3';
+import { open } from 'sqlite';
+import sqlite3 from 'sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import multer from 'multer';
@@ -32,117 +33,126 @@ console.log(`📌 Webhook detectado: ${N8N_OUTBOUND_WEBHOOK}`);
 app.use(cors());
 app.use(express.json());
 
-console.log("📦 Inicializando Base de Datos...");
-const dataDir = '/app/data';
-if (!fs.existsSync(dataDir)) {
-  console.log("📂 Creando carpeta de datos...");
-  fs.mkdirSync(dataDir, { recursive: true });
+// --- CONFIGURACIÓN DE ARCHIVOS (RAG) ---
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
 }
+const upload = multer({ dest: 'uploads/' });
 
-const dbFile = join(dataDir, 'database.sqlite');
-const isNew = !fs.existsSync(dbFile);
-const db = new Database(dbFile);
+// --- INICIALIZACIÓN DE BD ---
+let db;
 
-if (isNew) {
-  console.log("⚠️ ALERTA: Base de datos NUEVA creada. La persistencia podría estar fallando.");
-} else {
-  console.log("✅ Base de datos EXISTENTE cargada con éxito.");
-}
+async function setup() {
+  console.log("📦 Inicializando Base de Datos...");
+  const dataDir = process.env.DATA_DIR || './data';
 
-db.exec(`CREATE TABLE IF NOT EXISTS leads (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT,
-  phone TEXT,
-  email TEXT,
-  score INTEGER,
-  estado TEXT,
-  origen TEXT,
-  time TEXT,
-  botActive BOOLEAN,
-  motor TEXT,
-  falla TEXT,
-  zona TEXT
-)`);
-
-db.exec(`CREATE TABLE IF NOT EXISTS documents (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT,
-  category TEXT,
-  content TEXT,
-  timestamp TEXT
-)`);
-
-db.exec(`CREATE TABLE IF NOT EXISTS agenda (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  fecha TEXT,
-  hora TEXT,
-  cliente TEXT,
-  phone TEXT,
-  servicio TEXT,
-  duracion TEXT,
-  estado TEXT,
-  day INTEGER
-)`);
-
-db.exec(`CREATE TABLE IF NOT EXISTS messages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  lead_id INTEGER,
-  sender TEXT,
-  text TEXT,
-  timestamp TEXT
-)`);
-
-db.exec(`CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value TEXT
-)`);
-
-const defaultPrompts = {
-  'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
-  'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos.',
-  'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.'
-};
-
-for (const [key, value] of Object.entries(defaultPrompts)) {
-  const check = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
-  if (!check) {
-    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(key, value);
+  if (!fs.existsSync(dataDir)) {
+    console.log(`📂 Creando carpeta de datos en: ${dataDir}`);
+    fs.mkdirSync(dataDir, { recursive: true });
   }
+
+  const dbFile = join(dataDir, 'database.sqlite');
+  const isNew = !fs.existsSync(dbFile);
+
+  if (isNew && fs.existsSync('./database.sqlite')) {
+    console.log("🚚 Migrando base de datos del root a la carpeta de datos...");
+    fs.copyFileSync('./database.sqlite', dbFile);
+  }
+
+  db = await open({
+    filename: dbFile,
+    driver: sqlite3.Database
+  });
+
+  console.log("✅ Conexión a SQLite establecida.");
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT,
+    phone TEXT,
+    email TEXT,
+    score INTEGER,
+    estado TEXT,
+    origen TEXT,
+    time TEXT,
+    botActive BOOLEAN,
+    motor TEXT,
+    falla TEXT,
+    zona TEXT
+  )`);
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    category TEXT,
+    content TEXT,
+    timestamp TEXT
+  )`);
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS agenda (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha TEXT,
+    hora TEXT,
+    cliente TEXT,
+    phone TEXT,
+    servicio TEXT,
+    duracion TEXT,
+    estado TEXT,
+    day INTEGER
+  )`);
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    sender TEXT,
+    text TEXT,
+    timestamp TEXT
+  )`);
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  )`);
+
+  const defaultPrompts = {
+    'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
+    'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos.',
+    'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.'
+  };
+
+  for (const [key, value] of Object.entries(defaultPrompts)) {
+    const check = await db.get("SELECT value FROM settings WHERE key = ?", key);
+    if (!check) {
+      await db.run("INSERT INTO settings (key, value) VALUES (?, ?)", key, value);
+    }
+  }
+
+  const leadCount = await db.get("SELECT COUNT(*) as count FROM leads");
+  if (leadCount.count === 0) {
+    await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+      'Erik Manuel Taveras', '15613744309', 'eriktaveras@gmail.com', 20, 'Nuevo', 'WhatsApp', '10:30 AM', 1, 'N/A', 'N/A', 'N/A');
+    await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+      'Carlos Ruiz', '19362242209', 'Gasperic.r@gmail.com', 55, 'Interesado', 'Facebook Ads', '09:15 AM', 1, 'FAAC 740', 'No abre', 'Mixco');
+    await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+      'Luis Méndez', '+502 4433 1122', 'luis@construcciones.gt', 92, 'Calificado', 'Facebook Ads', 'Ayer', 1, 'Liftmaster', 'Mantenimiento', 'Zona 10');
+
+    await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", 2, 'client', 'Hola buenas, tengo un portón FAAC 740 que no abre', '09:15 AM');
+    await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", 2, 'bot', 'Hola! Soy Eryum, asistente de OneControl. Entiendo que tu motor FAAC 740 no está funcionando. ¿Cuándo fue la última vez que funcionó correctamente?', '09:15 AM');
+    await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", 2, 'client', 'Ayer en la noche funcionaba bien, hoy en la mañana ya no abrió', '09:16 AM');
+  }
+
+  console.log("✅ Base de datos lista");
 }
 
-const leadCount = db.prepare("SELECT COUNT(*) as count FROM leads").get();
-if (leadCount.count === 0) {
-  const stmt = db.prepare("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  stmt.run('Erik Manuel Taveras', '15613744309', 'eriktaveras@gmail.com', 20, 'Nuevo', 'WhatsApp', '10:30 AM', 1, 'N/A', 'N/A', 'N/A');
-  stmt.run('Carlos Ruiz', '19362242209', 'Gasperic.r@gmail.com', 55, 'Interesado', 'Facebook Ads', '09:15 AM', 1, 'FAAC 740', 'No abre', 'Mixco');
-  stmt.run('Luis Méndez', '+502 4433 1122', 'luis@construcciones.gt', 92, 'Calificado', 'Facebook Ads', 'Ayer', 1, 'Liftmaster', 'Mantenimiento', 'Zona 10');
+// --- ENDPOINTS API ---
 
-  // Mensajes de prueba para Carlos Ruiz (lead id 2)
-  const msgStmt = db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)");
-  msgStmt.run(2, 'client', 'Hola buenas, tengo un portón FAAC 740 que no abre', '09:15 AM');
-  msgStmt.run(2, 'bot', 'Hola! Soy Eryum, asistente de OneControl. Entiendo que tu motor FAAC 740 no está funcionando. ¿Cuándo fue la última vez que funcionó correctamente?', '09:15 AM');
-  msgStmt.run(2, 'client', 'Ayer en la noche funcionaba bien, hoy en la mañana ya no abrió', '09:16 AM');
-  msgStmt.run(2, 'bot', 'Gracias por el detalle. Puede ser un problema eléctrico o del sensor de límite. ¿Ves alguna luz parpadeando en el motor?', '09:16 AM');
-  msgStmt.run(2, 'client', 'Sí, hay una luz roja que parpadea 3 veces', '09:17 AM');
-  msgStmt.run(2, 'agent', '3 parpadeos en FAAC 740 indica falla en el encoder. Te agendamos una visita técnica.', '09:18 AM');
-}
-
-const agendaCount = db.prepare("SELECT COUNT(*) as count FROM agenda").get();
-if (agendaCount.count === 0) {
-  const stmt = db.prepare("INSERT INTO agenda (fecha, hora, cliente, phone, servicio, duracion, estado, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-  stmt.run('2026-05-12', '10:00 AM', 'Carlos Ruiz', '19362242209', 'Instalación Motor', '2 horas', 'Pendiente', 12);
-  stmt.run('2026-05-13', '03:30 PM', 'Marta Estrada', '50244332211', 'Mantenimiento', '45 min', 'Confirmado', 13);
-}
-
-console.log("✅ Base de datos lista");
-
-app.get('/api/leads', (_req, res) => {
+app.get('/api/leads', async (_req, res) => {
   try {
-    const rows = db.prepare(`
+    const rows = await db.all(`
       SELECT leads.*,
              (SELECT text FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessage
       FROM leads ORDER BY leads.id DESC
-    `).all();
+    `);
     const parsedRows = rows.map(r => ({
       ...r,
       botActive: !!r.botActive,
@@ -154,24 +164,23 @@ app.get('/api/leads', (_req, res) => {
   }
 });
 
-app.get('/api/agenda', (_req, res) => {
+app.get('/api/agenda', async (_req, res) => {
   try {
-    const rows = db.prepare("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC").all();
+    const rows = await db.all("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC");
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/agenda', (req, res) => {
+app.post('/api/agenda', async (req, res) => {
   try {
     const { fecha, hora, cliente, phone, servicio, duracion } = req.body;
     if (!fecha || !cliente || !phone) return res.status(400).json({ error: "Faltan datos de la cita" });
 
-    const day = parseInt(fecha.split('-')[2]); // Extraer el día del formato YYYY-MM-DD
-    
-    const stmt = db.prepare("INSERT INTO agenda (fecha, hora, cliente, phone, servicio, duracion, estado, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    stmt.run(fecha, hora || "Pendiente", cliente, phone, servicio || "Revisión", duracion || "1 hora", 'Confirmado', day);
+    const day = parseInt(fecha.split('-')[2]); 
+    await db.run("INSERT INTO agenda (fecha, hora, cliente, phone, servicio, duracion, estado, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+      fecha, hora || "Pendiente", cliente, phone, servicio || "Revisión", duracion || "1 hora", 'Confirmado', day);
     
     res.json({ success: true });
   } catch (err) {
@@ -179,7 +188,7 @@ app.post('/api/agenda', (req, res) => {
   }
 });
 
-app.post('/webhook/n8n', (req, res) => {
+app.post('/webhook/n8n', async (req, res) => {
   const data = req.body;
   console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
 
@@ -199,102 +208,93 @@ app.post('/webhook/n8n', (req, res) => {
   const zona = data.zona || "N/A";
 
   try {
-    const existingLead = db.prepare("SELECT id FROM leads WHERE phone = ?").get(data.phone);
+    const existingLead = await db.get("SELECT id FROM leads WHERE phone = ?", data.phone);
     let leadId;
 
     if (existingLead) {
-      db.prepare("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?")
-        .run(estado, time, botActive, existingLead.id);
+      await db.run("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?", estado, time, botActive, existingLead.id);
       leadId = existingLead.id;
     } else {
-      const result = db.prepare(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(nombre, data.phone, email, score, estado, origen, botActive, motor, falla, zona);
-      leadId = result.lastInsertRowid;
+      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
+        nombre, data.phone, email, score, estado, origen, botActive, motor, falla, zona);
+      leadId = result.lastID;
     }
 
-    // --- ESCUDO INTELIGENTE V4 (AUTO-CLASIFICACIÓN) ---
-    const saveSmartMessage = (lId, sndr, txt, tm) => {
-      if (!txt || txt.trim() === "" || txt === "N/A") return;
-      const cleanTxt = txt.trim();
-      
-      // Normalización agresiva para evitar duplicados por espacios o saltos de línea
-      const normalize = (t) => t.replace(/\s+/g, ' ').trim().toLowerCase();
+    const normalize = (t) => t ? String(t).replace(/\s+/g, ' ').trim().toLowerCase() : "";
+
+    const saveSmartMessage = async (lId, sndr, txt, tm) => {
+      if (!txt || txt === "undefined" || txt === "null" || String(txt).trim() === "" || txt === "N/A") return;
+      const cleanTxt = String(txt).trim();
       const currentNormalized = normalize(cleanTxt);
-      
-      // Revisamos los últimos 5 mensajes
-      const recent = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5").all(lId);
+
+      const recent = await db.all("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5", lId);
       if (recent.some(m => normalize(m.text) === currentNormalized)) {
-        console.log(`🚫 DUPLICADO BLOQUEADO: ${cleanTxt.substring(0, 30)}...`);
+        console.log(`🚫 DUPLICADO BLOQUEADO para lead ${lId}: ${cleanTxt.substring(0, 30)}...`);
         return;
       }
 
-      // AUTO-CLASIFICACIÓN: Si el mensaje es muy largo y viene como 'client', 
-      // probablemente sea un error de n8n y deba ser 'agent'.
-      let finalSender = sndr;
-      if (sndr === 'client' && cleanTxt.length > 200) {
-        finalSender = 'agent';
-      }
-      
-      db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-        .run(lId, finalSender, cleanTxt, tm);
+      console.log(`💾 Guardando mensaje (${sndr}) para lead ${lId}: ${cleanTxt.substring(0, 40)}...`);
+      await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", lId, sndr, cleanTxt, tm);
     };
 
-    // Procesamos mensaje y respuesta
-    if (data.mensaje) saveSmartMessage(leadId, 'client', data.mensaje, time);
-    if (data.respuesta_bot) saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
+    const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
+    const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
+    const senderPrincipal = data.sender || 'client';
+
+    console.log(`📩 Procesando Webhook - Lead ID: ${leadId}`);
+    
+    if (mensajePrincipal) {
+      await saveSmartMessage(leadId, senderPrincipal, mensajePrincipal, time);
+    }
+
+    if (mensajeSecundario && normalize(mensajeSecundario) !== normalize(mensajePrincipal)) {
+      await saveSmartMessage(leadId, 'bot', mensajeSecundario, time);
+    }
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error procesando webhook:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/messages/:leadId', (req, res) => {
+app.get('/api/messages/:leadId', async (req, res) => {
   try {
-    const rows = db.prepare("SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC").all(req.params.leadId);
+    const rows = await db.all("SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC", req.params.leadId);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/bot/toggle', (req, res) => {
+app.post('/api/bot/toggle', async (req, res) => {
   try {
     const { leadId, enabled } = req.body;
-    db.prepare("UPDATE leads SET botActive = ? WHERE id = ?").run(enabled ? 1 : 0, leadId);
+    await db.run("UPDATE leads SET botActive = ? WHERE id = ?", enabled ? 1 : 0, leadId);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/settings', (_req, res) => {
+app.get('/api/settings', async (_req, res) => {
   try {
-    const rows = db.prepare("SELECT * FROM settings").all();
-    console.log(`🔍 Consultando settings: ${rows.length} registros encontrados`);
+    const rows = await db.all("SELECT * FROM settings");
     const settings = {};
     rows.forEach(row => settings[row.key] = row.value);
     res.json(settings);
   } catch (err) {
-    console.error("❌ Error leyendo settings:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key) throw new Error("Key is required");
-    console.log(`💾 Intentando guardar ajuste: [${key}] - Longitud: ${value?.length || 0} chars`);
-    
-    const stmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
-    stmt.run(key, value);
-    
-    console.log(`✅ Ajuste [${key}] guardado con éxito`);
+    await db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value);
     res.json({ success: true });
   } catch (err) {
-    console.error(`❌ Error guardando ajuste [${key}]:`, err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -304,21 +304,15 @@ app.post('/api/messages/send', async (req, res) => {
     const { leadId, text, sender, phone } = req.body;
     if (!leadId || !text) return res.status(400).json({ error: "Faltan datos" });
 
-    // Si no viene sender, asumimos que es el humano desde el dashboard ('agent')
     const msgSender = sender || 'agent';
     const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-    // 1. Guardar en BD
-    const stmt = db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)");
-    const info = stmt.run(leadId, msgSender, text, time);
-    
-    const savedMessage = { id: info.lastInsertRowid, lead_id: leadId, sender: msgSender, text, timestamp: time };
+    const result = await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", leadId, msgSender, text, time);
+    const savedMessage = { id: result.lastID, lead_id: leadId, sender: msgSender, text, timestamp: time };
 
-    // 2. Solo si es el HUMANO escribiendo en el dashboard, enviamos a n8n
-    // Si el mensaje ya viene de n8n (sender = 'client' o 'agent' vía API), NO lo re-enviamos a n8n para evitar bucles.
     if (!sender && msgSender === 'agent' && N8N_OUTBOUND_WEBHOOK) {
-      const targetPhone = phone || db.prepare("SELECT phone FROM leads WHERE id = ?").get(leadId)?.phone;
-      
+      const lead = await db.get("SELECT phone FROM leads WHERE id = ?", leadId);
+      const targetPhone = phone || lead?.phone;
       if (targetPhone) {
         fetch(N8N_OUTBOUND_WEBHOOK, {
           method: 'POST',
@@ -330,20 +324,13 @@ app.post('/api/messages/send', async (req, res) => {
 
     res.json({ success: true, message: savedMessage });
   } catch (err) {
-    console.error("❌ Error en /api/messages/send:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// --- RAG SYSTEM ---
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
-const upload = multer({ dest: 'uploads/' });
-
-app.get('/api/rag/documents', (_req, res) => {
+app.get('/api/rag/documents', async (_req, res) => {
   try {
-    const rows = db.prepare("SELECT id, name, category, timestamp FROM documents ORDER BY id DESC").all();
+    const rows = await db.all("SELECT id, name, category, timestamp FROM documents ORDER BY id DESC");
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -364,31 +351,30 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
       content = fs.readFileSync(filePath, 'utf8');
     }
 
-    db.prepare("INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)")
-      .run(name || req.file.originalname, category || 'General', content, new Date().toLocaleString());
+    await db.run("INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)", 
+      name || req.file.originalname, category || 'General', content, new Date().toLocaleString());
 
-    fs.unlinkSync(filePath); // Delete temp file
+    fs.unlinkSync(filePath); 
     res.json({ success: true });
   } catch (err) {
-    console.error("❌ RAG Upload Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.delete('/api/rag/documents/:id', (req, res) => {
+app.delete('/api/rag/documents/:id', async (req, res) => {
   try {
-    db.prepare("DELETE FROM documents WHERE id = ?").run(req.params.id);
+    await db.run("DELETE FROM documents WHERE id = ?", req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/rag/query', (req, res) => {
+app.get('/api/rag/query', async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.json({ context: "" });
-    const rows = db.prepare("SELECT content FROM documents WHERE content LIKE ? LIMIT 3").all(`%${q}%`);
+    const rows = await db.all("SELECT content FROM documents WHERE content LIKE ? LIMIT 3", `%${q}%`);
     const context = rows.map(r => r.content).join("\n\n---\n\n");
     res.json({ context });
   } catch (err) {
@@ -401,6 +387,8 @@ app.use((_req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Backend del Dashboard escuchando en http://localhost:${port}`);
+setup().then(() => {
+  app.listen(port, () => {
+    console.log(`🚀 Backend del Dashboard escuchando en http://localhost:${port}`);
+  });
 });
