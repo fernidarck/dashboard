@@ -28,6 +28,7 @@ const App = () => {
   const [selectedChatId, setSelectedChatId] = useState(1);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   // --- PERFIL DE USUARIO ---
@@ -255,17 +256,30 @@ const App = () => {
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-hidden">
+      {/* Sidebar Overlay for Mobile */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] md:hidden animate-in fade-in duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto no-scrollbar">
+      <aside className={`fixed md:static inset-y-0 left-0 w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto no-scrollbar z-[101] transition-transform duration-500 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-8">
-          <div className="flex items-center space-x-3 mb-10">
-            <div className="bg-[#FF6B00] p-2.5 rounded-2xl shadow-xl shadow-orange-100 ring-4 ring-orange-50">
-              <Zap className="text-white" size={24} />
+          <div className="flex items-center justify-between mb-10">
+            <div className="flex items-center space-x-3">
+              <div className="bg-[#FF6B00] p-2.5 rounded-2xl shadow-xl shadow-orange-100 ring-4 ring-orange-50">
+                <Zap className="text-white" size={24} />
+              </div>
+              <div>
+                <h1 className="text-xl font-black leading-none tracking-tighter uppercase italic text-slate-800">OneControl</h1>
+                <span className="text-[9px] text-[#FF6B00] font-black uppercase tracking-[0.3em]">SaaS Elite v4.0</span>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-black leading-none tracking-tighter uppercase italic text-slate-800">OneControl</h1>
-              <span className="text-[9px] text-[#FF6B00] font-black uppercase tracking-[0.3em]">SaaS Elite v4.0</span>
-            </div>
+            <button onClick={() => setSidebarOpen(false)} className="md:hidden p-2 text-slate-400">
+               <X size={20} />
+            </button>
           </div>
 
           <nav className="space-y-6">
@@ -304,19 +318,22 @@ const App = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC]">
-        <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-10 shrink-0 sticky top-0 z-20">
-          <div className="flex items-center space-x-6">
-             <div className="bg-slate-100 p-2.5 rounded-xl text-slate-400"><Search size={18} /></div>
+        <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 md:px-10 shrink-0 sticky top-0 z-20">
+          <div className="flex items-center space-x-4 md:space-x-6">
+             <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 bg-slate-100 rounded-xl text-slate-600">
+                <MoreVertical size={20} />
+             </button>
+             <div className="hidden md:flex bg-slate-100 p-2.5 rounded-xl text-slate-400"><Search size={18} /></div>
              <div className="flex items-center space-x-2">
                 <Globe size={14} className="text-slate-400" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none italic">Guatemala</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none italic text-slate-400">Guatemala</span>
              </div>
           </div>
           
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-4 md:space-x-6">
              {loading && <RefreshCw size={14} className="animate-spin text-emerald-500" />}
-             {notification && <div className="bg-emerald-500 text-white text-[10px] font-black px-4 py-1.5 rounded-lg uppercase shadow-lg animate-bounce">{notification}</div>}
-             <div className="h-10 w-10 rounded-2xl bg-slate-900 flex items-center justify-center font-black text-[#FF6B00] border-2 border-white shadow-xl italic">OC</div>
+             {notification && <div className="bg-emerald-500 text-white text-[9px] md:text-[10px] font-black px-3 md:px-4 py-1.5 rounded-lg uppercase shadow-lg animate-bounce">{notification}</div>}
+             <div className="h-9 w-9 md:h-10 md:w-10 rounded-xl md:rounded-2xl bg-slate-900 flex items-center justify-center font-black text-[#FF6B00] border-2 border-white shadow-xl italic">OC</div>
           </div>
         </header>
 
@@ -473,11 +490,13 @@ const App = () => {
                    </div>
                 </div>
 
-                <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
-                   <table className="w-full text-left">
+                <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
+                   <table className="w-full text-left min-w-[800px]">
                       <thead className="bg-slate-50 border-b border-slate-100">
                          <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                             <th className="px-10 py-6">CLIENTE</th>
+                            <th className="px-6 py-6 text-center">MOTOR / FALLA</th>
+                            <th className="px-6 py-6 text-center">ZONA</th>
                             <th className="px-6 py-6 text-center">SCORE IA</th>
                             <th className="px-6 py-6 text-center">ESTADO</th>
                             <th className="px-10 py-6 text-right">ACCIONES</th>
@@ -496,6 +515,15 @@ const App = () => {
                                        <p className="text-[10px] font-bold text-slate-400 mt-1">{lead.phone}</p>
                                     </div>
                                  </div>
+                              </td>
+                              <td className="px-6 py-6 text-center">
+                                 <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-slate-800 uppercase">{lead.motor || 'N/A'}</span>
+                                    <span className="text-[9px] font-medium text-slate-400 italic">{lead.falla || 'No detectada'}</span>
+                                 </div>
+                              </td>
+                              <td className="px-6 py-6 text-center">
+                                 <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{lead.zona || 'Buscando...'}</span>
                               </td>
                               <td className="px-6 py-6 text-center">
                                  <span className={`text-xs font-black ${lead.score > 80 ? 'text-emerald-500' : 'text-orange-500'}`}>{lead.score}%</span>
