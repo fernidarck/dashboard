@@ -120,6 +120,8 @@ async function setup() {
       lead_id INTEGER,
       sender TEXT,
       text TEXT,
+      mediaUrl TEXT,
+      mediaType TEXT,
       timestamp TEXT
     )`);
 
@@ -241,29 +243,38 @@ app.post('/webhook/n8n', async (req, res) => {
 
     const normalize = (t) => t ? String(t).replace(/\s+/g, ' ').trim().toLowerCase() : "";
 
-    const saveSmartMessage = async (lId, sndr, txt, tm) => {
-      if (!txt || txt === "undefined" || txt === "null" || String(txt).trim() === "" || txt === "N/A") return;
-      const cleanTxt = String(txt).trim();
+    const saveSmartMessage = async (lId, sndr, txt, tm, mediaUrl = null, mediaType = null) => {
+      const cleanTxt = txt && txt !== "undefined" && txt !== "null" ? String(txt).trim() : "";
+      
+      // Si no hay texto ni media, no guardamos nada
+      if (!cleanTxt && !mediaUrl) return;
+
       const currentNormalized = normalize(cleanTxt);
 
-      const recent = await db.all("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5", lId);
-      if (recent.some(m => normalize(m.text) === currentNormalized)) {
-        console.log(`🚫 DUPLICADO BLOQUEADO para lead ${lId}: ${cleanTxt.substring(0, 30)}...`);
-        return;
+      // Evitar duplicados (mismo texto y mismo lead en los últimos 5 mensajes)
+      if (cleanTxt) {
+        const recent = await db.all("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5", lId);
+        if (recent.some(m => normalize(m.text) === currentNormalized)) {
+          console.log(`🚫 DUPLICADO BLOQUEADO para lead ${lId}: ${cleanTxt.substring(0, 30)}...`);
+          return;
+        }
       }
 
-      console.log(`💾 Guardando mensaje (${sndr}) para lead ${lId}: ${cleanTxt.substring(0, 40)}...`);
-      await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", lId, sndr, cleanTxt, tm);
+      console.log(`💾 Guardando mensaje (${sndr}) para lead ${lId}: ${cleanTxt.substring(0, 40)}... ${mediaUrl ? '[CON MEDIA]' : ''}`);
+      await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)", 
+        lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
     };
 
     const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
     const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
+    const mediaUrl = data.media_url || data.image_url || data.file_url;
+    const mediaType = data.media_type || (mediaUrl ? 'image' : null);
     const senderPrincipal = data.sender || 'client';
 
     console.log(`📩 Procesando Webhook - Lead ID: ${leadId}`);
     
-    if (mensajePrincipal) {
-      await saveSmartMessage(leadId, senderPrincipal, mensajePrincipal, time);
+    if (mensajePrincipal || mediaUrl) {
+      await saveSmartMessage(leadId, senderPrincipal, mensajePrincipal, time, mediaUrl, mediaType);
     }
 
     if (mensajeSecundario && normalize(mensajeSecundario) !== normalize(mensajePrincipal)) {

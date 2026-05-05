@@ -498,6 +498,16 @@ const App = () => {
                               ? 'bg-emerald-700 text-white rounded-tr-none border-r-4 border-emerald-400'
                               : 'bg-slate-800 text-white rounded-tr-none border-r-4 border-[#FF6B00]'
                           }`}>
+                             {msg.mediaUrl && (
+                               <div className="mb-3">
+                                 <img 
+                                   src={msg.mediaUrl} 
+                                   alt="Media" 
+                                   className="rounded-xl max-w-full h-auto border border-slate-200/50 cursor-pointer hover:opacity-90 transition-opacity" 
+                                   onClick={() => window.open(msg.mediaUrl, '_blank')}
+                                 />
+                               </div>
+                             )}
                              {msg.text}
                           </div>
                        </div>
