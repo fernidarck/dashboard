@@ -181,20 +181,24 @@ app.post('/webhook/n8n', (req, res) => {
       leadId = result.lastInsertRowid;
     }
 
-    // --- ESCUDO ANTI-DUPLICADOS POTENTE ---
+    // --- CERCA ELÉCTRICA ANTI-DUPLICADOS (AGRESIVA) ---
     const saveSmartMessage = (lId, sndr, txt, tm) => {
       if (!txt || txt.trim() === "") return;
+      const cleanTxt = txt.trim();
       
-      // Buscamos si el último mensaje guardado para este lead es idéntico
-      const lastMsg = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1").get(lId);
+      // Revisamos los últimos 5 mensajes de este lead
+      const recentMsgs = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5").all(lId);
       
-      if (lastMsg && lastMsg.text.trim() === txt.trim()) {
-        console.log(`🚫 Bloqueado mensaje duplicado para lead ${lId}`);
+      // Si el texto ya existe en los últimos 5 mensajes, lo bloqueamos
+      const exists = recentMsgs.some(m => m.text.trim() === cleanTxt);
+      
+      if (exists) {
+        console.log(`🚫 BLOQUEADO DUPLICADO: El texto ya existe en el historial reciente del lead ${lId}`);
         return;
       }
       
       db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-        .run(lId, sndr, txt.trim(), tm);
+        .run(lId, sndr, cleanTxt, tm);
     };
 
     saveSmartMessage(leadId, 'client', data.mensaje, time);
