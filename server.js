@@ -69,6 +69,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS messages (
   timestamp TEXT
 )`);
 
+db.exec(`CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+)`);
+
+const promptCheck = db.prepare("SELECT value FROM settings WHERE key = 'system_prompt'").get();
+if (!promptCheck) {
+  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('system_prompt', 'Eres OneControl AI, un asistente experto en portones eléctricos...');
+}
+
 const leadCount = db.prepare("SELECT COUNT(*) as count FROM leads").get();
 if (leadCount.count === 0) {
   const stmt = db.prepare("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -180,6 +190,27 @@ app.post('/api/bot/toggle', (req, res) => {
   try {
     const { leadId, enabled } = req.body;
     db.prepare("UPDATE leads SET botActive = ? WHERE id = ?").run(enabled ? 1 : 0, leadId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/settings', (_req, res) => {
+  try {
+    const rows = db.prepare("SELECT * FROM settings").all();
+    const settings = {};
+    rows.forEach(row => settings[row.key] = row.value);
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/settings', (req, res) => {
+  try {
+    const { key, value } = req.body;
+    db.prepare("INSERT INTO settings (key, value) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

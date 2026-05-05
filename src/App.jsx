@@ -87,6 +87,7 @@ const App = () => {
   }, []);
 
   // --- CONFIGURACIÓN DEL AGENTE IA ---
+  const [systemPrompt, setSystemPrompt] = useState("");
   const [agentConfig, setAgentConfig] = useState({
     nombre: "Eryum",
     rol: "asistente de ventas de OneControl",
@@ -97,6 +98,33 @@ const App = () => {
     descripcion: "OneControl es una plataforma de automatización con IA que conecta tu negocio con WhatsApp Business API y Meta Ads.",
     productos: "- Chatbot de IA integrado con WhatsApp\n- Calificación automática de leads"
   });
+
+  const fetchSettings = useCallback(() => {
+    fetch(`${API_BASE_URL}/api/settings`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.system_prompt) setSystemPrompt(data.system_prompt);
+      })
+      .catch(console.error);
+  }, []);
+
+  const saveSetting = (key, value) => {
+    fetch(`${API_BASE_URL}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value })
+    })
+    .then(res => res.json())
+    .then(() => {
+      setNotification({ type: 'success', message: 'Configuración guardada correctamente' });
+      setTimeout(() => setNotification(null), 3000);
+    })
+    .catch(console.error);
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   // --- LOGICA DE COMUNICACIÓN CON N8N ---
   const handleAction = async (action, data = {}) => {
@@ -567,6 +595,37 @@ const App = () => {
                        </div>
                     </div>
                  </div>
+               )}
+
+               {subTabIA === 'Configuración IA' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500">
+                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                        <div className="flex justify-between items-center">
+                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                              <Brain size={18} className="text-[#FF6B00]" />
+                              <span>System Prompt (Cerebro de la IA)</span>
+                           </h3>
+                           <button 
+                             onClick={() => saveSetting('system_prompt', systemPrompt)}
+                             className="bg-slate-800 text-[#FF6B00] px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all"
+                           >
+                             Actualizar Prompt
+                           </button>
+                        </div>
+                        <div className="space-y-4">
+                           <p className="text-[11px] text-slate-500 font-medium italic">
+                              Este es el "System Prompt" que define cómo se comporta la IA en WhatsApp. 
+                              Cualquier cambio aquí se reflejará en tiempo real en las conversaciones.
+                           </p>
+                           <textarea 
+                             value={systemPrompt} 
+                             onChange={(e) => setSystemPrompt(e.target.value)} 
+                             className="w-full h-96 p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed shadow-inner"
+                             placeholder="Escribe aquí las instrucciones maestras para tu IA..."
+                           />
+                        </div>
+                     </div>
+                  </div>
                )}
             </div>
           )}
