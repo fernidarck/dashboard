@@ -85,9 +85,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 )`);
 
-const promptCheck = db.prepare("SELECT value FROM settings WHERE key = 'system_prompt'").get();
-if (!promptCheck) {
-  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('system_prompt', 'Eres OneControl AI, un asistente experto en portones eléctricos...');
+const defaultPrompts = {
+  'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
+  'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos.',
+  'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.'
+};
+
+for (const [key, value] of Object.entries(defaultPrompts)) {
+  const check = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+  if (!check) {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(key, value);
+  }
 }
 
 const leadCount = db.prepare("SELECT COUNT(*) as count FROM leads").get();
