@@ -233,10 +233,12 @@ app.post('/api/bot/toggle', (req, res) => {
 app.get('/api/settings', (_req, res) => {
   try {
     const rows = db.prepare("SELECT * FROM settings").all();
+    console.log(`🔍 Consultando settings: ${rows.length} registros encontrados`);
     const settings = {};
     rows.forEach(row => settings[row.key] = row.value);
     res.json(settings);
   } catch (err) {
+    console.error("❌ Error leyendo settings:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -245,12 +247,15 @@ app.post('/api/settings', (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key) throw new Error("Key is required");
-    console.log(`💾 Guardando ajuste: ${key}`);
+    console.log(`💾 Intentando guardar ajuste: [${key}] - Longitud: ${value?.length || 0} chars`);
+    
     const stmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
-    stmt.run(key, value || "");
+    stmt.run(key, value);
+    
+    console.log(`✅ Ajuste [${key}] guardado con éxito`);
     res.json({ success: true });
   } catch (err) {
-    console.error("❌ Error en POST /api/settings:", err.message);
+    console.error(`❌ Error guardando ajuste [${key}]:`, err);
     res.status(500).json({ error: err.message });
   }
 });
