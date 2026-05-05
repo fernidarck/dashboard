@@ -555,7 +555,7 @@ const App = () => {
                </div>
 
                <div className="flex space-x-8 border-b border-slate-200">
-                  {['General', 'Mensajes', 'Captura de Datos', 'Configuración IA'].map(t => (
+                  {['General', 'Mensajes', 'Captura de Datos', 'Prompt'].map(t => (
                     <button 
                       key={t}
                       onClick={() => setSubTabIA(t)}
@@ -597,7 +597,7 @@ const App = () => {
                  </div>
                )}
 
-               {subTabIA === 'Configuración IA' && (
+               {subTabIA === 'Prompt' && (
                   <div className="animate-in slide-in-from-bottom-4 duration-500">
                      <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
                         <div className="flex justify-between items-center">
