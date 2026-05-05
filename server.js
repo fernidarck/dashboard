@@ -225,7 +225,6 @@ app.post('/webhook/n8n', (req, res) => {
     };
 
     // Lógica para procesar el paquete de n8n
-    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
     // Primero el mensaje del cliente (blanco / izquierda)
     if (data.mensaje && data.mensaje !== data.respuesta_bot) {
