@@ -700,7 +700,7 @@ const App = () => {
                               <span>🧠 Prompt del {selectedAgent}</span>
                            </h3>
                            <button 
-                             onClick={() => saveSetting(`prompt_${selectedAgent.toLowerCase().replace(' ', '_')}`, prompts[selectedAgent])}
+                             onClick={() => saveSetting(selectedAgent === 'Vendedor' ? 'prompt_ventas' : `prompt_${selectedAgent.toLowerCase().replace(' ', '_')}`, prompts[selectedAgent])}
                              className="bg-[#FF6B00] text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"
                            >
                              Guardar Cambios
