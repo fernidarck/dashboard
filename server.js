@@ -198,40 +198,35 @@ app.post('/webhook/n8n', (req, res) => {
         .run(estado, time, botActive, existingLead.id);
       leadId = existingLead.id;
     } else {
-      const result = db.prepare(`INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(nombre, data.phone, email, score, estado, origen, time, botActive, motor, falla, zona);
+      const result = db.prepare(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(nombre, data.phone, email, score, estado, origen, botActive, motor, falla, zona);
       leadId = result.lastInsertRowid;
     }
 
-    // --- ESCUDO ATÓMICO REFINADO ---
+    // --- ESCUDO REFINADO (NO BLOQUEA AL CLIENTE) ---
     const saveSmartMessage = (lId, sndr, txt, tm) => {
       if (!txt || txt.trim() === "" || txt === "N/A") return;
+      const cleanTxt = txt.trim();
       
-      const cleanCompare = (t) => t.replace(/\s+/g, '').toLowerCase().substring(0, 100); // Comparamos los primeros 100 chars
-      const currentClean = cleanCompare(txt);
+      // Solo bloqueamos si el ÚLTIMO mensaje es idéntico al que queremos guardar ahora
+      const lastMsg = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1").get(lId);
       
-      // Solo revisamos los últimos 3 mensajes para no ser tan agresivos
-      const recentMsgs = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 3").all(lId);
-      
-      const isDuplicate = recentMsgs.some(m => cleanCompare(m.text) === currentClean);
-      
-      if (isDuplicate) {
-        console.log(`🚫 DUPLICADO IGNORADO: [${sndr}] ${txt.substring(0, 20)}...`);
+      if (lastMsg && lastMsg.text.trim() === cleanTxt) {
+        console.log(`🚫 DUPLICADO EVITADO: ${sndr} - ${cleanTxt.substring(0, 20)}...`);
         return;
       }
       
       db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)")
-        .run(lId, sndr, txt.trim(), tm);
+        .run(lId, sndr, cleanTxt, tm);
     };
 
-    // Lógica para procesar el paquete de n8n
-    
-    // Primero el mensaje del cliente (blanco / izquierda)
-    if (data.mensaje && data.mensaje !== data.respuesta_bot) {
+    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+    // Guardamos ambos por separado. Si n8n manda los dos, el servidor decidirá si son duplicados uno por uno.
+    if (data.mensaje) {
       saveSmartMessage(leadId, 'client', data.mensaje, time);
     }
     
-    // Luego la respuesta del bot (negro / derecha)
     if (data.respuesta_bot) {
       saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
     }
