@@ -633,8 +633,8 @@ const App = () => {
                            </button>
                         </div>
                         <textarea 
-                          value={prompts[selectedAgent]} 
-                          onChange={(e) => setPrompts({...prompts, [selectedAgent]: e.target.value})} 
+                          value={prompts?.[selectedAgent] || ""} 
+                          onChange={(e) => setPrompts(prev => ({...prev, [selectedAgent]: e.target.value}))} 
                           className="w-full h-[500px] p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed"
                           placeholder={`Escribe aquí las instrucciones maestras para el ${selectedAgent}...`}
                         />
