@@ -43,105 +43,117 @@ const upload = multer({ dest: 'uploads/' });
 let db;
 
 async function setup() {
-  console.log("📦 Inicializando Base de Datos...");
-  const dataDir = process.env.DATA_DIR || './data';
+  try {
+    console.log("📦 Diagnóstico inicial...");
+    console.log(`   - Directorio actual: ${process.cwd()}`);
+    console.log(`   - Variables de entorno: PORT=${process.env.PORT}, DATA_DIR=${process.env.DATA_DIR}`);
 
-  if (!fs.existsSync(dataDir)) {
-    console.log(`📂 Creando carpeta de datos en: ${dataDir}`);
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+    const dataDir = process.env.DATA_DIR || './data';
+    console.log(`📂 Configurando directorio de datos: ${dataDir}`);
 
-  const dbFile = join(dataDir, 'database.sqlite');
-  const isNew = !fs.existsSync(dbFile);
-
-  if (isNew && fs.existsSync('./database.sqlite')) {
-    console.log("🚚 Migrando base de datos del root a la carpeta de datos...");
-    fs.copyFileSync('./database.sqlite', dbFile);
-  }
-
-  db = await open({
-    filename: dbFile,
-    driver: sqlite3.Database
-  });
-
-  console.log("✅ Conexión a SQLite establecida.");
-
-  await db.exec(`CREATE TABLE IF NOT EXISTS leads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre TEXT,
-    phone TEXT,
-    email TEXT,
-    score INTEGER,
-    estado TEXT,
-    origen TEXT,
-    time TEXT,
-    botActive BOOLEAN,
-    motor TEXT,
-    falla TEXT,
-    zona TEXT
-  )`);
-
-  await db.exec(`CREATE TABLE IF NOT EXISTS documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    category TEXT,
-    content TEXT,
-    timestamp TEXT
-  )`);
-
-  await db.exec(`CREATE TABLE IF NOT EXISTS agenda (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fecha TEXT,
-    hora TEXT,
-    cliente TEXT,
-    phone TEXT,
-    servicio TEXT,
-    duracion TEXT,
-    estado TEXT,
-    day INTEGER
-  )`);
-
-  await db.exec(`CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id INTEGER,
-    sender TEXT,
-    text TEXT,
-    timestamp TEXT
-  )`);
-
-  await db.exec(`CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  )`);
-
-  const defaultPrompts = {
-    'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
-    'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos.',
-    'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.'
-  };
-
-  for (const [key, value] of Object.entries(defaultPrompts)) {
-    const check = await db.get("SELECT value FROM settings WHERE key = ?", key);
-    if (!check) {
-      await db.run("INSERT INTO settings (key, value) VALUES (?, ?)", key, value);
+    if (!fs.existsSync(dataDir)) {
+      console.log(`   - Creando directorio ${dataDir}...`);
+      fs.mkdirSync(dataDir, { recursive: true });
+    } else {
+      console.log(`   - El directorio ${dataDir} ya existe.`);
     }
+
+    const dbFile = join(dataDir, 'database.sqlite');
+    console.log(`🗄️ Archivo de base de datos: ${dbFile}`);
+    
+    const isNew = !fs.existsSync(dbFile);
+    if (isNew) {
+      console.log("   - Base de datos no encontrada. Verificando migración...");
+      if (fs.existsSync('./database.sqlite')) {
+        console.log("   🚚 Migrando database.sqlite desde el root...");
+        fs.copyFileSync('./database.sqlite', dbFile);
+      } else {
+        console.log("   - Iniciando con base de datos limpia.");
+      }
+    }
+
+    console.log("🔌 Conectando a SQLite...");
+    db = await open({
+      filename: dbFile,
+      driver: sqlite3.Database
+    });
+    console.log("✅ Conexión establecida.");
+
+    console.log("🏗️ Asegurando tablas...");
+    await db.exec(`CREATE TABLE IF NOT EXISTS leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT,
+      phone TEXT,
+      email TEXT,
+      score INTEGER,
+      estado TEXT,
+      origen TEXT,
+      time TEXT,
+      botActive BOOLEAN,
+      motor TEXT,
+      falla TEXT,
+      zona TEXT
+    )`);
+
+    await db.exec(`CREATE TABLE IF NOT EXISTS documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      category TEXT,
+      content TEXT,
+      timestamp TEXT
+    )`);
+
+    await db.exec(`CREATE TABLE IF NOT EXISTS agenda (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fecha TEXT,
+      hora TEXT,
+      cliente TEXT,
+      phone TEXT,
+      servicio TEXT,
+      duracion TEXT,
+      estado TEXT,
+      day INTEGER
+    )`);
+
+    await db.exec(`CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER,
+      sender TEXT,
+      text TEXT,
+      timestamp TEXT
+    )`);
+
+    await db.exec(`CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )`);
+
+    console.log("⚙️ Configurando valores por defecto...");
+    const defaultPrompts = {
+      'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
+      'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos.',
+      'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.'
+    };
+
+    for (const [key, value] of Object.entries(defaultPrompts)) {
+      const check = await db.get("SELECT value FROM settings WHERE key = ?", key);
+      if (!check) {
+        await db.run("INSERT INTO settings (key, value) VALUES (?, ?)", key, value);
+      }
+    }
+
+    const leadCount = await db.get("SELECT COUNT(*) as count FROM leads");
+    if (leadCount && leadCount.count === 0) {
+      console.log("📝 Insertando datos de ejemplo...");
+      await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+        'Erik Manuel Taveras', '15613744309', 'eriktaveras@gmail.com', 20, 'Nuevo', 'WhatsApp', '10:30 AM', 1, 'N/A', 'N/A', 'N/A');
+    }
+
+    console.log("✅ Base de datos lista");
+  } catch (err) {
+    console.error("❌ ERROR CRÍTICO EN SETUP():", err);
+    throw err; // Re-lanzar para que lo atrape el catch global
   }
-
-  const leadCount = await db.get("SELECT COUNT(*) as count FROM leads");
-  if (leadCount.count === 0) {
-    await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-      'Erik Manuel Taveras', '15613744309', 'eriktaveras@gmail.com', 20, 'Nuevo', 'WhatsApp', '10:30 AM', 1, 'N/A', 'N/A', 'N/A');
-    await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-      'Carlos Ruiz', '19362242209', 'Gasperic.r@gmail.com', 55, 'Interesado', 'Facebook Ads', '09:15 AM', 1, 'FAAC 740', 'No abre', 'Mixco');
-    await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-      'Luis Méndez', '+502 4433 1122', 'luis@construcciones.gt', 92, 'Calificado', 'Facebook Ads', 'Ayer', 1, 'Liftmaster', 'Mantenimiento', 'Zona 10');
-
-    await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", 2, 'client', 'Hola buenas, tengo un portón FAAC 740 que no abre', '09:15 AM');
-    await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", 2, 'bot', 'Hola! Soy Eryum, asistente de OneControl. Entiendo que tu motor FAAC 740 no está funcionando. ¿Cuándo fue la última vez que funcionó correctamente?', '09:15 AM');
-    await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", 2, 'client', 'Ayer en la noche funcionaba bien, hoy en la mañana ya no abrió', '09:16 AM');
-  }
-
-  console.log("✅ Base de datos lista");
 }
 
 // --- ENDPOINTS API ---
