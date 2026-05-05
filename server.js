@@ -237,7 +237,7 @@ app.post('/api/messages/send', (req, res) => {
 
 // Serve React App in production
 app.use(express.static(join(__dirname, 'dist')));
-app.get('*', (req, res) => {
+app.use((_req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
