@@ -129,12 +129,12 @@ const App = () => {
       return data;
     })
     .then(() => {
-      setNotification({ type: 'success', message: `Prompt de ${selectedAgent} guardado` });
+      setNotification(`Prompt de ${selectedAgent} guardado`);
       setTimeout(() => setNotification(null), 3000);
     })
     .catch(err => {
       console.error(err);
-      setNotification({ type: 'error', message: `Error: ${err.message}` });
+      setNotification(`Error: ${err.message}`);
       setTimeout(() => setNotification(null), 5000);
     });
   };
