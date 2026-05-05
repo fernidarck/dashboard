@@ -87,7 +87,12 @@ const App = () => {
   }, []);
 
   // --- CONFIGURACIÓN DEL AGENTE IA ---
-  const [systemPrompt, setSystemPrompt] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState("Recepcionista");
+  const [prompts, setPrompts] = useState({
+    Recepcionista: "",
+    Vendedor: "",
+    Soporte: ""
+  });
   const [agentConfig, setAgentConfig] = useState({
     nombre: "Eryum",
     rol: "asistente de ventas de OneControl",
@@ -103,7 +108,11 @@ const App = () => {
     fetch(`${API_BASE_URL}/api/settings`)
       .then(res => res.json())
       .then(data => {
-        if (data.system_prompt) setSystemPrompt(data.system_prompt);
+        setPrompts({
+          Recepcionista: data.prompt_recepcionista || "",
+          Vendedor: data.prompt_ventas || "",
+          Soporte: data.prompt_soporte || ""
+        });
       })
       .catch(console.error);
   }, []);
@@ -116,7 +125,7 @@ const App = () => {
     })
     .then(res => res.json())
     .then(() => {
-      setNotification({ type: 'success', message: 'Configuración guardada correctamente' });
+      setNotification({ type: 'success', message: `Prompt de ${selectedAgent} guardado` });
       setTimeout(() => setNotification(null), 3000);
     })
     .catch(console.error);
@@ -598,24 +607,38 @@ const App = () => {
                )}
 
                {subTabIA === 'Prompt' && (
-                  <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8 animate-in slide-in-from-bottom-4">
-                     <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">
-                           🧠 System Prompt (Cerebro IA)
-                        </h3>
-                        <button 
-                          onClick={() => saveSetting('system_prompt', systemPrompt)}
-                          className="bg-[#FF6B00] text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"
-                        >
-                          Guardar Cambios
-                        </button>
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                     <div className="flex space-x-3">
+                        {['Recepcionista', 'Vendedor', 'Soporte'].map(agent => (
+                           <button 
+                             key={agent} 
+                             onClick={() => setSelectedAgent(agent)}
+                             className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedAgent === agent ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'}`}
+                           >
+                              {agent}
+                           </button>
+                        ))}
                      </div>
-                     <textarea 
-                       value={systemPrompt} 
-                       onChange={(e) => setSystemPrompt(e.target.value)} 
-                       className="w-full h-[500px] p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed"
-                       placeholder="Escribe aquí las instrucciones maestras..."
-                     />
+
+                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                        <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">
+                              🧠 Prompt del {selectedAgent}
+                           </h3>
+                           <button 
+                             onClick={() => saveSetting(`prompt_${selectedAgent.toLowerCase().replace(' ', '_')}`, prompts[selectedAgent])}
+                             className="bg-[#FF6B00] text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"
+                           >
+                             Guardar Cambios
+                           </button>
+                        </div>
+                        <textarea 
+                          value={prompts[selectedAgent]} 
+                          onChange={(e) => setPrompts({...prompts, [selectedAgent]: e.target.value})} 
+                          className="w-full h-[500px] p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed"
+                          placeholder={`Escribe aquí las instrucciones para el ${selectedAgent}...`}
+                        />
+                     </div>
                   </div>
                )}
             </div>
