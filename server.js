@@ -130,6 +130,21 @@ async function setup() {
       value TEXT
     )`);
 
+    // --- MIGRACIONES ---
+    console.log("🛠️ Verificando migraciones de tabla...");
+    const columns = await db.all("PRAGMA table_info(messages)");
+    const hasMediaUrl = columns.some(c => c.name === 'mediaUrl');
+    if (!hasMediaUrl) {
+      console.log("   - Añadiendo columnas de multimedia a la tabla 'messages'...");
+      try {
+        await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT");
+        await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT");
+        console.log("   ✅ Migración completada.");
+      } catch (e) {
+        console.error("   ❌ Error en migración:", e.message);
+      }
+    }
+
     console.log("⚙️ Configurando valores por defecto...");
     const defaultPrompts = {
       'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
