@@ -487,8 +487,17 @@ const App = () => {
                            <p className="text-slate-400 text-xs italic font-bold">No hay mensajes grabados en esta conversación.</p>
                         </div>
                      ) : messages.map((msg) => (
-                       <div key={msg.id} className={`flex ${msg.sender === 'client' ? 'justify-start' : 'justify-end'}`}>
-                          <div className={`max-w-[70%] p-5 rounded-[28px] text-sm font-medium italic leading-relaxed shadow-sm ${msg.sender === 'client' ? 'bg-white border border-slate-200 rounded-tl-none' : 'bg-slate-800 text-white rounded-tr-none border-r-4 border-[#FF6B00]'}`}>
+                       <div key={msg.id} className={`flex flex-col ${msg.sender === 'client' ? 'items-start' : 'items-end'}`}>
+                          <span className="text-[10px] font-black uppercase tracking-widest mb-1 px-2 text-slate-400">
+                            {msg.sender === 'client' ? 'Cliente' : msg.sender === 'bot' ? 'Bot IA' : 'Agente'}
+                          </span>
+                          <div className={`max-w-[70%] p-5 rounded-[28px] text-sm font-medium italic leading-relaxed shadow-sm ${
+                            msg.sender === 'client'
+                              ? 'bg-blue-50 border border-blue-200 rounded-tl-none text-slate-700'
+                              : msg.sender === 'bot'
+                              ? 'bg-emerald-700 text-white rounded-tr-none border-r-4 border-emerald-400'
+                              : 'bg-slate-800 text-white rounded-tr-none border-r-4 border-[#FF6B00]'
+                          }`}>
                              {msg.text}
                           </div>
                        </div>
