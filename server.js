@@ -203,21 +203,20 @@ app.post('/webhook/n8n', (req, res) => {
       leadId = result.lastInsertRowid;
     }
 
-    // --- ESCUDO ATÓMICO ANTI-DUPLICADOS ---
+    // --- ESCUDO ATÓMICO REFINADO ---
     const saveSmartMessage = (lId, sndr, txt, tm) => {
-      if (!txt || txt.trim() === "") return;
+      if (!txt || txt.trim() === "" || txt === "N/A") return;
       
-      // Limpiamos el texto de forma agresiva para comparar (quitamos espacios y saltos de línea)
-      const cleanCompare = (t) => t.replace(/\s+/g, '').toLowerCase();
+      const cleanCompare = (t) => t.replace(/\s+/g, '').toLowerCase().substring(0, 100); // Comparamos los primeros 100 chars
       const currentClean = cleanCompare(txt);
       
-      // Revisamos los últimos 10 mensajes
-      const recentMsgs = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 10").all(lId);
+      // Solo revisamos los últimos 3 mensajes para no ser tan agresivos
+      const recentMsgs = db.prepare("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 3").all(lId);
       
       const isDuplicate = recentMsgs.some(m => cleanCompare(m.text) === currentClean);
       
       if (isDuplicate) {
-        console.log(`🚫 BLOQUEO ATÓMICO: Duplicado detectado para lead ${lId}`);
+        console.log(`🚫 DUPLICADO IGNORADO: [${sndr}] ${txt.substring(0, 20)}...`);
         return;
       }
       
@@ -225,16 +224,18 @@ app.post('/webhook/n8n', (req, res) => {
         .run(lId, sndr, txt.trim(), tm);
     };
 
-    // Si n8n manda lo mismo en ambos campos, lo arreglamos aquí mismo
-    let finalMensaje = data.mensaje;
-    let finalRespuesta = data.respuesta_bot;
+    // Lógica para procesar el paquete de n8n
+    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
-    if (finalMensaje && finalRespuesta && finalMensaje.trim() === finalRespuesta.trim()) {
-      finalMensaje = null; // Priorizamos la respuesta del bot como agente
+    // Primero el mensaje del cliente (blanco / izquierda)
+    if (data.mensaje && data.mensaje !== data.respuesta_bot) {
+      saveSmartMessage(leadId, 'client', data.mensaje, time);
     }
-
-    saveSmartMessage(leadId, 'client', finalMensaje, time);
-    saveSmartMessage(leadId, 'agent', finalRespuesta, time);
+    
+    // Luego la respuesta del bot (negro / derecha)
+    if (data.respuesta_bot) {
+      saveSmartMessage(leadId, 'agent', data.respuesta_bot, time);
+    }
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });
   } catch (err) {
