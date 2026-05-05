@@ -503,8 +503,16 @@ const App = () => {
                                  <img 
                                    src={msg.mediaUrl} 
                                    alt="Media" 
-                                   className="rounded-xl max-w-full h-auto border border-slate-200/50 cursor-pointer hover:opacity-90 transition-opacity" 
+                                   className="rounded-xl max-w-full h-auto border border-slate-200/50 cursor-pointer hover:opacity-90 transition-opacity min-h-[100px] bg-slate-100" 
                                    onClick={() => window.open(msg.mediaUrl, '_blank')}
+                                   onError={(e) => {
+                                     console.error("Error cargando imagen:", msg.mediaUrl);
+                                     e.target.style.display = 'none';
+                                     const p = document.createElement('p');
+                                     p.className = 'text-[10px] text-red-400 font-bold italic';
+                                     p.innerText = '⚠️ Error al cargar imagen (El enlace podría ser privado o haber caducado)';
+                                     e.target.parentNode.appendChild(p);
+                                   }}
                                  />
                                </div>
                              )}
