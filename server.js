@@ -246,35 +246,38 @@ app.post('/api/settings', (req, res) => {
   }
 });
 
-app.post('/api/messages/send', (req, res) => {
+app.post('/api/messages/send', async (req, res) => {
   try {
-    const { leadId, text, sender } = req.body; // Añadimos 'sender'
-    if (!leadId || !text) throw new Error("Faltan datos");
+    const { leadId, text, sender, phone } = req.body;
+    if (!leadId || !text) return res.status(400).json({ error: "Faltan datos" });
 
-    const msgSender = sender || 'agent'; // Por defecto es agent si viene del dashboard
-    
+    // Si no viene sender, asumimos que es el humano desde el dashboard ('agent')
+    const msgSender = sender || 'agent';
+    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+    // 1. Guardar en BD
     const stmt = db.prepare("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)");
-    const info = stmt.run(leadId, msgSender, text, new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+    const info = stmt.run(leadId, msgSender, text, time);
     
-    const savedMessage = {
-      id: info.lastInsertRowid,
-      lead_id: leadId,
-      sender: msgSender,
-      text,
-      timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-    };
+    const savedMessage = { id: info.lastInsertRowid, lead_id: leadId, sender: msgSender, text, timestamp: time };
 
-    // Si viene del Dashboard (humano), avisamos a n8n para que lo mande por WhatsApp
-    if (msgSender === 'agent' && N8N_WEBHOOK_URL) {
-      fetch(N8N_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: req.body.phone, text })
-      }).catch(err => console.error("Error enviando a n8n:", err));
+    // 2. Solo si es el HUMANO escribiendo en el dashboard, enviamos a n8n
+    // Si el mensaje ya viene de n8n (sender = 'client' o 'agent' vía API), NO lo re-enviamos a n8n para evitar bucles.
+    if (!sender && msgSender === 'agent' && N8N_OUTBOUND_WEBHOOK) {
+      const targetPhone = phone || db.prepare("SELECT phone FROM leads WHERE id = ?").get(leadId)?.phone;
+      
+      if (targetPhone) {
+        fetch(N8N_OUTBOUND_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: targetPhone, text })
+        }).catch(err => console.error("❌ Error enviando a n8n:", err.message));
+      }
     }
 
     res.json({ success: true, message: savedMessage });
   } catch (err) {
+    console.error("❌ Error en /api/messages/send:", err);
     res.status(500).json({ error: err.message });
   }
 });
