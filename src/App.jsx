@@ -598,33 +598,24 @@ const App = () => {
                )}
 
                {subTabIA === 'Prompt' && (
-                  <div className="animate-in slide-in-from-bottom-4 duration-500">
-                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
-                        <div className="flex justify-between items-center">
-                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
-                              <Brain size={18} className="text-[#FF6B00]" />
-                              <span>System Prompt (Cerebro de la IA)</span>
-                           </h3>
-                           <button 
-                             onClick={() => saveSetting('system_prompt', systemPrompt)}
-                             className="bg-slate-800 text-[#FF6B00] px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all"
-                           >
-                             Actualizar Prompt
-                           </button>
-                        </div>
-                        <div className="space-y-4">
-                           <p className="text-[11px] text-slate-500 font-medium italic">
-                              Este es el "System Prompt" que define cómo se comporta la IA en WhatsApp. 
-                              Cualquier cambio aquí se reflejará en tiempo real en las conversaciones.
-                           </p>
-                           <textarea 
-                             value={systemPrompt} 
-                             onChange={(e) => setSystemPrompt(e.target.value)} 
-                             className="w-full h-96 p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed shadow-inner"
-                             placeholder="Escribe aquí las instrucciones maestras para tu IA..."
-                           />
-                        </div>
+                  <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8 animate-in slide-in-from-bottom-4">
+                     <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">
+                           🧠 System Prompt (Cerebro IA)
+                        </h3>
+                        <button 
+                          onClick={() => saveSetting('system_prompt', systemPrompt)}
+                          className="bg-[#FF6B00] text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"
+                        >
+                          Guardar Cambios
+                        </button>
                      </div>
+                     <textarea 
+                       value={systemPrompt} 
+                       onChange={(e) => setSystemPrompt(e.target.value)} 
+                       className="w-full h-[500px] p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed"
+                       placeholder="Escribe aquí las instrucciones maestras..."
+                     />
                   </div>
                )}
             </div>
