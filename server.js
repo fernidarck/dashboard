@@ -259,6 +259,9 @@ app.post('/api/messages/send', (req, res) => {
 });
 
 // --- RAG SYSTEM ---
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
 const upload = multer({ dest: 'uploads/' });
 
 app.get('/api/rag/documents', (_req, res) => {
