@@ -33,9 +33,15 @@ app.use(cors());
 app.use(express.json());
 
 console.log("📦 Inicializando Base de Datos...");
-const dbFile = join(__dirname, 'database.sqlite');
+// Asegurar que la carpeta de datos existe para el volumen persistente
+const dataDir = join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir);
+}
+
+const dbFile = join(dataDir, 'database.sqlite');
 const db = new Database(dbFile);
-console.log(`📂 Archivo de DB: ${dbFile}`);
+console.log(`📂 Archivo de DB Persistente: ${dbFile}`);
 
 db.exec(`CREATE TABLE IF NOT EXISTS leads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
