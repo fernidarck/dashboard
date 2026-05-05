@@ -92,8 +92,14 @@ async function setup() {
       botActive BOOLEAN,
       motor TEXT,
       falla TEXT,
-      zona TEXT
+      zona TEXT,
+      priority TEXT DEFAULT 'normal',
+      handoff_reason TEXT
     )`);
+
+    // Migración: añadir columnas nuevas si no existen
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN priority TEXT DEFAULT 'normal'`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN handoff_reason TEXT`); } catch(_) {}
 
     await db.exec(`CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,6 +223,51 @@ app.post('/api/agenda', async (req, res) => {
   }
 });
 
+// --- PROXY PARA IMÁGENES (Para saltar bloqueos de seguridad/privacidad) ---
+app.get('/api/proxy-media', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) return res.status(400).send("Falta URL");
+
+    console.log(`🖼️ Proxying media: ${url.substring(0, 50)}...`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'X-API-Key': 'a25aaba6428e12e4df6310296f675272' // Usando la key detectada en tu n8n
+      }
+    });
+
+    if (!response.ok) throw new Error(`Error YCloud: ${response.status}`);
+
+    const contentType = response.headers.get('content-type');
+    res.setHeader('Content-Type', contentType || 'image/jpeg');
+    
+    const arrayBuffer = await response.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (err) {
+    console.error("❌ Error en proxy-media:", err.message);
+    res.status(500).send("Error cargando medio");
+  }
+});
+
+// ─── MOTOR DE DETECCIÓN DE HANDOFF INTELIGENTE ─────────────────────────────────────
+const HANDOFF_TRIGGERS = [
+  { pattern: /\b(agente|asesor|humano|persona real|hablar con alguien|operador|quiero hablar)\b/i, reason: 'Solicitud de agente humano' },
+  { pattern: /\b(molesto|enojado|frustrado|queja|quiero quejarme|mala atención|pésimo)\b/i,    reason: 'Frustración / Queja detectada' },
+  { pattern: /\b(urgente|emergencia|para ya|ahora mismo|no funciona|se rompió|accidente)\b/i,  reason: 'Urgencia / Emergencia' },
+  { pattern: /\b(no me entiendes|no entiendo|eso no es lo que pregunt|robot|bot inutil)\b/i,   reason: 'Confusión con el bot' },
+  { pattern: /\b(cuánto cuesta|precio|presupuesto|cotización|quiero comprar|pagar|listo para)\b/i, reason: 'Intención de compra alta — Cierre de venta' },
+];
+
+function detectHandoff(text) {
+  if (!text) return null;
+  for (const trigger of HANDOFF_TRIGGERS) {
+    if (trigger.pattern.test(text)) return trigger.reason;
+  }
+  return null;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 app.post('/webhook/n8n', async (req, res) => {
   const data = req.body;
   console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
@@ -287,6 +338,17 @@ app.post('/webhook/n8n', async (req, res) => {
     const senderPrincipal = data.sender || 'client';
 
     console.log(`📩 Procesando Webhook - Lead ID: ${leadId}`);
+
+    // ── DETECCIÓN AUTOMÁTICA DE HANDOFF ────────────────────────────────────
+    const handoffReason = data.handoff_reason || detectHandoff(mensajePrincipal);
+    if (handoffReason) {
+      console.log(`🚨 HANDOFF DETECTADO para lead ${leadId}: "${handoffReason}"`);
+      await db.run(
+        "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
+        handoffReason, leadId
+      );
+    }
+    // ────────────────────────────────────────────────────────────────────────
     
     if (mensajePrincipal || mediaUrl) {
       await saveSmartMessage(leadId, senderPrincipal, mensajePrincipal, time, mediaUrl, mediaType);
@@ -296,9 +358,52 @@ app.post('/webhook/n8n', async (req, res) => {
       await saveSmartMessage(leadId, 'bot', mensajeSecundario, time);
     }
 
-    res.json({ success: true, action: existingLead ? "updated" : "created" });
+    res.json({ success: true, action: existingLead ? "updated" : "created", handoff: handoffReason || null });
   } catch (err) {
     console.error("❌ Error procesando webhook:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint dedicado para activar Handoff (n8n puede llamar esto directamente)
+app.post('/api/leads/handoff', async (req, res) => {
+  try {
+    const { leadId, phone, reason } = req.body;
+    if (!leadId && !phone) return res.status(400).json({ error: "Se necesita leadId o phone" });
+
+    let id = leadId;
+    if (!id && phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      const lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+      if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
+      id = lead.id;
+    }
+
+    const handoffReason = reason || 'Solicitud manual de Handoff';
+    await db.run(
+      "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
+      handoffReason, id
+    );
+    console.log(`🚨 HANDOFF MANUAL activado para lead ${id}: "${handoffReason}"`);
+    res.json({ success: true, leadId: id, reason: handoffReason });
+  } catch (err) {
+    console.error("❌ Error en handoff:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para resolver/cerrar un handoff cuando el agente tomó control
+app.post('/api/leads/handoff/resolve', async (req, res) => {
+  try {
+    const { leadId } = req.body;
+    if (!leadId) return res.status(400).json({ error: "Se necesita leadId" });
+    await db.run(
+      "UPDATE leads SET priority = 'normal', handoff_reason = NULL, estado = 'En Gestión' WHERE id = ?",
+      leadId
+    );
+    console.log(`✅ HANDOFF RESUELTO para lead ${leadId}`);
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

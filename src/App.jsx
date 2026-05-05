@@ -9,7 +9,7 @@ import {
   TrendingUp, Globe, Mail, Phone, Lock, Trash2,
   PieChart, ArrowUpRight, Sparkles, Paperclip, SendHorizontal, X,
   BadgeCheck, Handshake, Trophy, ThumbsDown, Briefcase, UserCircle,
-  ChevronLeft, ChevronRight as ChevronRightIcon
+  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren
 } from 'lucide-react';
 
 /**
@@ -103,29 +103,76 @@ const App = () => {
     }
   }, [activeTab, selectedChatId]);
 
-  useEffect(() => {
+  const fetchLeads = useCallback(() => {
     fetch(`${API_BASE_URL}/api/leads`)
       .then(res => res.json())
-      .then(data => setLeads(data))
+      .then(data => {
+        // ── DETECCIÓN DE NUEVOS HANDOFFS PARA ALERTA SONORA ──
+        setLeads(prev => {
+          const prevUrgent = new Set(prev.filter(l => l.priority === 'urgent').map(l => l.id));
+          const newUrgent = data.filter(l => l.priority === 'urgent' && !prevUrgent.has(l.id));
+          if (newUrgent.length > 0) {
+            playHandoffAlert();
+            setNotification(`🚨 ATENCIÓN: ${newUrgent[0].nombre} requiere intervención`);
+            setTimeout(() => setNotification(null), 6000);
+          }
+          return data;
+        });
+      })
       .catch(console.error);
-      
+  }, []);
+
+  useEffect(() => {
+    fetchLeads();
     fetch(`${API_BASE_URL}/api/agenda`)
       .then(res => res.json())
       .then(data => setAgenda(data))
       .catch(console.error);
       
     // Polling for real-time updates
-    const interval = setInterval(() => {
-      fetch(`${API_BASE_URL}/api/leads`)
-        .then(res => res.json())
-        .then(data => setLeads(data))
-        .catch(console.error);
-    }, 5000);
+    const interval = setInterval(fetchLeads, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchLeads]);
 
   // --- CONFIGURACIÓN DEL AGENTE IA ---
   const [selectedAgent, setSelectedAgent] = useState("Recepcionista");
+
+  // --- ALERTA SONORA DE HANDOFF (Web Audio API, sin archivos externos) ---
+  const playHandoffAlert = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const playBeep = (freq, start, duration) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + duration);
+      };
+      playBeep(880, 0, 0.15);
+      playBeep(660, 0.2, 0.15);
+      playBeep(880, 0.4, 0.3);
+    } catch(e) { /* silencioso si el browser bloquea audio */ }
+  };
+
+  // --- FUNCIÓN TOMAR CONTROL (Resolver Handoff) ---
+  const handleTakeControl = async (leadId) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/leads/handoff/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId })
+      });
+      setNotification('✅ Control tomado — Bot desactivado para este cliente');
+      setTimeout(() => setNotification(null), 4000);
+      fetchLeads();
+    } catch(e) {
+      console.error(e);
+    }
+  };
   const [prompts, setPrompts] = useState({
     Recepcionista: "",
     Vendedor: "",
@@ -324,7 +371,14 @@ const App = () => {
             <div>
               <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Negocio</p>
               <SidebarItem icon={LayoutDashboard} label="Dashboard" id="dashboard" />
-              <SidebarItem icon={MessageSquare} label="Conversaciones" id="conversaciones" />
+              <div className="relative">
+                <SidebarItem icon={MessageSquare} label="Conversaciones" id="conversaciones" />
+                {leads.filter(l => l.priority === 'urgent').length > 0 && (
+                  <span className="absolute top-2 right-4 h-5 w-5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-lg">
+                    {leads.filter(l => l.priority === 'urgent').length}
+                  </span>
+                )}
+              </div>
               <SidebarItem icon={Users} label="CRM & Leads" id="crm" />
               <SidebarItem icon={Calendar} label="Agenda IA" id="agenda" />
             </div>
@@ -446,27 +500,64 @@ const App = () => {
                   </div>
                   <div className="flex-1 overflow-y-auto no-scrollbar divide-y divide-slate-50">
                      {leads.map(lead => (
-                        <button key={lead.id} onClick={() => setSelectedChatId(lead.id)} className={`w-full p-6 text-left hover:bg-slate-50 transition-all relative ${selectedChatId === lead.id ? 'bg-emerald-50/20' : ''}`}>
+                        <button key={lead.id} onClick={() => setSelectedChatId(lead.id)} className={`w-full p-6 text-left hover:bg-slate-50 transition-all relative ${selectedChatId === lead.id ? 'bg-emerald-50/20' : ''} ${lead.priority === 'urgent' ? 'bg-red-50/60 border-l-4 border-red-500' : ''}`}>
                            <div className="flex items-center space-x-3 mb-2">
-                              <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-[10px] shadow-sm ${lead.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                 {lead.botActive ? <Bot size={14} /> : lead.nombre[0]}
+                              <div className="relative">
+                                <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-[10px] shadow-sm ${
+                                  lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
+                                  lead.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : lead.botActive ? <Bot size={14} /> : lead.nombre[0]}
+                                </div>
+                                {lead.priority === 'urgent' && (
+                                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-ping" />
+                                )}
                               </div>
                               <div className="flex-1 min-w-0">
-                                 <p className="text-xs font-black text-slate-800 truncate">{lead.nombre}</p>
-                                 <p className={`text-[9px] font-black uppercase tracking-tighter ${lead.botActive ? 'text-emerald-500' : 'text-red-500'}`}>
-                                    {lead.botActive ? `Score: ${lead.score}%` : 'Control Manual'}
+                                 <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
+                                 <p className={`text-[9px] font-black uppercase tracking-tighter ${
+                                   lead.priority === 'urgent' ? 'text-red-500' :
+                                   lead.botActive ? 'text-emerald-500' : 'text-slate-400'
+                                 }`}>
+                                    {lead.priority === 'urgent' ? '🚨 INTERVENCIÓN' : lead.botActive ? `Score: ${lead.score}%` : 'Control Manual'}
                                  </p>
                               </div>
                            </div>
-                           <p className="text-[11px] text-slate-500 truncate mt-1 font-medium italic leading-none">
-                              {lead.lastMessage ? `"${lead.lastMessage}"` : "Sin mensajes recientes"}
-                           </p>
+                           {lead.handoff_reason && (
+                             <p className="text-[9px] text-red-500 font-bold italic truncate mt-1 leading-none">
+                               ⚡ {lead.handoff_reason}
+                             </p>
+                           )}
+                           {!lead.handoff_reason && (
+                             <p className="text-[11px] text-slate-500 truncate mt-1 font-medium italic leading-none">
+                               {lead.lastMessage ? `"${lead.lastMessage}"` : "Sin mensajes recientes"}
+                             </p>
+                           )}
                         </button>
                      ))}
                   </div>
                </div>
 
                <div className="flex-1 flex flex-col bg-[#FDFDFD]">
+                  {/* BANNER DE HANDOFF URGENTE */}
+                  {selectedLead.priority === 'urgent' && (
+                    <div className="bg-red-600 text-white px-8 py-3 flex items-center justify-between shrink-0 shadow-lg">
+                      <div className="flex items-center space-x-3">
+                        <AlertTriangle size={18} className="animate-pulse shrink-0" />
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest leading-none">Intervención Requerida</p>
+                          <p className="text-xs font-bold mt-0.5 opacity-90">⚡ {selectedLead.handoff_reason || 'Handoff detectado'}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleTakeControl(selectedLead.id)}
+                        className="bg-white text-red-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all shadow flex items-center space-x-2 shrink-0"
+                      >
+                        <UserCheck size={14} />
+                        <span>Tomar Control</span>
+                      </button>
+                    </div>
+                  )}
                   <div className="h-20 border-b border-slate-100 px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
                      <div className="flex items-center space-x-4">
                         <div className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00]">OC</div>
