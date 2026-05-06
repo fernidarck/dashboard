@@ -718,17 +718,73 @@ app.post('/api/leads/update-contact', async (req, res) => {
   }
 });
 
-app.get('/api/rag/query', async (req, res) => {
+// ─── RAG: BÚSQUEDA SEMÁNTICA POR KEYWORDS ────────────────────────────────────
+// GET /api/rag/context?q=texto_del_cliente&maxChars=2000
+// n8n llama esto ANTES de enviar al agente IA para inyectar contexto relevante
+app.get('/api/rag/context', async (req, res) => {
   try {
-    const { q } = req.query;
-    if (!q) return res.json({ context: "" });
-    const rows = await db.all("SELECT content FROM documents WHERE content LIKE ? LIMIT 3", `%${q}%`);
-    const context = rows.map(r => r.content).join("\n\n---\n\n");
-    res.json({ context });
+    const { q, maxChars = 2500 } = req.query;
+    if (!q) return res.json({ context: "", found: false, sources: [] });
+
+    // Extraer palabras clave (ignorar palabras cortas y stopwords)
+    const stopwords = new Set(['para','como','que','con','una','los','las','del','por','este','esta','son','hay','pero','cuando','donde','como','más','muy','bien','hola','buenos','días','tardes','noches']);
+    const keywords = q.toLowerCase()
+      .replace(/[^a-záéíóúñü\s]/gi, ' ')
+      .split(/\s+/)
+      .filter(k => k.length > 3 && !stopwords.has(k))
+      .slice(0, 12);
+
+    if (keywords.length === 0) return res.json({ context: "", found: false, sources: [] });
+
+    // Cargar todos los documentos y puntuar por relevancia
+    const docs = await db.all("SELECT name, category, content FROM documents");
+    if (docs.length === 0) return res.json({ context: "", found: false, sources: [] });
+
+    const scored = docs.map(doc => {
+      const lower = doc.content.toLowerCase();
+      let score = 0;
+      for (const kw of keywords) {
+        const matches = (lower.match(new RegExp(kw, 'g')) || []).length;
+        score += matches;
+      }
+      return { ...doc, score };
+    }).filter(d => d.score > 0).sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) return res.json({ context: "", found: false, sources: [] });
+
+    // Construir contexto con los top 3 documentos más relevantes
+    let context = "";
+    const sources = [];
+    for (const doc of scored.slice(0, 3)) {
+      // Buscar el párrafo más relevante dentro del documento
+      const paragraphs = doc.content.split(/\n{2,}/).filter(p => p.trim().length > 30);
+      const rankedParagraphs = paragraphs.map(p => {
+        const lower = p.toLowerCase();
+        const score = keywords.reduce((s, kw) => s + (lower.includes(kw) ? 1 : 0), 0);
+        return { text: p.trim(), score };
+      }).sort((a, b) => b.score - a.score);
+
+      const excerpt = rankedParagraphs.slice(0, 3).map(p => p.text).join('\n').substring(0, 800);
+      const block = `📄 [${doc.category} — ${doc.name}]\n${excerpt}\n`;
+
+      if ((context + block).length > Number(maxChars)) break;
+      context += block + "\n";
+      sources.push(doc.name);
+    }
+
+    console.log(`📚 RAG query "${q.substring(0, 40)}..." → ${sources.length} doc(s) encontrado(s): ${sources.join(', ')}`);
+    res.json({ context: context.trim(), found: true, sources });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Mantener /api/rag/query como alias para compatibilidad
+app.get('/api/rag/query', async (req, res) => {
+  req.url = '/api/rag/context' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '');
+  res.redirect(307, `/api/rag/context?${new URLSearchParams(req.query)}`);
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.use(express.static(join(__dirname, 'dist')));
 app.use((_req, res) => {
