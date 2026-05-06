@@ -319,16 +319,21 @@ app.post('/webhook/n8n', async (req, res) => {
     const cleanPhone = String(data.phone).replace(/\D/g, '');
     console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
 
-    const existingLead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+    const existingLead = await db.get("SELECT id, nombre FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
     let leadId;
 
     if (existingLead) {
-      console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id}`);
+      console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id} (nombre: ${existingLead.nombre})`);
       // No tocar botActive — el agente lo controla manualmente desde el dashboard
       if (data.bot_apagado !== undefined) {
         await db.run("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?", estado, time, data.bot_apagado ? 0 : 1, existingLead.id);
       } else {
         await db.run("UPDATE leads SET estado = ?, time = ? WHERE id = ?", estado, time, existingLead.id);
+      }
+      // Actualizar nombre si el actual es "Cliente Nuevo" y n8n ya capturó el real
+      if (nombre && nombre !== "Cliente Nuevo" && existingLead.nombre === "Cliente Nuevo") {
+        await db.run("UPDATE leads SET nombre = ? WHERE id = ?", nombre, existingLead.id);
+        console.log(`   ✏️ Nombre actualizado: "${existingLead.nombre}" → "${nombre}"`);
       }
       leadId = existingLead.id;
     } else {
@@ -674,6 +679,40 @@ REGLAS IMPORTANTES:
 - Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)`.trim();
 
     res.json({ systemPrompt, nombre, rol, empresa, tono, idioma, tipo });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para que n8n actualice datos del contacto (nombre, email, etc.)
+app.post('/api/leads/update-contact', async (req, res) => {
+  try {
+    const { phone, leadId, nombre, email, motor, falla, zona } = req.body;
+    let id = leadId;
+
+    if (!id && phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      const lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+      if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
+      id = lead.id;
+    }
+
+    if (!id) return res.status(400).json({ error: "Se necesita leadId o phone" });
+
+    const updates = [];
+    const values = [];
+    if (nombre) { updates.push("nombre = ?"); values.push(nombre); }
+    if (email)  { updates.push("email = ?");  values.push(email); }
+    if (motor)  { updates.push("motor = ?");  values.push(motor); }
+    if (falla)  { updates.push("falla = ?");  values.push(falla); }
+    if (zona)   { updates.push("zona = ?");   values.push(zona); }
+
+    if (updates.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
+
+    values.push(id);
+    await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...values);
+    console.log(`✏️ Contacto ${id} actualizado: ${updates.join(", ")}`);
+    res.json({ success: true, leadId: id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
