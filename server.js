@@ -155,7 +155,14 @@ async function setup() {
     const defaultPrompts = {
       'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
       'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos.',
-      'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.'
+      'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.',
+      'handoff_triggers': JSON.stringify([
+        { keywords: "agente,asesor,humano,persona real,hablar con alguien,operador,quiero hablar", reason: "Solicitud de agente humano" },
+        { keywords: "molesto,enojado,frustrado,queja,quiero quejarme,mala atención,pésimo", reason: "Frustración / Queja detectada" },
+        { keywords: "urgente,emergencia,para ya,ahora mismo,no funciona,se rompió,accidente", reason: "Urgencia / Emergencia" },
+        { keywords: "no me entiendes,no entiendo,robot,bot inutil", reason: "Confusión con el bot" },
+        { keywords: "cuánto cuesta,precio,presupuesto,cotización,quiero comprar,pagar,listo para", reason: "Intención de compra alta" }
+      ])
     };
 
     for (const [key, value] of Object.entries(defaultPrompts)) {
@@ -250,22 +257,44 @@ app.get('/api/proxy-media', async (req, res) => {
   }
 });
 
-// ─── MOTOR DE DETECCIÓN DE HANDOFF INTELIGENTE ─────────────────────────────────────
-const HANDOFF_TRIGGERS = [
-  { pattern: /\b(agente|asesor|humano|persona real|hablar con alguien|operador|quiero hablar)\b/i, reason: 'Solicitud de agente humano' },
-  { pattern: /\b(molesto|enojado|frustrado|queja|quiero quejarme|mala atención|pésimo)\b/i,    reason: 'Frustración / Queja detectada' },
-  { pattern: /\b(urgente|emergencia|para ya|ahora mismo|no funciona|se rompió|accidente)\b/i,  reason: 'Urgencia / Emergencia' },
-  { pattern: /\b(no me entiendes|no entiendo|eso no es lo que pregunt|robot|bot inutil)\b/i,   reason: 'Confusión con el bot' },
-  { pattern: /\b(cuánto cuesta|precio|presupuesto|cotización|quiero comprar|pagar|listo para)\b/i, reason: 'Intención de compra alta — Cierre de venta' },
-];
-
-function detectHandoff(text) {
+// ─── MOTOR DE DETECCIÓN DE HANDOFF INTELIGENTE (dinámico desde BD) ────────────
+async function detectHandoff(text) {
   if (!text) return null;
-  for (const trigger of HANDOFF_TRIGGERS) {
-    if (trigger.pattern.test(text)) return trigger.reason;
-  }
+  try {
+    const row = await db.get("SELECT value FROM settings WHERE key = 'handoff_triggers'");
+    const triggers = row ? JSON.parse(row.value) : [];
+    for (const trigger of triggers) {
+      const keywords = trigger.keywords.split(',').map(k => k.trim()).filter(Boolean);
+      for (const kw of keywords) {
+        if (text.toLowerCase().includes(kw.toLowerCase())) return trigger.reason;
+      }
+    }
+  } catch(_) {}
   return null;
 }
+
+// GET /api/handoff/triggers — devuelve las reglas actuales
+app.get('/api/handoff/triggers', async (_req, res) => {
+  try {
+    const row = await db.get("SELECT value FROM settings WHERE key = 'handoff_triggers'");
+    res.json(row ? JSON.parse(row.value) : []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/handoff/triggers — guarda las reglas editadas
+app.post('/api/handoff/triggers', async (req, res) => {
+  try {
+    const triggers = req.body;
+    if (!Array.isArray(triggers)) return res.status(400).json({ error: "Se esperaba un array" });
+    await db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      'handoff_triggers', JSON.stringify(triggers));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // ────────────────────────────────────────────────────────────────────────────
 
 app.post('/webhook/n8n', async (req, res) => {
@@ -282,28 +311,30 @@ app.post('/webhook/n8n', async (req, res) => {
   const estado = data.etiqueta || "Nuevo";
   const origen = "WhatsApp (n8n)";
   const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-  const botActive = data.bot_apagado ? 0 : 1;
   const motor = data.motor || "N/A";
   const falla = data.falla || "N/A";
   const zona = data.zona || "N/A";
 
   try {
-    // Normalización del número de teléfono (quitar todo lo que no sea dígito)
     const cleanPhone = String(data.phone).replace(/\D/g, '');
     console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
 
-    // Buscar el lead comparando solo los dígitos
     const existingLead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
     let leadId;
 
     if (existingLead) {
       console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id}`);
-      await db.run("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?", estado, time, botActive, existingLead.id);
+      // No tocar botActive — el agente lo controla manualmente desde el dashboard
+      if (data.bot_apagado !== undefined) {
+        await db.run("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?", estado, time, data.bot_apagado ? 0 : 1, existingLead.id);
+      } else {
+        await db.run("UPDATE leads SET estado = ?, time = ? WHERE id = ?", estado, time, existingLead.id);
+      }
       leadId = existingLead.id;
     } else {
       console.log("   🆕 Creando nuevo lead...");
-      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-        nombre, data.phone, email, score, estado, origen, botActive, motor, falla, zona);
+      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        nombre, data.phone, email, score, estado, origen, 1, motor, falla, zona);
       leadId = result.lastID;
     }
 
@@ -340,13 +371,19 @@ app.post('/webhook/n8n', async (req, res) => {
     console.log(`📩 Procesando Webhook - Lead ID: ${leadId}`);
 
     // ── DETECCIÓN AUTOMÁTICA DE HANDOFF ────────────────────────────────────
-    const handoffReason = data.handoff_reason || detectHandoff(mensajePrincipal);
+    const handoffReason = data.handoff_reason || await detectHandoff(mensajePrincipal);
     if (handoffReason) {
-      console.log(`🚨 HANDOFF DETECTADO para lead ${leadId}: "${handoffReason}"`);
-      await db.run(
-        "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
-        handoffReason, leadId
-      );
+      // No re-disparar si el agente ya activó el bot manualmente
+      const leadState = await db.get("SELECT botActive FROM leads WHERE id = ?", leadId);
+      if (leadState && leadState.botActive === 1) {
+        console.log(`ℹ️ Lead ${leadId}: handoff detectado pero bot está activo — ignorado`);
+      } else {
+        console.log(`🚨 HANDOFF DETECTADO para lead ${leadId}: "${handoffReason}"`);
+        await db.run(
+          "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
+          handoffReason, leadId
+        );
+      }
     }
     // ────────────────────────────────────────────────────────────────────────
     
@@ -368,15 +405,36 @@ app.post('/webhook/n8n', async (req, res) => {
 // Endpoint dedicado para activar Handoff (n8n puede llamar esto directamente)
 app.post('/api/leads/handoff', async (req, res) => {
   try {
-    const { leadId, phone, reason } = req.body;
+    const { leadId, phone, reason, mensaje, nombre: nombreParam } = req.body;
     if (!leadId && !phone) return res.status(400).json({ error: "Se necesita leadId o phone" });
 
     let id = leadId;
     if (!id && phone) {
       const cleanPhone = String(phone).replace(/\D/g, '');
       const lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
-      if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
-      id = lead.id;
+      if (!lead) {
+        // Crear lead si no existe y viene con nombre
+        const result = await db.run(
+          "INSERT INTO leads (nombre, phone, estado, origen, botActive, priority) VALUES (?, ?, 'Intervención Requerida', 'WhatsApp (n8n)', 0, 'urgent')",
+          nombreParam || 'Cliente Nuevo', phone
+        );
+        id = result.lastID;
+      } else {
+        id = lead.id;
+      }
+    }
+
+    // Bug 2 fix: si el agente ya tomó control o reactivó el bot, no re-disparar handoff
+    const currentLead = await db.get("SELECT estado, botActive FROM leads WHERE id = ?", id);
+    if (currentLead && (currentLead.estado === 'En Gestión' || currentLead.botActive === 1)) {
+      // Solo guardar el mensaje del cliente si viene, pero no re-marcar como urgente
+      if (mensaje && mensaje.trim()) {
+        const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
+      }
+      const skipReason = currentLead.botActive === 1 ? 'Bot activo — handoff ignorado' : 'Lead ya en gestión manual';
+      console.log(`ℹ️ Lead ${id}: ${skipReason}`);
+      return res.json({ success: true, skipped: true, reason: skipReason });
     }
 
     const handoffReason = reason || 'Solicitud manual de Handoff';
@@ -384,7 +442,14 @@ app.post('/api/leads/handoff', async (req, res) => {
       "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
       handoffReason, id
     );
-    console.log(`🚨 HANDOFF MANUAL activado para lead ${id}: "${handoffReason}"`);
+
+    // Bug 3 fix: guardar el mensaje del cliente aunque el bot esté apagado
+    if (mensaje && mensaje.trim()) {
+      const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
+    }
+
+    console.log(`🚨 HANDOFF activado para lead ${id}: "${handoffReason}"`);
     res.json({ success: true, leadId: id, reason: handoffReason });
   } catch (err) {
     console.error("❌ Error en handoff:", err);
@@ -420,12 +485,58 @@ app.get('/api/messages/:leadId', async (req, res) => {
 app.post('/api/bot/toggle', async (req, res) => {
   try {
     const { leadId, enabled } = req.body;
-    await db.run("UPDATE leads SET botActive = ? WHERE id = ?", enabled ? 1 : 0, leadId);
-    res.json({ success: true });
+    console.log(`🤖 Toggle bot — leadId: ${leadId}, enabled: ${enabled}`);
+    if (!leadId) return res.status(400).json({ error: "Falta leadId" });
+    let result;
+    if (enabled) {
+      result = await db.run(
+        "UPDATE leads SET botActive = 1, priority = 'normal', handoff_reason = NULL, estado = 'Activo' WHERE id = ?",
+        leadId
+      );
+    } else {
+      result = await db.run("UPDATE leads SET botActive = 0 WHERE id = ?", leadId);
+    }
+    console.log(`✅ Toggle resultado: ${result.changes} fila(s) afectada(s)`);
+    if (result.changes === 0) return res.status(404).json({ error: `Lead ${leadId} no encontrado en DB` });
+    res.json({ success: true, botActive: !!enabled });
   } catch (err) {
+    console.error("❌ Error en toggle:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── ENDPOINT CRÍTICO PARA N8N ───────────────────────────────────────────────
+// n8n debe consultar esto ANTES de generar respuesta con IA
+// GET /api/bot/status/:phone → { botActive: true/false, priority, handoff_reason }
+// Si botActive es false → el nodo IF en n8n debe cortar el flujo
+app.get('/api/bot/status/:phone', async (req, res) => {
+  try {
+    const cleanPhone = String(req.params.phone).replace(/\D/g, '');
+    const lead = await db.get(
+      "SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+      cleanPhone
+    );
+
+    if (!lead) {
+      // Si el lead no existe aún, el bot puede responder (nuevo cliente)
+      return res.json({ botActive: true, priority: 'normal', handoff_reason: null, found: false });
+    }
+
+    console.log(`🤖 Consulta de estado bot para ${cleanPhone}: botActive=${!!lead.botActive}, priority=${lead.priority}`);
+    res.json({
+      botActive: !!lead.botActive,
+      priority: lead.priority || 'normal',
+      handoff_reason: lead.handoff_reason || null,
+      nombre: lead.nombre,
+      estado: lead.estado,
+      found: true
+    });
+  } catch (err) {
+    console.error("❌ Error en /api/bot/status:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/settings', async (_req, res) => {
   try {
@@ -515,6 +626,54 @@ app.delete('/api/rag/documents/:id', async (req, res) => {
   try {
     await db.run("DELETE FROM documents WHERE id = ?", req.params.id);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para que n8n obtenga el prompt completo del agente listo para usar
+// ?tipo=recepcionista | ventas | soporte  (opcional, por defecto recepcionista)
+app.get('/api/agent/prompt', async (req, res) => {
+  try {
+    const tipo = (req.query.tipo || 'recepcionista').toLowerCase();
+
+    const rows = await db.all("SELECT key, value FROM settings");
+    const s = {};
+    rows.forEach(r => s[r.key] = r.value);
+
+    const nombre      = s.agent_nombre      || 'Asistente';
+    const rol         = s.agent_rol         || 'asistente virtual';
+    const empresa     = s.agent_empresa     || 'la empresa';
+    const descripcion = s.agent_descripcion || '';
+    const productos   = s.agent_productos   || '';
+    const tono        = s.agent_tono        || 'profesional y amable';
+    const idioma      = s.agent_idioma      || 'Español';
+
+    const promptMap = {
+      recepcionista: s.prompt_recepcionista || '',
+      ventas:        s.prompt_ventas        || '',
+      soporte:       s.prompt_soporte       || '',
+    };
+    const instrucciones = promptMap[tipo] || promptMap.recepcionista;
+
+    const systemPrompt = `Eres ${nombre}, ${rol} de ${empresa}.
+
+EMPRESA:
+${descripcion}
+
+${productos ? `PRODUCTOS Y SERVICIOS:\n${productos}\n` : ''}TONO: ${tono}
+IDIOMA: ${idioma}
+
+INSTRUCCIONES DE COMPORTAMIENTO:
+${instrucciones}
+
+REGLAS IMPORTANTES:
+- Responde siempre en ${idioma}
+- Nunca digas que eres una IA a menos que te lo pregunten directamente
+- Si no sabes algo, pide más detalles o transfiere al equipo humano
+- Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)`.trim();
+
+    res.json({ systemPrompt, nombre, rol, empresa, tono, idioma, tipo });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

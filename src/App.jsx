@@ -30,6 +30,7 @@ const App = () => {
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
   // --- PERFIL DE USUARIO ---
   const [userProfile] = useState({
@@ -87,12 +88,16 @@ const App = () => {
   };
 
   useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
     if (activeTab === 'conversaciones' && selectedChatId) {
       fetch(`${API_BASE_URL}/api/messages/${selectedChatId}`)
         .then(res => res.json())
         .then(data => setMessages(data))
         .catch(console.error);
-        
+
       const interval = setInterval(() => {
         fetch(`${API_BASE_URL}/api/messages/${selectedChatId}`)
           .then(res => res.json())
@@ -178,6 +183,25 @@ const App = () => {
     Vendedor: "",
     Soporte: ""
   });
+
+  const [handoffTriggers, setHandoffTriggers] = useState([]);
+
+  const fetchHandoffTriggers = useCallback(() => {
+    fetch(`${API_BASE_URL}/api/handoff/triggers`)
+      .then(res => res.json())
+      .then(data => setHandoffTriggers(data))
+      .catch(console.error);
+  }, []);
+
+  const saveHandoffTriggers = async () => {
+    await fetch(`${API_BASE_URL}/api/handoff/triggers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(handoffTriggers)
+    });
+    setNotification('✅ Palabras de handoff guardadas');
+    setTimeout(() => setNotification(null), 3000);
+  };
   const [agentConfig, setAgentConfig] = useState({
     nombre: "Eryum",
     rol: "asistente de ventas de OneControl",
@@ -234,7 +258,8 @@ const App = () => {
   useEffect(() => {
     fetchSettings();
     fetchDocuments();
-  }, [fetchSettings, fetchDocuments]);
+    fetchHandoffTriggers();
+  }, [fetchSettings, fetchDocuments, fetchHandoffTriggers]);
 
   // --- LOGICA DE COMUNICACIÓN CON N8N ---
   const handleAction = async (action, data = {}) => {
@@ -431,7 +456,7 @@ const App = () => {
           
           <div className="flex items-center space-x-4 md:space-x-6">
              {loading && <RefreshCw size={14} className="animate-spin text-emerald-500" />}
-             {notification && <div className="bg-emerald-500 text-white text-[9px] md:text-[10px] font-black px-3 md:px-4 py-1.5 rounded-lg uppercase shadow-lg animate-bounce">{notification}</div>}
+             {notification && <div className={`text-white text-[9px] md:text-[10px] font-black px-3 md:px-4 py-1.5 rounded-lg uppercase shadow-lg animate-bounce ${notification.startsWith('❌') ? 'bg-red-500' : 'bg-emerald-500'}`}>{notification}</div>}
              <div className="h-9 w-9 md:h-10 md:w-10 rounded-xl md:rounded-2xl bg-slate-900 flex items-center justify-center font-black text-[#FF6B00] border-2 border-white shadow-xl italic">OC</div>
           </div>
         </header>
@@ -605,7 +630,35 @@ const App = () => {
                            </p>
                         </div>
                      </div>
-                     <button onClick={() => handleAction('toggle_bot_chat', { leadId: selectedLead.id })} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedLead.botActive ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'}`}>
+                     <button onClick={async () => {
+                        const newState = !selectedLead.botActive;
+                        const leadId = selectedLead.id;
+                        console.log(`[BOT TOGGLE] leadId=${leadId}, newState=${newState}, selectedLead.botActive=${selectedLead.botActive}`);
+                        if (!leadId) {
+                          setNotification('❌ Error: leadId es 0 — selecciona un contacto');
+                          setTimeout(() => setNotification(null), 5000);
+                          return;
+                        }
+                        setLeads(prev => prev.map(l => l.id === leadId ? {...l, botActive: newState} : l));
+                        try {
+                          const res = await fetch(`${API_BASE_URL}/api/bot/toggle`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ leadId, enabled: newState })
+                          });
+                          const json = await res.json();
+                          console.log('[BOT TOGGLE] Respuesta servidor:', res.status, json);
+                          if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+                          setNotification(newState ? `✅ Bot activado (lead ${leadId})` : `🔴 Bot desactivado (lead ${leadId})`);
+                          setTimeout(() => setNotification(null), 3000);
+                          fetchLeads();
+                        } catch(err) {
+                          console.error('[BOT TOGGLE] Error:', err);
+                          setLeads(prev => prev.map(l => l.id === leadId ? {...l, botActive: !newState} : l));
+                          setNotification(`❌ Error toggle: ${err.message}`);
+                          setTimeout(() => setNotification(null), 8000);
+                        }
+                     }} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedLead.botActive ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'}`}>
                         {selectedLead.botActive ? 'Desactivar Bot' : 'Activar Bot'}
                      </button>
                   </div>
@@ -648,6 +701,7 @@ const App = () => {
                           </div>
                        </div>
                      ))}
+                     <div ref={messagesEndRef} />
                   </div>
                   <div className="p-8 bg-white border-t border-slate-100">
                      <div className="max-w-4xl mx-auto flex space-x-4">
@@ -812,7 +866,7 @@ const App = () => {
                </div>
 
                <div className="flex space-x-8 border-b border-slate-200">
-                  {['General', 'Mensajes', 'Captura de Datos', 'Prompt'].map(t => (
+                  {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff'].map(t => (
                     <button 
                       key={t}
                       onClick={() => setSubTabIA(t)}
@@ -895,6 +949,69 @@ const App = () => {
                      </div>
                    </div>
                  </div>
+               )}
+
+               {subTabIA === 'Handoff' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                        <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+                           <div>
+                              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                                 <AlertTriangle size={18} className="text-[#FF6B00]" />
+                                 <span>Palabras que activan Handoff</span>
+                              </h3>
+                              <p className="text-[10px] text-slate-400 italic mt-1">Cuando el cliente escribe estas palabras, el bot se apaga y se alerta al agente</p>
+                           </div>
+                           <div className="flex space-x-3">
+                              <button
+                                 onClick={() => setHandoffTriggers(prev => [...prev, { keywords: '', reason: 'Nueva categoría' }])}
+                                 className="bg-slate-100 text-slate-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center space-x-2"
+                              >
+                                 <Plus size={14} />
+                                 <span>Agregar</span>
+                              </button>
+                              <button
+                                 onClick={saveHandoffTriggers}
+                                 className="bg-[#FF6B00] text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all flex items-center space-x-2"
+                              >
+                                 <Save size={14} />
+                                 <span>Guardar</span>
+                              </button>
+                           </div>
+                        </div>
+                        <div className="space-y-4">
+                           {handoffTriggers.map((trigger, idx) => (
+                              <div key={idx} className="bg-slate-50 border border-slate-100 rounded-[24px] p-6 space-y-4">
+                                 <div className="flex items-center justify-between">
+                                    <input
+                                       type="text"
+                                       value={trigger.reason}
+                                       onChange={e => setHandoffTriggers(prev => prev.map((t, i) => i === idx ? {...t, reason: e.target.value} : t))}
+                                       className="text-xs font-black text-slate-700 uppercase tracking-widest bg-transparent outline-none border-b border-slate-200 pb-1 w-64"
+                                       placeholder="Nombre de categoría"
+                                    />
+                                    <button
+                                       onClick={() => setHandoffTriggers(prev => prev.filter((_, i) => i !== idx))}
+                                       className="text-red-400 hover:text-red-600 transition-colors"
+                                    >
+                                       <Trash2 size={14} />
+                                    </button>
+                                 </div>
+                                 <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Palabras clave (separadas por coma)</label>
+                                    <input
+                                       type="text"
+                                       value={trigger.keywords}
+                                       onChange={e => setHandoffTriggers(prev => prev.map((t, i) => i === idx ? {...t, keywords: e.target.value} : t))}
+                                       className="w-full mt-2 p-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none italic focus:ring-1 focus:ring-[#FF6B00]"
+                                       placeholder="precio, presupuesto, cuánto cuesta"
+                                    />
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  </div>
                )}
 
                {subTabIA === 'Prompt' && (
