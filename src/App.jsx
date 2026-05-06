@@ -432,60 +432,90 @@ const App = () => {
         <div className="flex-1 overflow-y-auto p-10 no-scrollbar">
           
           {/* VIEW: DASHBOARD (RESUMEN) */}
-          {activeTab === 'dashboard' && (
-            <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-              <div className="flex justify-between items-end">
-                <div>
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic">Resumen Elite</h2>
-                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Gestión de impacto y conversiones</p>
-                </div>
-              </div>
+          {activeTab === 'dashboard' && (() => {
+            // ── MÉTRICAS REALES ──────────────────────────────────────
+            const totalLeads = leads.length;
+            const urgentLeads = leads.filter(l => l.priority === 'urgent').length;
+            const avgScore = totalLeads > 0 
+              ? Math.round(leads.reduce((sum, l) => sum + (l.score || 0), 0) / totalLeads) 
+              : 0;
+            const botMessages = messages.length; // Approximate from current chat
+            const horasAhorradas = Math.max(1, Math.round(totalLeads * 0.5)); // ~30min por lead atendido por bot
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {[
-                  { l: 'Tus Leads', v: leads.length, i: Target, c: 'text-blue-600', bg: 'bg-blue-50' },
-                  { l: 'Citas Hoy', v: agenda.length, i: Calendar, c: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { l: 'Score Promedio', v: '78%', i: TrendingUp, c: 'text-indigo-600', bg: 'bg-indigo-50' },
-                  { l: 'Ahorro ROI', v: 'Q24.5k', i: Zap, c: 'text-[#FF6B00]', bg: 'bg-orange-50' },
-                ].map((s, i) => (
-                  <div key={i} className="bg-white p-7 rounded-[32px] border border-slate-200 shadow-sm relative overflow-hidden group hover:border-[#FF6B00]/30 transition-all">
-                    <div className="flex justify-between items-start mb-4 relative z-10">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{s.l}</p>
-                       <div className={`${s.bg} p-2 rounded-xl`}><s.i size={16} className={s.c} /></div>
-                    </div>
-                    <h3 className={`text-3xl font-black tracking-tighter ${s.c} relative z-10`}>{s.v}</h3>
+            // Distribución de orígenes
+            const origenCounts = leads.reduce((acc, l) => {
+              const o = l.origen || 'Otro';
+              acc[o] = (acc[o] || 0) + 1;
+              return acc;
+            }, {});
+            const origenes = Object.entries(origenCounts)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3);
+            const maxOrigen = origenes[0]?.[1] || 1;
+            // ────────────────────────────────────────────────────────
+
+            return (
+              <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic">Resumen Elite</h2>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Gestión de impacto y conversiones</p>
                   </div>
-                ))}
-              </div>
+                </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-slate-900 p-10 rounded-[40px] text-white flex flex-col justify-between shadow-2xl relative overflow-hidden">
-                   <div className="relative z-10">
-                      <p className="text-[10px] font-black text-[#FF6B00] uppercase tracking-[0.3em] mb-4">Performance IA</p>
-                      <h4 className="text-2xl font-black italic mb-2 tracking-tight">Tu Agente IA ha ahorrado <span className="text-emerald-400">42 horas</span> de atención este mes.</h4>
-                   </div>
-                   <ArrowUpRight className="absolute -right-8 -top-8 text-white/5 w-64 h-64" />
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  {[
+                    { l: 'Tus Leads', v: totalLeads, i: Target, c: 'text-blue-600', bg: 'bg-blue-50' },
+                    { l: 'Citas Activas', v: agenda.length, i: Calendar, c: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { l: 'Score Promedio', v: `${avgScore}%`, i: TrendingUp, c: 'text-indigo-600', bg: 'bg-indigo-50' },
+                    { l: urgentLeads > 0 ? '🚨 Intervenciones' : 'Estado del Bot', v: urgentLeads > 0 ? urgentLeads : '✅ OK', i: urgentLeads > 0 ? AlertTriangle : Zap, c: urgentLeads > 0 ? 'text-red-500' : 'text-[#FF6B00]', bg: urgentLeads > 0 ? 'bg-red-50' : 'bg-orange-50' },
+                  ].map((s, i) => (
+                    <div key={i} className="bg-white p-7 rounded-[32px] border border-slate-200 shadow-sm relative overflow-hidden group hover:border-[#FF6B00]/30 transition-all">
+                      <div className="flex justify-between items-start mb-4 relative z-10">
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{s.l}</p>
+                         <div className={`${s.bg} p-2 rounded-xl`}><s.i size={16} className={s.c} /></div>
+                      </div>
+                      <h3 className={`text-3xl font-black tracking-tighter ${s.c} relative z-10`}>{s.v}</h3>
+                    </div>
+                  ))}
                 </div>
-                <div className="bg-white p-10 rounded-[40px] border border-slate-200 flex flex-col justify-between shadow-sm">
-                   <div className="flex justify-between items-start mb-6">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Distribución de Leads</p>
-                      <PieChart size={20} className="text-slate-300" />
-                   </div>
-                   <div className="space-y-4">
-                      {['Facebook Ads', 'WhatsApp Directo', 'Orgánico'].map((origin, idx) => (
-                        <div key={idx} className="flex items-center justify-between">
-                           <span className="text-xs font-bold text-slate-500">{origin}</span>
-                           <div className="flex-1 mx-4 h-1.5 bg-slate-50 rounded-full overflow-hidden">
-                              <div className={`h-full bg-[#FF6B00] rounded-full`} style={{width: `${70 - idx*20}%`}}></div>
-                           </div>
-                           <span className="text-[10px] font-black text-slate-800">{30 - idx*8}%</span>
-                        </div>
-                      ))}
-                   </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="bg-slate-900 p-10 rounded-[40px] text-white flex flex-col justify-between shadow-2xl relative overflow-hidden">
+                     <div className="relative z-10">
+                        <p className="text-[10px] font-black text-[#FF6B00] uppercase tracking-[0.3em] mb-4">Performance IA</p>
+                        <h4 className="text-2xl font-black italic mb-2 tracking-tight">
+                          Tu Agente IA ha gestionado <span className="text-emerald-400">{totalLeads} leads</span> y ahorrado aprox. <span className="text-emerald-400">{horasAhorradas}h</span> de atención.
+                        </h4>
+                        <p className="text-slate-400 text-xs font-bold mt-4">
+                          {leads.filter(l => l.botActive).length} con bot activo · {leads.filter(l => !l.botActive).length} en control manual
+                        </p>
+                     </div>
+                     <ArrowUpRight className="absolute -right-8 -top-8 text-white/5 w-64 h-64" />
+                  </div>
+                  <div className="bg-white p-10 rounded-[40px] border border-slate-200 flex flex-col justify-between shadow-sm">
+                     <div className="flex justify-between items-start mb-6">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Distribución de Leads</p>
+                        <PieChart size={20} className="text-slate-300" />
+                     </div>
+                     <div className="space-y-4">
+                        {origenes.length > 0 ? origenes.map(([origen, count], idx) => (
+                          <div key={idx} className="flex items-center justify-between">
+                             <span className="text-xs font-bold text-slate-500 truncate max-w-[120px]">{origen}</span>
+                             <div className="flex-1 mx-4 h-1.5 bg-slate-50 rounded-full overflow-hidden">
+                                <div className="h-full bg-[#FF6B00] rounded-full transition-all" style={{width: `${Math.round((count / maxOrigen) * 100)}%`}}></div>
+                             </div>
+                             <span className="text-[10px] font-black text-slate-800">{Math.round((count / totalLeads) * 100)}%</span>
+                          </div>
+                        )) : (
+                          <p className="text-slate-400 text-xs italic text-center">Sin datos de leads aún</p>
+                        )}
+                     </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* VIEW: CONVERSACIONES */}
           {activeTab === 'conversaciones' && (
