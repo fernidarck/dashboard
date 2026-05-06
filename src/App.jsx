@@ -198,6 +198,13 @@ const App = () => {
           Vendedor: data.prompt_ventas || "",
           Soporte: data.prompt_soporte || ""
         });
+        // Cargar config del agente si existe
+        if (data.agent_nombre) setAgentConfig(prev => ({ ...prev,
+          nombre: data.agent_nombre || prev.nombre,
+          rol: data.agent_rol || prev.rol,
+          descripcion: data.agent_descripcion || prev.descripcion,
+          empresa: data.agent_empresa || prev.empresa,
+        }));
       })
       .catch(console.error);
   }, []);
@@ -777,7 +784,26 @@ const App = () => {
                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Configuración de identidad y comportamiento</p>
                   </div>
                   <button 
-                     onClick={() => handleAction('save_config', agentConfig)}
+                     onClick={async () => {
+                       setLoading(true);
+                       try {
+                         const saves = [
+                           { key: 'agent_nombre', value: agentConfig.nombre },
+                           { key: 'agent_rol', value: agentConfig.rol },
+                           { key: 'agent_descripcion', value: agentConfig.descripcion },
+                           { key: 'agent_empresa', value: agentConfig.empresa },
+                         ];
+                         await Promise.all(saves.map(s => fetch(`${API_BASE_URL}/api/settings`, {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify(s)
+                         })));
+                         setNotification('✅ Cerebro sincronizado — n8n ya usa la nueva configuración');
+                         setTimeout(() => setNotification(null), 4000);
+                       } catch(e) {
+                         setNotification('❌ Error sincronizando');
+                       } finally { setLoading(false); }
+                     }}
                      className="bg-emerald-500 text-white px-8 py-3 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-emerald-200 flex items-center space-x-2 transition-all active:scale-95"
                   >
                      <Save size={16} />
@@ -798,33 +824,76 @@ const App = () => {
                </div>
 
                {subTabIA === 'General' && (
-                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-bottom-4 duration-500">
-                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
-                       <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
-                          <UserCircle size={18} className="text-[#FF6B00]" />
-                          <span>Identidad del Agente</span>
-                       </h3>
-                       <div className="space-y-6">
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Nombre del Agente</label>
-                             <input type="text" value={agentConfig.nombre} onChange={(e) => setAgentConfig({...agentConfig, nombre: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
-                          </div>
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Rol y Tono</label>
-                             <input type="text" value={agentConfig.rol} onChange={(e) => setAgentConfig({...agentConfig, rol: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
-                          </div>
+                 <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                   {/* Panel de Integración n8n */}
+                   <div className="bg-slate-900 p-8 rounded-[32px] text-white">
+                     <div className="flex items-center justify-between mb-6">
+                       <div>
+                         <p className="text-[10px] font-black text-[#FF6B00] uppercase tracking-[0.3em] mb-1">Integración Activa</p>
+                         <h3 className="text-lg font-black italic tracking-tight">Cómo n8n se conecta a este Dashboard</h3>
                        </div>
-                    </div>
-                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
-                       <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
-                          <Briefcase size={18} className="text-[#FF6B00]" />
-                          <span>Información del Negocio</span>
-                       </h3>
-                       <div className="space-y-2">
-                          <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Descripción para el Bot</label>
-                          <textarea value={agentConfig.descripcion} onChange={(e) => setAgentConfig({...agentConfig, descripcion: e.target.value})} className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium outline-none italic resize-none" />
+                       <div className="flex items-center space-x-2 bg-emerald-500/20 border border-emerald-500/30 px-4 py-2 rounded-xl">
+                         <div className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse" />
+                         <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">En vivo</span>
                        </div>
-                    </div>
+                     </div>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                       {[
+                         { label: '📨 Recibir Mensajes', method: 'POST', url: '/webhook/n8n', desc: 'n8n envía aquí los mensajes de WhatsApp', fields: 'phone, nombre, mensaje, respuesta_bot' },
+                         { label: '🧠 Leer Configuración', method: 'GET', url: '/api/settings', desc: 'n8n lee el Prompt y config del agente antes de responder', fields: 'Retorna: prompt_recepcionista, agent_nombre, etc.' },
+                         { label: '🤖 Estado del Bot', method: 'GET', url: '/api/bot/status/:phone', desc: 'n8n verifica si el bot está activo para ese cliente', fields: 'Retorna: botActive, priority, handoff_reason' },
+                       ].map((endpoint, i) => (
+                         <div key={i} className="bg-white/5 border border-white/10 rounded-[20px] p-5">
+                           <p className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest mb-2">{endpoint.label}</p>
+                           <div className="flex items-center space-x-2 mb-3">
+                             <span className={`text-[9px] font-black px-2 py-1 rounded-lg ${ endpoint.method === 'POST' ? 'bg-blue-500/30 text-blue-300' : 'bg-emerald-500/30 text-emerald-300'}`}>{endpoint.method}</span>
+                             <code className="text-[10px] text-slate-300 font-mono">{endpoint.url}</code>
+                           </div>
+                           <p className="text-[10px] text-slate-400 italic mb-2">{endpoint.desc}</p>
+                           <p className="text-[9px] text-slate-500 font-mono">{endpoint.fields}</p>
+                         </div>
+                       ))}
+                     </div>
+                     <div className="mt-5 bg-white/5 border border-white/10 rounded-[16px] p-4">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">URL Base de este Dashboard</p>
+                       <code className="text-emerald-400 text-sm font-mono font-bold">https://ycloud-dashboard.83aqlq.easypanel.host</code>
+                     </div>
+                   </div>
+
+                   {/* Formulario de Identidad */}
+                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                           <UserCircle size={18} className="text-[#FF6B00]" />
+                           <span>Identidad del Agente</span>
+                        </h3>
+                        <div className="space-y-6">
+                           <div className="space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Nombre del Agente</label>
+                              <input type="text" value={agentConfig.nombre} onChange={(e) => setAgentConfig({...agentConfig, nombre: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
+                           </div>
+                           <div className="space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Rol y Tono</label>
+                              <input type="text" value={agentConfig.rol} onChange={(e) => setAgentConfig({...agentConfig, rol: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
+                           </div>
+                           <div className="space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Empresa</label>
+                              <input type="text" value={agentConfig.empresa} onChange={(e) => setAgentConfig({...agentConfig, empresa: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
+                           </div>
+                        </div>
+                     </div>
+                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                           <Briefcase size={18} className="text-[#FF6B00]" />
+                           <span>Información del Negocio</span>
+                        </h3>
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Descripción para el Bot</label>
+                           <textarea value={agentConfig.descripcion} onChange={(e) => setAgentConfig({...agentConfig, descripcion: e.target.value})} className="w-full h-48 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium outline-none italic resize-none" />
+                        </div>
+                        <p className="text-[9px] text-slate-400 italic">💡 Esta descripción se envía automáticamente a n8n cuando consulta <code className="font-mono">/api/settings</code></p>
+                     </div>
+                   </div>
                  </div>
                )}
 
