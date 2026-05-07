@@ -708,12 +708,23 @@ app.get('/api/agent/prompt', async (req, res) => {
       });
     }
 
+    // Obtener base de conocimiento (RAG)
+    const docs = await db.all("SELECT * FROM documents ORDER BY timestamp DESC");
+    let ragText = "";
+    if (docs.length > 0) {
+      ragText = "BASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\n";
+      docs.forEach(d => {
+        ragText += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n\n`;
+      });
+    }
+
     const systemPrompt = `Eres ${nombre}, ${rol} de ${empresa}.
 
 EMPRESA:
 ${descripcion}
 
 ${catalogText}
+${ragText}
 TONO: ${tono}
 IDIOMA: ${idioma}
 
