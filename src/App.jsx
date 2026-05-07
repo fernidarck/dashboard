@@ -49,6 +49,19 @@ const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const leadsRef = useRef([]);
+  const unreadCountRef = useRef(0);
+  const selectedChatIdRef = useRef(1);
+  const activeTabRef = useRef('dashboard');
+
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+    activeTabRef.current = activeTab;
+    if (activeTab === 'conversaciones') {
+      unreadCountRef.current = 0;
+      document.title = "OneControl";
+    }
+  }, [selectedChatId, activeTab]);
 
   // --- PERFIL DE USUARIO ---
   const [userProfile] = useState({
@@ -205,15 +218,45 @@ const App = () => {
     fetch(`${API_BASE_URL}/api/leads`)
       .then(res => res.json())
       .then(data => {
-        // ── DETECCIÓN DE NUEVOS HANDOFFS PARA ALERTA SONORA ──
+        // ── DETECCIÓN DE NUEVOS HANDOFFS Y MENSAJES PARA ALERTA SONORA ──
         setLeads(prev => {
           const prevUrgent = new Set(prev.filter(l => l.priority === 'urgent').map(l => l.id));
           const newUrgent = data.filter(l => l.priority === 'urgent' && !prevUrgent.has(l.id));
+          
           if (newUrgent.length > 0) {
             playHandoffAlert();
             setNotification(`🚨 ATENCIÓN: ${newUrgent[0].nombre} requiere intervención`);
             setTimeout(() => setNotification(null), 6000);
+          } else {
+            // Detección de mensajes entrantes de clientes
+            const prevLeads = leadsRef.current;
+            let incomingMessages = 0;
+            let lastIncomingLead = null;
+
+            data.forEach(newLead => {
+              const prevLead = prevLeads.find(l => l.id === newLead.id);
+              if (prevLead) {
+                if (newLead.lastMessageTime && newLead.lastMessageTime !== prevLead.lastMessageTime && newLead.lastMessageSender === 'client') {
+                  if (selectedChatIdRef.current !== newLead.id || activeTabRef.current !== 'conversaciones') {
+                    incomingMessages++;
+                    lastIncomingLead = newLead;
+                  }
+                }
+              }
+            });
+
+            if (incomingMessages > 0) {
+              playMessageAlert();
+              unreadCountRef.current += incomingMessages;
+              document.title = `(${unreadCountRef.current}) Nuevos mensajes - OneControl`;
+              if (lastIncomingLead) {
+                setNotification(`💬 Mensaje de ${lastIncomingLead.nombre}`);
+                setTimeout(() => setNotification(null), 4000);
+              }
+            }
           }
+
+          leadsRef.current = data;
           return data;
         });
       })
@@ -234,6 +277,25 @@ const App = () => {
 
   // --- CONFIGURACIÓN DEL AGENTE IA ---
   const [selectedAgent, setSelectedAgent] = useState("Recepcionista");
+
+  // --- ALERTA SONORA DE NUEVO MENSAJE ---
+  const playMessageAlert = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.15);
+    } catch(e) { /* silencioso si el browser bloquea audio */ }
+  };
 
   // --- ALERTA SONORA DE HANDOFF (Web Audio API, sin archivos externos) ---
   const playHandoffAlert = () => {
