@@ -565,17 +565,28 @@ app.get('/api/settings', async (_req, res) => {
     rows.forEach(row => settings[row.key] = row.value);
 
     // Inyección automática de Catálogo en el prompt para n8n
-    // Esto asegura que el Agente de n8n SIEMPRE tenga los precios frescos del Dashboard
     try {
       const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
-      if (prods.length > 0 && settings.prompt_recepcionista) {
-        let catalog = "\n--- CATÁLOGO DE PRODUCTOS (FUENTE DE PRECIOS OFICIAL) ---\n";
+      if (prods.length > 0) {
+        let catalog = "\n--- 📦 CATÁLOGO OFICIAL DEL DASHBOARD (DATOS REALES) ---\n";
         prods.forEach(p => {
-          catalog += `• ${p.nombre}: ${p.precio || 'Consultar'} (${p.stock || 'En stock'}) - ${p.descripcion || ''}\n`;
+          catalog += `• ${p.nombre}: Q${p.precio || 'Consultar'} - ${p.descripcion || ''}\n`;
         });
         
-        // Prepend al prompt para que tenga máxima prioridad
-        settings.prompt_recepcionista = "REGLA DE ORO: Si el producto está en el catálogo de abajo, DA EL PRECIO DIRECTAMENTE. No digas que no lo tienes.\n" + catalog + "\n" + settings.prompt_recepcionista;
+        const injection = `\n⚠️ INSTRUCCIÓN DE SEGURIDAD: Tienes productos cargados en el sistema. 
+${catalog}
+Si el usuario pregunta por estos productos, DA EL PRECIO QUE APARECE ARRIBA. Es información REAL y ACTUALIZADA.
+No digas que no tienes el precio. Prioriza esta lista sobre cualquier herramienta externa.\n`;
+
+        // Inyectar en todos los prompts disponibles
+        ['prompt_recepcionista', 'prompt_ventas', 'prompt_soporte'].forEach(pKey => {
+          if (settings[pKey]) {
+            // Reemplazar reglas restrictivas si existen
+            let pText = settings[pKey];
+            pText = pText.replace(/## Regla 1: Precios[\s\S]+?##/g, "## Regla 1: Precios\nUsa el catálogo inyectado arriba como fuente primaria. Si está ahí, el dato es válido.\n\n##");
+            settings[pKey] = injection + pText + `\n\n(Actualización: ${new Date().getTime()})`;
+          }
+        });
       }
     } catch (e) { console.error("Error inyectando catálogo:", e); }
 
