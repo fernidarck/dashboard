@@ -204,7 +204,9 @@ app.get('/api/leads', async (_req, res) => {
   try {
     const rows = await db.all(`
       SELECT leads.*,
-             (SELECT text FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessage
+             (SELECT text FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessage,
+             (SELECT timestamp FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageTime,
+             (SELECT sender FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageSender
       FROM leads ORDER BY leads.id DESC
     `);
     const parsedRows = rows.map(r => ({
@@ -858,80 +860,45 @@ app.post('/api/leads/update-contact', async (req, res) => {
   }
 });
 
-// ─── RAG: BÚSQUEDA SEMÁNTICA POR KEYWORDS ────────────────────────────────────
-// GET /api/rag/context?q=texto_del_cliente&maxChars=2000
-// n8n llama esto ANTES de enviar al agente IA para inyectar contexto relevante
+// ─── RAG: BÚSQUEDA SEMÁNTICA O CONTEXTO GLOBAL ────────────────────────────────────
+// GET /api/rag/context?q=texto_del_cliente&maxChars=2500
 app.get('/api/rag/context', async (req, res) => {
   try {
-    const { q, maxChars = 2500 } = req.query;
-    if (!q) return res.json({ context: "", found: false, sources: [] });
-
-    // Extraer palabras clave (ignorar palabras cortas y stopwords)
-    const stopwords = new Set(['para','como','que','con','una','los','las','del','por','este','esta','son','hay','pero','cuando','donde','como','más','muy','bien','hola','buenos','días','tardes','noches']);
-    const keywords = q.toLowerCase()
-      .replace(/[^a-záéíóúñü\s]/gi, ' ')
-      .split(/\s+/)
-      .filter(k => k.length > 3 && !stopwords.has(k))
-      .slice(0, 12);
-
-    if (keywords.length === 0) return res.json({ context: "", found: false, sources: [] });
-
-    // Cargar todos los documentos y puntuar por relevancia
-    const docs = await db.all("SELECT name, category, content FROM documents");
-    if (docs.length === 0) return res.json({ context: "", found: false, sources: [] });
-
-    const scored = docs.map(doc => {
-      const lower = doc.content.toLowerCase();
-      let score = 0;
-      for (const kw of keywords) {
-        const matches = (lower.match(new RegExp(kw, 'g')) || []).length;
-        score += matches;
-      }
-      return { ...doc, score };
-    }).filter(d => d.score > 0).sort((a, b) => b.score - a.score);
-
-    if (scored.length === 0) return res.json({ context: "", found: false, sources: [] });
-
-    // Construir contexto con los top 3 documentos más relevantes
+    const { maxChars = 2500 } = req.query;
+    
+    // Cargar todos los documentos
+    const docs = await db.all("SELECT name, category, content FROM documents ORDER BY timestamp DESC");
+    
     let context = "";
     const sources = [];
-    for (const doc of scored.slice(0, 3)) {
-      // Buscar el párrafo más relevante dentro del documento
-      const paragraphs = doc.content.split(/\n{2,}/).filter(p => p.trim().length > 30);
-      const rankedParagraphs = paragraphs.map(p => {
-        const lower = p.toLowerCase();
-        const score = keywords.reduce((s, kw) => s + (lower.includes(kw) ? 1 : 0), 0);
-        return { text: p.trim(), score };
-      }).sort((a, b) => b.score - a.score);
-
-      const excerpt = rankedParagraphs.slice(0, 3).map(p => p.text).join('\n').substring(0, 800);
-      const block = `📄 [${doc.category} — ${doc.name}]\n${excerpt}\n`;
-
-      if ((context + block).length > Number(maxChars)) break;
-      context += block + "\n";
-      sources.push(doc.name);
+    
+    if (docs.length > 0) {
+      docs.forEach(d => {
+        context += "--- " + d.name + " (" + (d.category || "General") + ") ---\n" + d.content + "\n\n";
+        sources.push(d.name);
+      });
     }
 
-    // Incluir catálogo de productos si la query es sobre productos/precios
-    const productKeywords = ['precio','costo','cuánto','cuanto','producto','catálogo','catalogo','stock','disponible','comprar','modelo','marca'];
-    const isProductQuery = productKeywords.some(kw => q.toLowerCase().includes(kw));
-    if (isProductQuery) {
-      const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
-      if (prods.length > 0) {
-        let prodContext = "\n\nCATÁLOGO DE PRODUCTOS:\n";
-        for (const p of prods) {
-          prodContext += `• ${p.nombre}`;
-          if (p.precio) prodContext += ` — ${p.precio}`;
-          if (p.stock) prodContext += ` (${p.stock})`;
-          if (p.descripcion) prodContext += `\n  ${p.descripcion}`;
-          prodContext += '\n';
-        }
-        context += prodContext;
-        sources.push('Catálogo de Productos');
+    // Incluir catálogo de productos siempre en esta ruta para que n8n no pierda los productos
+    const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
+    if (prods.length > 0) {
+      let prodContext = "\n\nCATÁLOGO DE PRODUCTOS:\n";
+      for (const p of prods) {
+        prodContext += "• " + p.nombre;
+        if (p.precio) prodContext += " — " + p.precio;
+        if (p.stock) prodContext += " (" + p.stock + ")";
+        if (p.descripcion) prodContext += "\n  " + p.descripcion;
+        prodContext += "\n";
       }
+      context += prodContext;
+      sources.push("Catálogo de Productos");
     }
 
-    console.log(`📚 RAG query "${q.substring(0, 40)}..." → ${sources.length} fuente(s): ${sources.join(', ')}`);
+    if (context.length > maxChars) {
+      context = context.substring(0, maxChars) + "...";
+    }
+
+    console.log("📚 RAG query full context → " + sources.length + " fuente(s)");
     res.json({ context: context.trim(), found: context.trim().length > 0, sources });
   } catch (err) {
     res.status(500).json({ error: err.message });
