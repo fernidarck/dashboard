@@ -778,6 +778,7 @@ app.get('/api/products/context', async (_req, res) => {
         if (p.stock) context += ` (${p.stock})`;
         context += '\n';
         if (p.descripcion) context += `  ${p.descripcion}\n`;
+        if (p.imagen) context += `  IMAGEN: ${p.imagen}\n`;
       }
       context += '\n';
     }

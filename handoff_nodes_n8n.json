@@ -1,0 +1,114 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://ycloud-dashboard.83aqlq.easypanel.host/api/bot/status/' + $('Webhook').item.json.body.whatsappInboundMessage.from.replace('+', '') }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-7904, -560],
+      "id": "ycloud-handoff-check-001",
+      "name": "CHECK BOT STATUS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parsear la respuesta del dashboard de forma segura\nconst raw = $input.item.json.data || $input.item.json.body || '{}';\nlet parsed = { botActive: true, priority: 'normal', handoff_reason: null, found: false };\n\ntry {\n  const text = typeof raw === 'string' ? raw : JSON.stringify(raw);\n  // Si es JSON válido del API\n  if (text.trim().startsWith('{')) {\n    parsed = JSON.parse(text);\n  }\n  // Si es HTML del frontend (server no deployado aún) -> dejar pasar el bot\n} catch(e) {\n  // Fallo silencioso -> bot activo por defecto\n}\n\nreturn { json: parsed };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-7680, -560],
+      "id": "ycloud-handoff-parse-001",
+      "name": "PARSEAR RESPUESTA BOT"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ycloud-cond-botactive",
+              "leftValue": "={{ $json.botActive }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-7456, -560],
+      "id": "ycloud-handoff-if-001",
+      "name": "IF Bot Activo?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ycloud-dashboard.83aqlq.easypanel.host/api/leads/handoff",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $('Webhook').item.json.body.whatsappInboundMessage.from, reason: $('PARSEAR RESPUESTA BOT').item.json.handoff_reason || 'Bot desactivado — agente humano requerido' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-7456, -720],
+      "id": "ycloud-handoff-notify-001",
+      "name": "NOTIFICAR DASHBOARD HANDOFF"
+    }
+  ],
+  "connections": {
+    "CHECK BOT STATUS": {
+      "main": [
+        [
+          {
+            "node": "PARSEAR RESPUESTA BOT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PARSEAR RESPUESTA BOT": {
+      "main": [
+        [
+          {
+            "node": "IF Bot Activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Bot Activo?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "NOTIFICAR DASHBOARD HANDOFF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
