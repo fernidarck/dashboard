@@ -21,6 +21,14 @@ const CURRENT_USER_ID = "user_777_guatemala";
 const API_BASE_URL = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 const CARD_CATEGORIES = ['Precios', 'Productos', 'FAQ', 'Políticas', 'Técnico', 'General'];
+const PRODUCT_CATEGORIES = ['Motores', 'Controles', 'Accesorios', 'Repuestos', 'Servicios', 'General'];
+const STOCK_OPTIONS = ['En stock', 'Bajo stock', 'Sin stock', 'Bajo pedido'];
+const STOCK_STYLES = {
+  'En stock':    'bg-emerald-50 text-emerald-700 border-emerald-100',
+  'Bajo stock':  'bg-amber-50 text-amber-700 border-amber-100',
+  'Sin stock':   'bg-red-50 text-red-600 border-red-100',
+  'Bajo pedido': 'bg-blue-50 text-blue-700 border-blue-100',
+};
 const CATEGORY_STYLES = {
   'Precios':   { badge: 'bg-blue-50 text-blue-700 border-blue-100',   dot: 'bg-blue-400' },
   'Productos': { badge: 'bg-emerald-50 text-emerald-700 border-emerald-100', dot: 'bg-emerald-400' },
@@ -63,6 +71,12 @@ const App = () => {
   const [showNewCard, setShowNewCard] = useState(false);
   const [newCard, setNewCard] = useState({ name: '', category: 'General', content: '' });
   const [editingCard, setEditingCard] = useState(null);
+  const [ragSubTab, setRagSubTab] = useState('conocimiento');
+  const [products, setProducts] = useState([]);
+  const [showNewProduct, setShowNewProduct] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'General', stock: 'En stock' };
+  const [newProduct, setNewProduct] = useState(emptyProduct);
 
   const fetchDocuments = useCallback(() => {
     fetch(`${API_BASE_URL}/api/rag/documents`)
@@ -116,6 +130,37 @@ const App = () => {
     } catch(err) {
       setNotification(`❌ Error: ${err.message}`);
     }
+  };
+
+  const fetchProducts = () => {
+    fetch(`${API_BASE_URL}/api/products`)
+      .then(r => r.json()).then(setProducts).catch(console.error);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!newProduct.nombre.trim()) return;
+    await fetch(`${API_BASE_URL}/api/products`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newProduct)
+    });
+    setNewProduct(emptyProduct); setShowNewProduct(false); fetchProducts();
+    setNotification('✅ Producto guardado'); setTimeout(() => setNotification(null), 2000);
+  };
+
+  const handleUpdateProduct = async (id) => {
+    if (!editingProduct.nombre.trim()) return;
+    await fetch(`${API_BASE_URL}/api/products/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingProduct)
+    });
+    setEditingProduct(null); fetchProducts();
+    setNotification('✅ Producto actualizado'); setTimeout(() => setNotification(null), 2000);
+  };
+
+  const handleDeleteProduct = (id) => {
+    if (!confirm('¿Eliminar este producto?')) return;
+    fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' })
+      .then(() => fetchProducts()).catch(console.error);
   };
 
   const handleUpdateCard = async (id) => {
@@ -307,6 +352,7 @@ const App = () => {
     fetchSettings();
     fetchDocuments();
     fetchHandoffTriggers();
+    fetchProducts();
   }, [fetchSettings, fetchDocuments, fetchHandoffTriggers]);
 
   // --- LOGICA DE COMUNICACIÓN CON N8N ---
@@ -1108,24 +1154,35 @@ const App = () => {
                 <div>
                   <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic">Base de Conocimientos</h2>
                   <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">
-                    {documents.length} tarjeta{documents.length !== 1 ? 's' : ''} activa{documents.length !== 1 ? 's' : ''} · el agente usa esto para responder
+                    {ragSubTab === 'conocimiento'
+                      ? `${documents.length} tarjeta${documents.length !== 1 ? 's' : ''} · el agente usa esto para responder`
+                      : `${products.length} producto${products.length !== 1 ? 's' : ''} · catálogo activo en el agente`}
                   </p>
                 </div>
                 <div className="flex space-x-3">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.txt" />
-                  <button
-                    onClick={() => fileInputRef.current.click()}
-                    className="bg-white text-slate-600 px-5 py-3 rounded-2xl text-[10px] font-black uppercase border border-slate-200 shadow-sm flex items-center space-x-2 hover:border-[#FF6B00]/40 transition-all"
-                  >
-                    <Link2 size={14} /><span>Subir PDF</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowNewCard(true); setEditingCard(null); }}
-                    className="bg-slate-900 text-white px-7 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl flex items-center space-x-2 hover:bg-black transition-all"
-                  >
-                    <Plus size={14} /><span>Nueva Tarjeta</span>
-                  </button>
+                  {ragSubTab === 'conocimiento' ? (<>
+                    <button onClick={() => fileInputRef.current.click()} className="bg-white text-slate-600 px-5 py-3 rounded-2xl text-[10px] font-black uppercase border border-slate-200 shadow-sm flex items-center space-x-2 hover:border-[#FF6B00]/40 transition-all">
+                      <Link2 size={14} /><span>Subir PDF</span>
+                    </button>
+                    <button onClick={() => { setShowNewCard(true); setEditingCard(null); }} className="bg-slate-900 text-white px-7 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl flex items-center space-x-2 hover:bg-black transition-all">
+                      <Plus size={14} /><span>Nueva Tarjeta</span>
+                    </button>
+                  </>) : (
+                    <button onClick={() => { setShowNewProduct(true); setEditingProduct(null); }} className="bg-slate-900 text-white px-7 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl flex items-center space-x-2 hover:bg-black transition-all">
+                      <Plus size={14} /><span>Agregar Producto</span>
+                    </button>
+                  )}
                 </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex space-x-1 bg-slate-100 p-1 rounded-2xl w-fit">
+                {[['conocimiento', 'Conocimiento', BookOpen], ['catalogo', 'Catálogo', Tag]].map(([id, label, Icon]) => (
+                  <button key={id} onClick={() => setRagSubTab(id)} className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    <Icon size={13} /><span>{label}</span>
+                  </button>
+                ))}
               </div>
 
               {/* Formulario nueva tarjeta */}
@@ -1252,6 +1309,151 @@ const App = () => {
                   })}
                 </div>
               )}
+
+              {/* ── CATÁLOGO DE PRODUCTOS ── */}
+              {ragSubTab === 'catalogo' && (<>
+                {/* Formulario nuevo producto */}
+                {showNewProduct && (
+                  <div className="bg-white border-2 border-slate-900 rounded-[32px] p-8 space-y-5 animate-in slide-in-from-top-4 duration-300 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-slate-900 p-2 rounded-xl"><Tag size={14} className="text-[#FF6B00]" /></div>
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Nuevo Producto</h3>
+                      </div>
+                      <button onClick={() => { setShowNewProduct(false); setNewProduct(emptyProduct); }} className="text-slate-300 hover:text-slate-600"><X size={20} /></button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="md:col-span-2 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Nombre del Producto</label>
+                        <input type="text" placeholder="Ej: Motor Liftmaster 1/2 HP" value={newProduct.nombre} onChange={e => setNewProduct(p => ({...p, nombre: e.target.value}))}
+                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-slate-900 transition-all" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Precio</label>
+                        <input type="text" placeholder="Ej: Q1,200.00" value={newProduct.precio} onChange={e => setNewProduct(p => ({...p, precio: e.target.value}))}
+                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-slate-900 transition-all" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Descripción</label>
+                      <textarea placeholder="Características, compatibilidad, incluye instalación, garantía..." value={newProduct.descripcion} onChange={e => setNewProduct(p => ({...p, descripcion: e.target.value}))}
+                        className="w-full h-28 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic resize-none focus:ring-2 focus:ring-slate-900 transition-all leading-relaxed" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Categoría</label>
+                        <select value={newProduct.categoria} onChange={e => setNewProduct(p => ({...p, categoria: e.target.value}))}
+                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 transition-all">
+                          {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Stock</label>
+                        <select value={newProduct.stock} onChange={e => setNewProduct(p => ({...p, stock: e.target.value}))}
+                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 transition-all">
+                          {STOCK_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-3 pt-2">
+                      <button onClick={() => { setShowNewProduct(false); setNewProduct(emptyProduct); }} className="px-6 py-3 text-[10px] font-black uppercase text-slate-400 hover:text-slate-700 transition-colors">Cancelar</button>
+                      <button onClick={handleSaveProduct} disabled={!newProduct.nombre.trim()}
+                        className="bg-[#FF6B00] text-white px-10 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-black transition-all flex items-center space-x-2 disabled:opacity-30">
+                        <Save size={14} /><span>Guardar Producto</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Formulario editar producto */}
+                {editingProduct && (
+                  <div className="bg-white border-2 border-[#FF6B00] rounded-[32px] p-8 space-y-5 animate-in slide-in-from-top-4 duration-300 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-[#FF6B00] p-2 rounded-xl"><Pencil size={14} className="text-white" /></div>
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Editando Producto</h3>
+                      </div>
+                      <button onClick={() => setEditingProduct(null)} className="text-slate-300 hover:text-slate-600"><X size={20} /></button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="md:col-span-2 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Nombre</label>
+                        <input type="text" value={editingProduct.nombre} onChange={e => setEditingProduct(p => ({...p, nombre: e.target.value}))}
+                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Precio</label>
+                        <input type="text" value={editingProduct.precio} onChange={e => setEditingProduct(p => ({...p, precio: e.target.value}))}
+                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                      </div>
+                    </div>
+                    <textarea value={editingProduct.descripcion} onChange={e => setEditingProduct(p => ({...p, descripcion: e.target.value}))}
+                      className="w-full h-28 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic resize-none focus:ring-2 focus:ring-[#FF6B00] transition-all leading-relaxed" />
+                    <div className="grid grid-cols-2 gap-4">
+                      <select value={editingProduct.categoria} onChange={e => setEditingProduct(p => ({...p, categoria: e.target.value}))}
+                        className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                        {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      </select>
+                      <select value={editingProduct.stock} onChange={e => setEditingProduct(p => ({...p, stock: e.target.value}))}
+                        className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                        {STOCK_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex justify-end space-x-3 pt-2">
+                      <button onClick={() => setEditingProduct(null)} className="px-6 py-3 text-[10px] font-black uppercase text-slate-400 hover:text-slate-700 transition-colors">Cancelar</button>
+                      <button onClick={() => handleUpdateProduct(editingProduct.id)}
+                        className="bg-[#FF6B00] text-white px-10 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-black transition-all flex items-center space-x-2">
+                        <Save size={14} /><span>Guardar Cambios</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Grid productos */}
+                {products.length === 0 && !showNewProduct ? (
+                  <div className="bg-white p-20 rounded-[40px] border-2 border-dashed border-slate-100 text-center">
+                    <Tag size={48} className="mx-auto text-slate-200 mb-5" />
+                    <p className="text-slate-400 font-black italic text-sm">Sin productos todavía</p>
+                    <p className="text-slate-300 text-[10px] font-bold uppercase tracking-widest mt-2">Agregá tu primer producto al catálogo</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {products.map(prod => {
+                      const stockStyle = STOCK_STYLES[prod.stock] || STOCK_STYLES['En stock'];
+                      return (
+                        <div key={prod.id} className="bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all flex flex-col justify-between group">
+                          <div>
+                            <div className="flex items-start justify-between mb-3">
+                              <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${stockStyle}`}>{prod.stock}</span>
+                              <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <button onClick={() => { setEditingProduct({...prod}); setShowNewProduct(false); window.scrollTo({top:0,behavior:'smooth'}); }}
+                                  className="p-1.5 bg-slate-50 hover:bg-[#FF6B00] hover:text-white rounded-lg text-slate-400 transition-all"><Pencil size={12} /></button>
+                                <button onClick={() => handleDeleteProduct(prod.id)}
+                                  className="p-1.5 bg-slate-50 hover:bg-red-500 hover:text-white rounded-lg text-slate-400 transition-all"><Trash2 size={12} /></button>
+                              </div>
+                            </div>
+                            <h4 className="text-sm font-black text-slate-800 italic mb-1 leading-tight group-hover:text-[#FF6B00] transition-colors line-clamp-2">{prod.nombre}</h4>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{prod.categoria}</p>
+                            {prod.descripcion && <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3">{prod.descripcion}</p>}
+                          </div>
+                          <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-50">
+                            {prod.precio ? (
+                              <span className="text-base font-black text-emerald-600 italic">{prod.precio}</span>
+                            ) : (
+                              <span className="text-[10px] text-slate-300 italic">Sin precio</span>
+                            )}
+                            <div className="flex items-center space-x-1.5">
+                              <div className="h-1.5 w-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">En IA</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>)}
+
             </div>
           )}
 

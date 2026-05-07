@@ -101,6 +101,17 @@ async function setup() {
     try { await db.exec(`ALTER TABLE leads ADD COLUMN priority TEXT DEFAULT 'normal'`); } catch(_) {}
     try { await db.exec(`ALTER TABLE leads ADD COLUMN handoff_reason TEXT`); } catch(_) {}
 
+    await db.exec(`CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      descripcion TEXT,
+      precio TEXT,
+      categoria TEXT DEFAULT 'General',
+      stock TEXT DEFAULT 'En stock',
+      activo INTEGER DEFAULT 1,
+      timestamp TEXT
+    )`);
+
     await db.exec(`CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT,
@@ -709,6 +720,71 @@ REGLAS IMPORTANTES:
   }
 });
 
+// ─── CATÁLOGO DE PRODUCTOS ────────────────────────────────────────────────────
+app.get('/api/products', async (_req, res) => {
+  try {
+    res.json(await db.all("SELECT * FROM products ORDER BY categoria, nombre"));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/products', async (req, res) => {
+  try {
+    const { nombre, descripcion, precio, categoria, stock } = req.body;
+    if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
+    const ts = new Date().toLocaleString();
+    const r = await db.run(
+      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, timestamp) VALUES (?,?,?,?,?,?)",
+      nombre, descripcion || '', precio || '', categoria || 'General', stock || 'En stock', ts
+    );
+    res.json({ success: true, id: r.lastID });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/products/:id', async (req, res) => {
+  try {
+    const { nombre, descripcion, precio, categoria, stock, activo } = req.body;
+    await db.run(
+      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=? WHERE id=?",
+      nombre, descripcion, precio, categoria, stock, activo ?? 1, req.params.id
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    await db.run("DELETE FROM products WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Contexto RAG de productos para n8n
+app.get('/api/products/context', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
+    if (rows.length === 0) return res.json({ context: "", found: false });
+    const grouped = rows.reduce((acc, p) => {
+      if (!acc[p.categoria]) acc[p.categoria] = [];
+      acc[p.categoria].push(p);
+      return acc;
+    }, {});
+    let context = "CATÁLOGO DE PRODUCTOS:\n\n";
+    for (const [cat, prods] of Object.entries(grouped)) {
+      context += `[${cat}]\n`;
+      for (const p of prods) {
+        context += `• ${p.nombre}`;
+        if (p.precio) context += ` — ${p.precio}`;
+        if (p.stock) context += ` (${p.stock})`;
+        context += '\n';
+        if (p.descripcion) context += `  ${p.descripcion}\n`;
+      }
+      context += '\n';
+    }
+    res.json({ context: context.trim(), found: true, total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Endpoint para que n8n actualice datos del contacto (nombre, email, etc.)
 app.post('/api/leads/update-contact', async (req, res) => {
   try {
@@ -797,8 +873,27 @@ app.get('/api/rag/context', async (req, res) => {
       sources.push(doc.name);
     }
 
-    console.log(`📚 RAG query "${q.substring(0, 40)}..." → ${sources.length} doc(s) encontrado(s): ${sources.join(', ')}`);
-    res.json({ context: context.trim(), found: true, sources });
+    // Incluir catálogo de productos si la query es sobre productos/precios
+    const productKeywords = ['precio','costo','cuánto','cuanto','producto','catálogo','catalogo','stock','disponible','comprar','modelo','marca'];
+    const isProductQuery = productKeywords.some(kw => q.toLowerCase().includes(kw));
+    if (isProductQuery) {
+      const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
+      if (prods.length > 0) {
+        let prodContext = "\n\nCATÁLOGO DE PRODUCTOS:\n";
+        for (const p of prods) {
+          prodContext += `• ${p.nombre}`;
+          if (p.precio) prodContext += ` — ${p.precio}`;
+          if (p.stock) prodContext += ` (${p.stock})`;
+          if (p.descripcion) prodContext += `\n  ${p.descripcion}`;
+          prodContext += '\n';
+        }
+        context += prodContext;
+        sources.push('Catálogo de Productos');
+      }
+    }
+
+    console.log(`📚 RAG query "${q.substring(0, 40)}..." → ${sources.length} fuente(s): ${sources.join(', ')}`);
+    res.json({ context: context.trim(), found: context.trim().length > 0, sources });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
