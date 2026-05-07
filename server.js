@@ -687,7 +687,6 @@ app.get('/api/agent/prompt', async (req, res) => {
     const rol         = s.agent_rol         || 'asistente virtual';
     const empresa     = s.agent_empresa     || 'la empresa';
     const descripcion = s.agent_descripcion || '';
-    const productos   = s.agent_productos   || '';
     const tono        = s.agent_tono        || 'profesional y amable';
     const idioma      = s.agent_idioma      || 'Español';
 
@@ -698,12 +697,24 @@ app.get('/api/agent/prompt', async (req, res) => {
     };
     const instrucciones = promptMap[tipo] || promptMap.recepcionista;
 
+    // Obtener catálogo de productos dinámicamente
+    const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
+    let catalogText = "";
+    if (prods.length > 0) {
+      catalogText = "CATÁLOGO DE PRODUCTOS DISPONIBLES (Usa esta información para cotizar y dar precios reales):\n";
+      prods.forEach(p => {
+        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'} | Stock: ${p.stock}\n`;
+        if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\n`;
+      });
+    }
+
     const systemPrompt = `Eres ${nombre}, ${rol} de ${empresa}.
 
 EMPRESA:
 ${descripcion}
 
-${productos ? `PRODUCTOS Y SERVICIOS:\n${productos}\n` : ''}TONO: ${tono}
+${catalogText}
+TONO: ${tono}
 IDIOMA: ${idioma}
 
 INSTRUCCIONES DE COMPORTAMIENTO:
