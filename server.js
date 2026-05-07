@@ -607,7 +607,7 @@ app.post('/api/messages/send', async (req, res) => {
 
 app.get('/api/rag/documents', async (_req, res) => {
   try {
-    const rows = await db.all("SELECT id, name, category, timestamp FROM documents ORDER BY id DESC");
+    const rows = await db.all("SELECT id, name, category, timestamp, SUBSTR(content, 1, 200) as content FROM documents ORDER BY id DESC");
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
