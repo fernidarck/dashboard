@@ -100,6 +100,7 @@ async function setup() {
     // Migración: añadir columnas nuevas si no existen
     try { await db.exec(`ALTER TABLE leads ADD COLUMN priority TEXT DEFAULT 'normal'`); } catch(_) {}
     try { await db.exec(`ALTER TABLE leads ADD COLUMN handoff_reason TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE products ADD COLUMN imagen TEXT`); } catch(_) {}
 
     await db.exec(`CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -729,12 +730,12 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock } = req.body;
+    const { nombre, descripcion, precio, categoria, stock, imagen } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, timestamp) VALUES (?,?,?,?,?,?)",
-      nombre, descripcion || '', precio || '', categoria || 'General', stock || 'En stock', ts
+      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, timestamp) VALUES (?,?,?,?,?,?,?)",
+      nombre, descripcion || '', precio || '', categoria || 'General', stock || 'En stock', imagen || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -742,10 +743,10 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock, activo } = req.body;
+    const { nombre, descripcion, precio, categoria, stock, activo, imagen } = req.body;
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=? WHERE id=?",
-      nombre, descripcion, precio, categoria, stock, activo ?? 1, req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=? WHERE id=?",
+      nombre, descripcion, precio, categoria, stock, activo ?? 1, imagen ?? '', req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

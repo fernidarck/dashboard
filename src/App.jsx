@@ -75,7 +75,7 @@ const App = () => {
   const [products, setProducts] = useState([]);
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'General', stock: 'En stock' };
+  const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'General', stock: 'En stock', imagen: '' };
   const [newProduct, setNewProduct] = useState(emptyProduct);
 
   const fetchDocuments = useCallback(() => {
@@ -1355,6 +1355,14 @@ const App = () => {
                         </select>
                       </div>
                     </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">URL de Imagen</label>
+                      <div className="flex items-center space-x-3">
+                        <input type="text" placeholder="https://... (pega el link de la imagen)" value={newProduct.imagen} onChange={e => setNewProduct(p => ({...p, imagen: e.target.value}))}
+                          className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic focus:ring-2 focus:ring-slate-900 transition-all" />
+                        {newProduct.imagen && <img src={newProduct.imagen} alt="preview" className="h-12 w-12 rounded-xl object-cover border border-slate-200" onError={e => e.target.style.display='none'} />}
+                      </div>
+                    </div>
                     <div className="flex justify-end space-x-3 pt-2">
                       <button onClick={() => { setShowNewProduct(false); setNewProduct(emptyProduct); }} className="px-6 py-3 text-[10px] font-black uppercase text-slate-400 hover:text-slate-700 transition-colors">Cancelar</button>
                       <button onClick={handleSaveProduct} disabled={!newProduct.nombre.trim()}
@@ -1389,6 +1397,14 @@ const App = () => {
                     </div>
                     <textarea value={editingProduct.descripcion} onChange={e => setEditingProduct(p => ({...p, descripcion: e.target.value}))}
                       className="w-full h-28 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic resize-none focus:ring-2 focus:ring-[#FF6B00] transition-all leading-relaxed" />
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">URL de Imagen</label>
+                      <div className="flex items-center space-x-3">
+                        <input type="text" placeholder="https://..." value={editingProduct.imagen || ''} onChange={e => setEditingProduct(p => ({...p, imagen: e.target.value}))}
+                          className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                        {editingProduct.imagen && <img src={editingProduct.imagen} alt="preview" className="h-12 w-12 rounded-xl object-cover border border-slate-200" onError={e => e.target.style.display='none'} />}
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <select value={editingProduct.categoria} onChange={e => setEditingProduct(p => ({...p, categoria: e.target.value}))}
                         className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00]">
@@ -1421,8 +1437,9 @@ const App = () => {
                     {products.map(prod => {
                       const stockStyle = STOCK_STYLES[prod.stock] || STOCK_STYLES['En stock'];
                       return (
-                        <div key={prod.id} className="bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all flex flex-col justify-between group">
-                          <div>
+                        <div key={prod.id} className="bg-white rounded-[28px] border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all flex flex-col justify-between group overflow-hidden">
+                          {prod.imagen && <img src={prod.imagen} alt={prod.nombre} className="w-full h-40 object-cover" onError={e => e.target.style.display='none'} />}
+                          <div className="p-6">
                             <div className="flex items-start justify-between mb-3">
                               <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${stockStyle}`}>{prod.stock}</span>
                               <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -1436,7 +1453,7 @@ const App = () => {
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{prod.categoria}</p>
                             {prod.descripcion && <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3">{prod.descripcion}</p>}
                           </div>
-                          <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-50">
+                          <div className="flex items-center justify-between px-6 pb-6 pt-4 border-t border-slate-50">
                             {prod.precio ? (
                               <span className="text-base font-black text-emerald-600 italic">{prod.precio}</span>
                             ) : (
