@@ -785,26 +785,41 @@ app.delete('/api/products/:id', async (req, res) => {
 app.get('/api/products/context', async (_req, res) => {
   try {
     const rows = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
-    if (rows.length === 0) return res.json({ context: "", found: false });
-    const grouped = rows.reduce((acc, p) => {
-      if (!acc[p.categoria]) acc[p.categoria] = [];
-      acc[p.categoria].push(p);
-      return acc;
-    }, {});
-    let context = "CATÁLOGO DE PRODUCTOS:\n\n";
-    for (const [cat, prods] of Object.entries(grouped)) {
-      context += `[${cat}]\n`;
-      for (const p of prods) {
-        context += `• ${p.nombre}`;
-        if (p.precio) context += ` — ${p.precio}`;
-        if (p.stock) context += ` (${p.stock})`;
+    let context = "";
+    
+    if (rows.length > 0) {
+      const grouped = rows.reduce((acc, p) => {
+        if (!acc[p.categoria]) acc[p.categoria] = [];
+        acc[p.categoria].push(p);
+        return acc;
+      }, {});
+      context += "CATÁLOGO DE PRODUCTOS:\n\n";
+      for (const [cat, prods] of Object.entries(grouped)) {
+        context += `[${cat}]\n`;
+        for (const p of prods) {
+          context += `• ${p.nombre}`;
+          if (p.precio) context += ` — ${p.precio}`;
+          if (p.stock) context += ` (${p.stock})`;
+          context += '\n';
+          if (p.descripcion) context += `  ${p.descripcion}\n`;
+          if (p.imagen) context += `  IMAGEN: ${p.imagen}\n`;
+        }
         context += '\n';
-        if (p.descripcion) context += `  ${p.descripcion}\n`;
-        if (p.imagen) context += `  IMAGEN: ${p.imagen}\n`;
       }
-      context += '\n';
     }
-    res.json({ context: context.trim(), found: true, total: rows.length });
+
+    // Obtener documentos RAG generales
+    const docs = await db.all("SELECT * FROM documents ORDER BY timestamp DESC");
+    if (docs.length > 0) {
+      context += "\nBASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\n";
+      docs.forEach(d => {
+        context += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n\n`;
+      });
+    }
+
+    if (!context) return res.json({ context: "", found: false });
+    
+    res.json({ context: context.trim(), found: true, total: rows.length + docs.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 // ─────────────────────────────────────────────────────────────────────────────
