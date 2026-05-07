@@ -581,10 +581,16 @@ No digas que no tienes el precio. Prioriza esta lista sobre cualquier herramient
         // Inyectar en todos los prompts disponibles
         ['prompt_recepcionista', 'prompt_ventas', 'prompt_soporte'].forEach(pKey => {
           if (settings[pKey]) {
-            // Reemplazar reglas restrictivas si existen
             let pText = settings[pKey];
-            pText = pText.replace(/## Regla 1: Precios[\s\S]+?##/g, "## Regla 1: Precios\nUsa el catálogo inyectado arriba como fuente primaria. Si está ahí, el dato es válido.\n\n##");
-            settings[pKey] = injection + pText + `\n\n(Actualización: ${new Date().getTime()})`;
+            
+            // ELIMINACIÓN AGRESIVA de la herramienta externa
+            pText = pText.replace(/Usá la herramienta "consultar precios2" para dar el precio exacto\./g, "Busca el precio en el CATÁLOGO DE PRODUCTOS inyectado al inicio.");
+            pText = pText.replace(/NUNCA inventes precios\. Si la herramienta no devuelve dato, decí: "No tengo el dato exacto, dejame consultar con el técnico para no fallarle"\./g, "Si el producto está en el catálogo del Dashboard, usa ese precio.");
+            
+            // Reemplazar secciones de reglas completas
+            pText = pText.replace(/## Regla 1: Precios[\s\S]+?##/g, "## Regla 1: Precios\nUsa el catálogo inyectado al inicio como ÚNICA fuente de verdad para precios de productos.\n\n##");
+            
+            settings[pKey] = injection + pText + `\n\n(ID_ACTUALIZACION: ${new Date().getTime()})`;
           }
         });
       }
