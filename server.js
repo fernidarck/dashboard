@@ -896,47 +896,41 @@ app.post('/api/leads/update-contact', async (req, res) => {
 
 // ─── RAG: BÚSQUEDA SEMÁNTICA O CONTEXTO GLOBAL ────────────────────────────────────
 // GET /api/rag/context?q=texto_del_cliente&maxChars=2500
+// ─── RAG: BÚSQUEDA SEMÁNTICA POR KEYWORDS (USADO COMO TOOL) ───────────────────
+// GET /api/rag/context?q=consulta&maxChars=2500
 app.get('/api/rag/context', async (req, res) => {
   try {
-    const { maxChars = 2500 } = req.query;
+    const { q, maxChars = 2500 } = req.query;
+    if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
+
+    // Cargar documentos
+    const docs = await db.all("SELECT name, category, content FROM documents");
+    if (docs.length === 0) return res.json({ context: "No hay documentos cargados en la base RAG", found: false, sources: [] });
+
+    // Búsqueda simple por palabras clave
+    const keywords = q.toLowerCase().split(/\s+/).filter(k => k.length > 3);
     
-    // Cargar todos los documentos
-    const docs = await db.all("SELECT name, category, content FROM documents ORDER BY timestamp DESC");
-    
+    const scored = docs.map(doc => {
+      const lower = doc.content.toLowerCase();
+      let score = 0;
+      keywords.forEach(kw => { if (lower.includes(kw)) score++; });
+      return { ...doc, score };
+    }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) return res.json({ context: "No se encontró información relevante para: " + q, found: false, sources: [] });
+
+    // Construir respuesta
     let context = "";
     const sources = [];
-    
-    if (docs.length > 0) {
-      docs.forEach(d => {
-        context += "--- " + d.name + " (" + (d.category || "General") + ") ---\n" + d.content + "\n\n";
-        sources.push(d.name);
-      });
-    }
+    scored.slice(0, 3).forEach(doc => {
+      context += `--- DOCUMENTO: ${doc.name} ---\n${doc.content}\n\n`;
+      sources.push(doc.name);
+    });
 
-    // Incluir catálogo de productos siempre en esta ruta para que n8n no pierda los productos
-    const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
-    if (prods.length > 0) {
-      let prodContext = "\n\nCATÁLOGO DE PRODUCTOS:\n";
-      for (const p of prods) {
-        prodContext += "• " + p.nombre;
-        if (p.precio) prodContext += " — " + p.precio;
-        if (p.stock) prodContext += " (" + p.stock + ")";
-        if (p.descripcion) prodContext += "\n  " + p.descripcion;
-        prodContext += "\n";
-      }
-      context += prodContext;
-      sources.push("Catálogo de Productos");
-    }
+    if (context.length > maxChars) context = context.substring(0, maxChars) + "...";
 
-    if (context.length > maxChars) {
-      context = context.substring(0, maxChars) + "...";
-    }
-
-    console.log("📚 RAG query full context → " + sources.length + " fuente(s)");
-    res.json({ context: context.trim(), found: context.trim().length > 0, sources });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json({ context: context.trim(), found: true, sources });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Mantener /api/rag/query como alias para compatibilidad
