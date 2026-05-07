@@ -627,6 +627,31 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// Crear tarjeta de conocimiento desde texto (sin subir archivo)
+app.post('/api/rag/save', async (req, res) => {
+  try {
+    const { name, category, content } = req.body;
+    if (!name || !content) return res.status(400).json({ error: "Nombre y contenido requeridos" });
+    await db.run("INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)",
+      name, category || 'General', content, new Date().toLocaleString());
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Editar tarjeta existente
+app.put('/api/rag/documents/:id', async (req, res) => {
+  try {
+    const { name, category, content } = req.body;
+    await db.run("UPDATE documents SET name = ?, category = ?, content = ? WHERE id = ?",
+      name, category, content, req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/rag/documents/:id', async (req, res) => {
   try {
     await db.run("DELETE FROM documents WHERE id = ?", req.params.id);
