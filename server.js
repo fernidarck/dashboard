@@ -563,6 +563,22 @@ app.get('/api/settings', async (_req, res) => {
     const rows = await db.all("SELECT * FROM settings");
     const settings = {};
     rows.forEach(row => settings[row.key] = row.value);
+
+    // Inyección automática de Catálogo en el prompt para n8n
+    // Esto asegura que el Agente de n8n SIEMPRE tenga los precios frescos del Dashboard
+    try {
+      const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
+      if (prods.length > 0 && settings.prompt_recepcionista) {
+        let catalog = "\n--- CATÁLOGO DE PRODUCTOS (FUENTE DE PRECIOS OFICIAL) ---\n";
+        prods.forEach(p => {
+          catalog += `• ${p.nombre}: ${p.precio || 'Consultar'} (${p.stock || 'En stock'}) - ${p.descripcion || ''}\n`;
+        });
+        
+        // Prepend al prompt para que tenga máxima prioridad
+        settings.prompt_recepcionista = "REGLA DE ORO: Si el producto está en el catálogo de abajo, DA EL PRECIO DIRECTAMENTE. No digas que no lo tienes.\n" + catalog + "\n" + settings.prompt_recepcionista;
+      }
+    } catch (e) { console.error("Error inyectando catálogo:", e); }
+
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
