@@ -47,6 +47,7 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null); // Para diagnóstico
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const leadsRef = useRef([]);
@@ -239,6 +240,13 @@ const App = () => {
       .then(data => {
         // ── TODA LA DETECCIÓN FUERA DE setLeads ──
         const prevLeads = leadsRef.current;
+
+        // Debug: mostrar qué datos llegan
+        const snapshot = data.slice(0, 3).map(l => ({
+          id: l.id, nombre: l.nombre?.slice(0,10),
+          lastMsgId: l.lastMessageId, sender: l.lastMessageSender
+        }));
+        setDebugInfo({ time: new Date().toLocaleTimeString(), leads: snapshot, prevCount: prevLeads.length });
 
         if (prevLeads.length > 0) {
           // 1. Detectar nuevos handoffs urgentes
@@ -619,7 +627,18 @@ const App = () => {
           
           <div className="flex items-center space-x-4 md:space-x-6">
              {loading && <RefreshCw size={14} className="animate-spin text-emerald-500" />}
-             {notification && <div className={`text-white text-[9px] md:text-[10px] font-black px-3 md:px-4 py-1.5 rounded-lg uppercase shadow-lg animate-bounce ${notification.startsWith('❌') ? 'bg-red-500' : 'bg-emerald-500'}`}>{notification}</div>}
+             {notification && <div className={`text-white text-[9px] md:text-[10px] font-black px-3 md:px-4 py-1.5 rounded-lg uppercase shadow-lg animate-bounce ${notification.startsWith('❌') ? 'bg-red-500' : notification.startsWith('💬') ? 'bg-blue-500' : 'bg-emerald-500'}`}>{notification}</div>}
+             <button
+               onClick={() => {
+                 playMessageAlert.current();
+                 setNotification('💬 Prueba: Notificación activa!');
+                 setTimeout(() => setNotification(null), 4000);
+               }}
+               className="hidden md:flex items-center space-x-1 bg-blue-50 border border-blue-200 text-blue-600 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"
+               title="Probar notificación"
+             >
+               <Bell size={12} /><span>Test</span>
+             </button>
              <div className="h-9 w-9 md:h-10 md:w-10 rounded-xl md:rounded-2xl bg-slate-900 flex items-center justify-center font-black text-[#FF6B00] border-2 border-white shadow-xl italic">OC</div>
           </div>
         </header>
@@ -657,6 +676,18 @@ const App = () => {
                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Gestión de impacto y conversiones</p>
                   </div>
                 </div>
+
+                {/* ── PANEL DEBUG NOTIFICACIONES (temporal) ── */}
+                {debugInfo && (
+                  <div className="bg-slate-900 text-emerald-400 p-4 rounded-2xl font-mono text-[10px] space-y-1 border border-emerald-900">
+                    <p className="font-black text-emerald-300 uppercase tracking-widest">🔍 Debug Notificaciones — Última poll: {debugInfo.time}</p>
+                    <p>Leads previos en memoria: <span className="text-white font-black">{debugInfo.prevCount}</span></p>
+                    {debugInfo.leads.map((l, i) => (
+                      <p key={i}>Lead {l.id} ({l.nombre}): lastMsgId=<span className="text-yellow-300 font-black">{l.lastMsgId ?? 'null'}</span> sender=<span className="text-blue-300">{l.sender ?? 'null'}</span></p>
+                    ))}
+                    <p className="text-slate-500 italic">Haz clic en "Test" (arriba derecha) para probar el sonido y toast.</p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   {[
