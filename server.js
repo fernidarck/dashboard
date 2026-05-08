@@ -972,13 +972,10 @@ app.use('/uploads', express.static(join(__dirname, 'public/uploads')));
 app.use(express.static(join(__dirname, 'dist')));
 
 // Manejar todas las demás rutas devolviendo index.html para el router de React
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
-app.use((_req, res) => {
-  res.sendFile(join(__dirname, 'dist', 'index.html'));
-});
 
 setup().then(() => {
   app.listen(port, () => {
