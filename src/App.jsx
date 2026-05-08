@@ -237,50 +237,57 @@ const App = () => {
     fetch(`${API_BASE_URL}/api/leads`)
       .then(res => res.json())
       .then(data => {
-        // ── DETECCIÓN DE NUEVOS HANDOFFS Y MENSAJES PARA ALERTA SONORA ──
-        setLeads(prev => {
-          const prevUrgent = new Set(prev.filter(l => l.priority === 'urgent').map(l => l.id));
-          const newUrgent = data.filter(l => l.priority === 'urgent' && !prevUrgent.has(l.id));
+        // ── TODA LA DETECCIÓN FUERA DE setLeads ──
+        const prevLeads = leadsRef.current;
 
+        if (prevLeads.length > 0) {
+          // 1. Detectar nuevos handoffs urgentes
+          const prevUrgentIds = new Set(prevLeads.filter(l => l.priority === 'urgent').map(l => l.id));
+          const newUrgent = data.filter(l => l.priority === 'urgent' && !prevUrgentIds.has(l.id));
           if (newUrgent.length > 0) {
             playHandoffAlert();
             setNotification(`🚨 ATENCIÓN: ${newUrgent[0].nombre} requiere intervención`);
             setTimeout(() => setNotification(null), 6000);
-          } else if (leadsRef.current.length > 0) {
-            // Solo comparar si ya tenemos datos previos (no en la primera carga)
-            let incomingMessages = 0;
-            let lastIncomingLead = null;
-
-            data.forEach(newLead => {
-              const prevLead = leadsRef.current.find(l => l.id === newLead.id);
-              if (prevLead &&
-                  newLead.lastMessageId &&
-                  newLead.lastMessageId !== prevLead.lastMessageId &&
-                  newLead.lastMessageSender === 'client') {
-                // Solo notificar si NO está viendo ese chat en este momento
-                if (selectedChatIdRef.current !== newLead.id || activeTabRef.current !== 'conversaciones') {
-                  incomingMessages++;
-                  lastIncomingLead = newLead;
-                  console.log(`[NOTIF] Nuevo mensaje de ${newLead.nombre} (msgId: ${newLead.lastMessageId})`);
-                }
-              }
-            });
-
-            if (incomingMessages > 0) {
-              playMessageAlert.current();
-              unreadCountRef.current += incomingMessages;
-              document.title = `(${unreadCountRef.current}) Nuevos mensajes - OneControl`;
-              setNotification(`💬 Nuevo mensaje de ${lastIncomingLead.nombre}`);
-              setTimeout(() => setNotification(null), 4000);
-            }
           }
 
-          leadsRef.current = data;
-          return data;
-        });
+          // 2. Detectar nuevos mensajes de clientes
+          let incomingCount = 0;
+          let incomingLead = null;
+          data.forEach(newLead => {
+            const prevLead = prevLeads.find(l => l.id === newLead.id);
+            if (
+              prevLead &&
+              newLead.lastMessageId != null &&
+              newLead.lastMessageId !== prevLead.lastMessageId &&
+              newLead.lastMessageSender === 'client'
+            ) {
+              const isViewingThisChat =
+                activeTabRef.current === 'conversaciones' &&
+                selectedChatIdRef.current === newLead.id;
+              if (!isViewingThisChat) {
+                incomingCount++;
+                incomingLead = newLead;
+                console.log(`[NOTIF] 💬 ${newLead.nombre} — ID anterior: ${prevLead.lastMessageId} → nuevo: ${newLead.lastMessageId}`);
+              }
+            }
+          });
+
+          if (incomingCount > 0 && incomingLead) {
+            playMessageAlert.current();
+            unreadCountRef.current += incomingCount;
+            document.title = `(${unreadCountRef.current}) Nuevos mensajes - OneControl`;
+            setNotification(`💬 Nuevo mensaje de ${incomingLead.nombre}`);
+            setTimeout(() => setNotification(null), 5000);
+          }
+        }
+
+        // Actualizar ref y estado
+        leadsRef.current = data;
+        setLeads(data);
       })
       .catch(console.error);
   }, []);
+
 
   useEffect(() => {
     fetchLeads();
