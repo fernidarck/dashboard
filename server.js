@@ -101,6 +101,7 @@ async function setup() {
     try { await db.exec(`ALTER TABLE leads ADD COLUMN priority TEXT DEFAULT 'normal'`); } catch(_) {}
     try { await db.exec(`ALTER TABLE leads ADD COLUMN handoff_reason TEXT`); } catch(_) {}
     try { await db.exec(`ALTER TABLE products ADD COLUMN imagen TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE products ADD COLUMN catalog_link TEXT`); } catch(_) {}
 
     await db.exec(`CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -571,6 +572,8 @@ app.get('/api/settings', async (_req, res) => {
         let catalog = "\n--- 📦 CATÁLOGO OFICIAL DEL DASHBOARD (DATOS REALES) ---\n";
         prods.forEach(p => {
           catalog += `• ${p.nombre}: Q${p.precio || 'Consultar'} - ${p.descripcion || ''}\n`;
+          if (p.imagen) catalog += `  IMAGEN: ${p.imagen}\n`;
+          if (p.catalog_link) catalog += `  LINK CATÁLOGO: ${p.catalog_link}\n`;
         });
         
         const injection = `\n⚠️ INSTRUCCIÓN DE SEGURIDAD: Tienes productos cargados en el sistema. 
@@ -788,12 +791,12 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock, imagen } = req.body;
+    const { nombre, descripcion, precio, categoria, stock, imagen, catalog_link } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, timestamp) VALUES (?,?,?,?,?,?,?)",
-      nombre, descripcion || '', precio || '', categoria || 'General', stock || 'En stock', imagen || '', ts
+      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', precio || '', categoria || 'General', stock || 'En stock', imagen || '', catalog_link || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -801,10 +804,10 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock, activo, imagen } = req.body;
+    const { nombre, descripcion, precio, categoria, stock, activo, imagen, catalog_link } = req.body;
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=? WHERE id=?",
-      nombre, descripcion, precio, categoria, stock, activo ?? 1, imagen ?? '', req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=?, catalog_link=? WHERE id=?",
+      nombre, descripcion, precio, categoria, stock, activo ?? 1, imagen ?? '', catalog_link ?? '', req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -839,6 +842,7 @@ app.get('/api/products/context', async (_req, res) => {
           context += '\n';
           if (p.descripcion) context += `  ${p.descripcion}\n`;
           if (p.imagen) context += `  IMAGEN: ${p.imagen}\n`;
+          if (p.catalog_link) context += `  CATALOGO_LINK: ${p.catalog_link}\n`;
         }
         context += '\n';
       }
