@@ -38,6 +38,16 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 const upload = multer({ dest: 'uploads/' });
+const productImagesUpload = multer({ 
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, 'public/uploads/'),
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, uniqueSuffix + '-' + file.originalname.replace(/\s+/g, '_'));
+    }
+  })
+});
+
 
 // --- INICIALIZACIÓN DE BD ---
 let db;
@@ -820,6 +830,20 @@ app.delete('/api/products/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// SUBIR IMAGEN DE PRODUCTO
+app.post('/api/products/upload-image', productImagesUpload.single('image'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No se subió ninguna imagen" });
+    const host = req.get('host');
+    const protocol = req.protocol;
+    const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    res.json({ success: true, imageUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // Contexto RAG de productos para n8n
 app.get('/api/products/context', async (_req, res) => {
   try {
@@ -944,7 +968,14 @@ app.get('/api/rag/query', async (req, res) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+app.use('/uploads', express.static(join(__dirname, 'public/uploads')));
 app.use(express.static(join(__dirname, 'dist')));
+
+// Manejar todas las demás rutas devolviendo index.html para el router de React
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'dist', 'index.html'));
+});
+
 app.use((_req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
