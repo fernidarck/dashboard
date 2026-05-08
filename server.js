@@ -928,7 +928,8 @@ app.post('/api/leads/update-contact', async (req, res) => {
 // GET /api/rag/context?q=consulta&maxChars=2500
 app.get('/api/rag/context', async (req, res) => {
   try {
-    const { q, maxChars = 2500 } = req.query;
+    const q = req.query.q || req.query.query || req.query.search;
+    const maxChars = req.query.maxChars || 2500;
     if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
 
     // Cargar documentos y productos
