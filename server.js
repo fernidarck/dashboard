@@ -939,8 +939,11 @@ app.get('/api/rag/context', async (req, res) => {
 
     if (allKnowledge.length === 0) return res.json({ context: "No hay información en la base de datos", found: false, sources: [] });
 
-    // Búsqueda simple por palabras clave
-    const keywords = q.toLowerCase().split(/\s+/).filter(k => k.length > 3);
+    // Búsqueda simple por palabras clave (Mejorada para plurales)
+    const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
+    const keywords = q.toLowerCase().split(/\s+/)
+                      .filter(k => k.length > 2)
+                      .map(normalizeKw);
     
     const scored = allKnowledge.map(doc => {
       const lower = (doc.name + ' ' + doc.content).toLowerCase();
