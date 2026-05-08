@@ -931,15 +931,19 @@ app.get('/api/rag/context', async (req, res) => {
     const { q, maxChars = 2500 } = req.query;
     if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
 
-    // Cargar documentos
+    // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, content FROM documents");
-    if (docs.length === 0) return res.json({ context: "No hay documentos cargados en la base RAG", found: false, sources: [] });
+    const prods = await db.all("SELECT nombre as name, categoria as category, descripcion || ' - Precio: ' || precio || ' - Imagen: ' || imagen || ' - Link: ' || catalog_link as content FROM products WHERE activo = 1");
+    
+    const allKnowledge = [...docs, ...prods];
+
+    if (allKnowledge.length === 0) return res.json({ context: "No hay información en la base de datos", found: false, sources: [] });
 
     // Búsqueda simple por palabras clave
     const keywords = q.toLowerCase().split(/\s+/).filter(k => k.length > 3);
     
-    const scored = docs.map(doc => {
-      const lower = doc.content.toLowerCase();
+    const scored = allKnowledge.map(doc => {
+      const lower = (doc.name + ' ' + doc.content).toLowerCase();
       let score = 0;
       keywords.forEach(kw => { if (lower.includes(kw)) score++; });
       return { ...doc, score };
@@ -950,8 +954,8 @@ app.get('/api/rag/context', async (req, res) => {
     // Construir respuesta
     let context = "";
     const sources = [];
-    scored.slice(0, 3).forEach(doc => {
-      context += `--- DOCUMENTO: ${doc.name} ---\n${doc.content}\n\n`;
+    scored.slice(0, 5).forEach(doc => {
+      context += `--- RESULTADO: ${doc.name} ---\n${doc.content}\n\n`;
       sources.push(doc.name);
     });
 
