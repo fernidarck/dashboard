@@ -161,13 +161,13 @@ async function setup() {
 
     // --- MIGRACIONES ---
     console.log("🛠️ Verificando migraciones de tabla...");
-    const columns = await db.all(\"PRAGMA table_info(messages)\");
+    const columns = await db.all("PRAGMA table_info(messages)");
     const hasMediaUrl = columns.some(c => c.name === 'mediaUrl');
     if (!hasMediaUrl) {
       console.log("   - Añadiendo columnas de multimedia a la tabla 'messages'...");
       try {
-        await db.exec(\"ALTER TABLE messages ADD COLUMN mediaUrl TEXT\");
-        await db.exec(\"ALTER TABLE messages ADD COLUMN mediaType TEXT\");
+        await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT");
+        await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT");
         console.log("   ✅ Migración completada.");
       } catch (e) {
         console.error("   ❌ Error en migración:", e.message);
@@ -180,31 +180,31 @@ async function setup() {
       'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos.',
       'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.',
       'handoff_triggers': JSON.stringify([
-        { keywords: \"agente,asesor,humano,persona real,hablar con alguien,operador,quiero hablar\", reason: \"Solicitud de agente humano\" },
-        { keywords: \"molesto,enojado,frustrado,queja,quiero quejarme,mala atención,pésimo\", reason: \"Frustración / Queja detectada\" },
-        { keywords: \"urgente,emergencia,para ya,ahora mismo,no funciona,se rompió,accidente\", reason: \"Urgencia / Emergencia\" },
-        { keywords: \"no me entiendes,no entiendo,robot,bot inutil\", reason: \"Confusión con el bot\" },
-        { keywords: \"cuánto cuesta,precio,presupuesto,cotización,quiero comprar,pagar,listo para\", reason: \"Intención de compra alta\" }
+        { keywords: "agente,asesor,humano,persona real,hablar con alguien,operador,quiero hablar", reason: "Solicitud de agente humano" },
+        { keywords: "molesto,enojado,frustrado,queja,quiero quejarme,mala atención,pésimo", reason: "Frustración / Queja detectada" },
+        { keywords: "urgente,emergencia,para ya,ahora mismo,no funciona,se rompió,accidente", reason: "Urgencia / Emergencia" },
+        { keywords: "no me entiendes,no entiendo,robot,bot inutil", reason: "Confusión con el bot" },
+        { keywords: "cuánto cuesta,precio,presupuesto,cotización,quiero comprar,pagar,listo para", reason: "Intención de compra alta" }
       ])
     };
 
     for (const [key, value] of Object.entries(defaultPrompts)) {
-      const check = await db.get(\"SELECT value FROM settings WHERE key = ?\", key);
+      const check = await db.get("SELECT value FROM settings WHERE key = ?", key);
       if (!check) {
-        await db.run(\"INSERT INTO settings (key, value) VALUES (?, ?)\", key, value);
+        await db.run("INSERT INTO settings (key, value) VALUES (?, ?)", key, value);
       }
     }
 
-    const leadCount = await db.get(\"SELECT COUNT(*) as count FROM leads\");
+    const leadCount = await db.get("SELECT COUNT(*) as count FROM leads");
     if (leadCount && leadCount.count === 0) {
-      console.log(\"📝 Insertando datos de ejemplo...\");
-      await db.run(\"INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\", 
+      console.log("📝 Insertando datos de ejemplo...");
+      await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
         'Erik Manuel Taveras', '15613744309', 'eriktaveras@gmail.com', 20, 'Nuevo', 'WhatsApp', '10:30 AM', 1, 'N/A', 'N/A', 'N/A');
     }
 
-    console.log(\"✅ Base de datos lista\");
+    console.log("✅ Base de datos lista");
   } catch (err) {
-    console.error(\"❌ ERROR CRÍTICO EN SETUP():\", err);
+    console.error("❌ ERROR CRÍTICO EN SETUP():", err);
     throw err; // Re-lanzar para que lo atrape el catch global
   }
 }
@@ -234,7 +234,7 @@ app.get('/api/leads', async (_req, res) => {
 
 app.get('/api/agenda', async (_req, res) => {
   try {
-    const rows = await db.all(\"SELECT * FROM agenda ORDER BY fecha ASC, hora ASC\");
+    const rows = await db.all("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC");
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -244,11 +244,11 @@ app.get('/api/agenda', async (_req, res) => {
 app.post('/api/agenda', async (req, res) => {
   try {
     const { fecha, hora, cliente, phone, servicio, duracion } = req.body;
-    if (!fecha || !cliente || !phone) return res.status(400).json({ error: \"Faltan datos de la cita\" });
+    if (!fecha || !cliente || !phone) return res.status(400).json({ error: "Faltan datos de la cita" });
 
     const day = parseInt(fecha.split('-')[2]); 
-    await db.run(\"INSERT INTO agenda (fecha, hora, cliente, phone, servicio, duracion, estado, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\", 
-      fecha, hora || \"Pendiente\", cliente, phone, servicio || \"Revisión\", duracion || \"1 hora\", 'Confirmado', day);
+    await db.run("INSERT INTO agenda (fecha, hora, cliente, phone, servicio, duracion, estado, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+      fecha, hora || "Pendiente", cliente, phone, servicio || "Revisión", duracion || "1 hora", 'Confirmado', day);
     
     res.json({ success: true });
   } catch (err) {
@@ -260,7 +260,7 @@ app.post('/api/agenda', async (req, res) => {
 app.get('/api/proxy-media', async (req, res) => {
   try {
     const { url } = req.query;
-    if (!url) return res.status(400).send(\"Falta URL\");
+    if (!url) return res.status(400).send("Falta URL");
 
     console.log(`🖼️ Proxying media: ${url.substring(0, 50)}...`);
     
@@ -278,8 +278,8 @@ app.get('/api/proxy-media', async (req, res) => {
     const arrayBuffer = await response.arrayBuffer();
     res.send(Buffer.from(arrayBuffer));
   } catch (err) {
-    console.error(\"❌ Error en proxy-media:\", err.message);
-    res.status(500).send(\"Error cargando medio\");
+    console.error("❌ Error en proxy-media:", err.message);
+    res.status(500).send("Error cargando medio");
   }
 });
 
@@ -287,7 +287,7 @@ app.get('/api/proxy-media', async (req, res) => {
 async function detectHandoff(text) {
   if (!text) return null;
   try {
-    const row = await db.get(\"SELECT value FROM settings WHERE key = 'handoff_triggers'\");
+    const row = await db.get("SELECT value FROM settings WHERE key = 'handoff_triggers'");
     const triggers = row ? JSON.parse(row.value) : [];
     for (const trigger of triggers) {
       const keywords = trigger.keywords.split(',').map(k => k.trim()).filter(Boolean);
@@ -302,7 +302,7 @@ async function detectHandoff(text) {
 // GET /api/handoff/triggers — devuelve las reglas actuales
 app.get('/api/handoff/triggers', async (_req, res) => {
   try {
-    const row = await db.get(\"SELECT value FROM settings WHERE key = 'handoff_triggers'\");
+    const row = await db.get("SELECT value FROM settings WHERE key = 'handoff_triggers'");
     res.json(row ? JSON.parse(row.value) : []);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -313,8 +313,8 @@ app.get('/api/handoff/triggers', async (_req, res) => {
 app.post('/api/handoff/triggers', async (req, res) => {
   try {
     const triggers = req.body;
-    if (!Array.isArray(triggers)) return res.status(400).json({ error: \"Se esperaba un array\" });
-    await db.run(\"INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value\",
+    if (!Array.isArray(triggers)) return res.status(400).json({ error: "Se esperaba un array" });
+    await db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       'handoff_triggers', JSON.stringify(triggers));
     res.json({ success: true });
   } catch (err) {
@@ -325,54 +325,54 @@ app.post('/api/handoff/triggers', async (req, res) => {
 
 app.post('/webhook/n8n', async (req, res) => {
   const data = req.body;
-  console.log(\"🔍 CUERPO RECIBIDO DESDE N8N:\", JSON.stringify(data, null, 2));
+  console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
 
   if (!data.phone) {
-    return res.status(400).json({ error: \"Falta el campo 'phone'\" });
+    return res.status(400).json({ error: "Falta el campo 'phone'" });
   }
 
-  const nombre = data.nombre || \"Cliente Nuevo\";
-  const email = data.email || \"N/A\";
+  const nombre = data.nombre || "Cliente Nuevo";
+  const email = data.email || "N/A";
   const score = data.score || 50;
-  const estado = data.etiqueta || \"Nuevo\";
-  const origen = \"WhatsApp (n8n)\";
+  const estado = data.etiqueta || "Nuevo";
+  const origen = "WhatsApp (n8n)";
   const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-  const motor = data.motor || \"N/A\";
-  const falla = data.falla || \"N/A\";
-  const zona = data.zona || \"N/A\";
+  const motor = data.motor || "N/A";
+  const falla = data.falla || "N/A";
+  const zona = data.zona || "N/A";
 
   try {
     const cleanPhone = String(data.phone).replace(/\D/g, '');
     console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
 
-    const existingLead = await db.get(\"SELECT id, nombre FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?\", cleanPhone);
+    const existingLead = await db.get("SELECT id, nombre FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
     let leadId;
 
     if (existingLead) {
       console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id} (nombre: ${existingLead.nombre})`);
       // No tocar botActive — el agente lo controla manualmente desde el dashboard
       if (data.bot_apagado !== undefined) {
-        await db.run(\"UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?\", estado, time, data.bot_apagado ? 0 : 1, existingLead.id);
+        await db.run("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?", estado, time, data.bot_apagado ? 0 : 1, existingLead.id);
       } else {
-        await db.run(\"UPDATE leads SET estado = ?, time = ? WHERE id = ?\", estado, time, existingLead.id);
+        await db.run("UPDATE leads SET estado = ?, time = ? WHERE id = ?", estado, time, existingLead.id);
       }
-      // Actualizar nombre si el actual es \"Cliente Nuevo\" y n8n ya capturó el real
-      if (nombre && nombre !== \"Cliente Nuevo\" && existingLead.nombre === \"Cliente Nuevo\") {
-        await db.run(\"UPDATE leads SET nombre = ? WHERE id = ?\", nombre, existingLead.id);
-        console.log(`   ✏️ Nombre actualizado: \"${existingLead.nombre}\" → \"${nombre}\"`);
+      // Actualizar nombre si el actual es "Cliente Nuevo" y n8n ya capturó el real
+      if (nombre && nombre !== "Cliente Nuevo" && existingLead.nombre === "Cliente Nuevo") {
+        await db.run("UPDATE leads SET nombre = ? WHERE id = ?", nombre, existingLead.id);
+        console.log(`   ✏️ Nombre actualizado: "${existingLead.nombre}" → "${nombre}"`);
       }
       leadId = existingLead.id;
     } else {
-      console.log(\"   🆕 Creando nuevo lead...\");
+      console.log("   🆕 Creando nuevo lead...");
       const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         nombre, data.phone, email, score, estado, origen, 1, motor, falla, zona);
       leadId = result.lastID;
     }
 
-    const normalize = (t) => t ? String(t).replace(/\s+/g, ' ').trim().toLowerCase() : \"\";
+    const normalize = (t) => t ? String(t).replace(/\s+/g, ' ').trim().toLowerCase() : "";
 
     const saveSmartMessage = async (lId, sndr, txt, tm, mediaUrl = null, mediaType = null) => {
-      const cleanTxt = txt && txt !== \"undefined\" && txt !== \"null\" ? String(txt).trim() : \"\";
+      const cleanTxt = txt && txt !== "undefined" && txt !== "null" ? String(txt).trim() : "";
       
       // Si no hay texto ni media, no guardamos nada
       if (!cleanTxt && !mediaUrl) return;
@@ -381,7 +381,7 @@ app.post('/webhook/n8n', async (req, res) => {
 
       // Evitar duplicados (mismo texto y mismo lead en los últimos 5 mensajes)
       if (cleanTxt) {
-        const recent = await db.all(\"SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5\", lId);
+        const recent = await db.all("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5", lId);
         if (recent.some(m => normalize(m.text) === currentNormalized)) {
           console.log(`🚫 DUPLICADO BLOQUEADO para lead ${lId}: ${cleanTxt.substring(0, 30)}...`);
           return;
@@ -389,7 +389,7 @@ app.post('/webhook/n8n', async (req, res) => {
       }
 
       console.log(`💾 Guardando mensaje (${sndr}) para lead ${lId}: ${cleanTxt.substring(0, 40)}... ${mediaUrl ? '[CON MEDIA]' : ''}`);
-      await db.run(\"INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)\", 
+      await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)", 
         lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
     };
 
@@ -405,13 +405,13 @@ app.post('/webhook/n8n', async (req, res) => {
     const handoffReason = data.handoff_reason || await detectHandoff(mensajePrincipal);
     if (handoffReason) {
       // No re-disparar si el agente ya activó el bot manualmente
-      const leadState = await db.get(\"SELECT botActive FROM leads WHERE id = ?\", leadId);
+      const leadState = await db.get("SELECT botActive FROM leads WHERE id = ?", leadId);
       if (leadState && leadState.botActive === 1) {
         console.log(`ℹ️ Lead ${leadId}: handoff detectado pero bot está activo — ignorado`);
       } else {
-        console.log(`🚨 HANDOFF DETECTADO para lead ${leadId}: \"${handoffReason}\"`);
+        console.log(`🚨 HANDOFF DETECTADO para lead ${leadId}: "${handoffReason}"`);
         await db.run(
-          \"UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?\",
+          "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
           handoffReason, leadId
         );
       }
@@ -426,9 +426,9 @@ app.post('/webhook/n8n', async (req, res) => {
       await saveSmartMessage(leadId, 'bot', mensajeSecundario, time);
     }
 
-    res.json({ success: true, action: existingLead ? \"updated\" : \"created\", handoff: handoffReason || null });
+    res.json({ success: true, action: existingLead ? "updated" : "created", handoff: handoffReason || null });
   } catch (err) {
-    console.error(\"❌ Error procesando webhook:\", err);
+    console.error("❌ Error procesando webhook:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -437,16 +437,16 @@ app.post('/webhook/n8n', async (req, res) => {
 app.post('/api/leads/handoff', async (req, res) => {
   try {
     const { leadId, phone, reason, mensaje, nombre: nombreParam } = req.body;
-    if (!leadId && !phone) return res.status(400).json({ error: \"Se necesita leadId o phone\" });
+    if (!leadId && !phone) return res.status(400).json({ error: "Se necesita leadId o phone" });
 
     let id = leadId;
     if (!id && phone) {
       const cleanPhone = String(phone).replace(/\D/g, '');
-      const lead = await db.get(\"SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?\", cleanPhone);
+      const lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
       if (!lead) {
         // Crear lead si no existe y viene con nombre
         const result = await db.run(
-          \"INSERT INTO leads (nombre, phone, estado, origen, botActive, priority) VALUES (?, ?, 'Intervención Requerida', 'WhatsApp (n8n)', 0, 'urgent')\",
+          "INSERT INTO leads (nombre, phone, estado, origen, botActive, priority) VALUES (?, ?, 'Intervención Requerida', 'WhatsApp (n8n)', 0, 'urgent')",
           nombreParam || 'Cliente Nuevo', phone
         );
         id = result.lastID;
@@ -456,12 +456,12 @@ app.post('/api/leads/handoff', async (req, res) => {
     }
 
     // Bug 2 fix: si el agente ya tomó control o reactivó el bot, no re-disparar handoff
-    const currentLead = await db.get(\"SELECT estado, botActive FROM leads WHERE id = ?\", id);
+    const currentLead = await db.get("SELECT estado, botActive FROM leads WHERE id = ?", id);
     if (currentLead && (currentLead.estado === 'En Gestión' || currentLead.botActive === 1)) {
       // Solo guardar el mensaje del cliente si viene, pero no re-marcar como urgente
       if (mensaje && mensaje.trim()) {
         const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        await db.run(\"INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)\", id, 'client', mensaje.trim(), time);
+        await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
       }
       const skipReason = currentLead.botActive === 1 ? 'Bot activo — handoff ignorado' : 'Lead ya en gestión manual';
       console.log(`ℹ️ Lead ${id}: ${skipReason}`);
@@ -470,20 +470,20 @@ app.post('/api/leads/handoff', async (req, res) => {
 
     const handoffReason = reason || 'Solicitud manual de Handoff';
     await db.run(
-      \"UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?\",
+      "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
       handoffReason, id
     );
 
     // Bug 3 fix: guardar el mensaje del cliente aunque el bot esté apagado
     if (mensaje && mensaje.trim()) {
       const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      await db.run(\"INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)\", id, 'client', mensaje.trim(), time);
+      await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
     }
 
-    console.log(`🚨 HANDOFF activado para lead ${id}: \"${handoffReason}\"`);
+    console.log(`🚨 HANDOFF activado para lead ${id}: "${handoffReason}"`);
     res.json({ success: true, leadId: id, reason: handoffReason });
   } catch (err) {
-    console.error(\"❌ Error en handoff:\", err);
+    console.error("❌ Error en handoff:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -492,9 +492,9 @@ app.post('/api/leads/handoff', async (req, res) => {
 app.post('/api/leads/handoff/resolve', async (req, res) => {
   try {
     const { leadId } = req.body;
-    if (!leadId) return res.status(400).json({ error: \"Se necesita leadId\" });
+    if (!leadId) return res.status(400).json({ error: "Se necesita leadId" });
     await db.run(
-      \"UPDATE leads SET priority = 'normal', handoff_reason = NULL, estado = 'En Gestión' WHERE id = ?\",
+      "UPDATE leads SET priority = 'normal', handoff_reason = NULL, estado = 'En Gestión' WHERE id = ?",
       leadId
     );
     console.log(`✅ HANDOFF RESUELTO para lead ${leadId}`);
@@ -506,7 +506,7 @@ app.post('/api/leads/handoff/resolve', async (req, res) => {
 
 app.get('/api/messages/:leadId', async (req, res) => {
   try {
-    const rows = await db.all(\"SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC\", req.params.leadId);
+    const rows = await db.all("SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC", req.params.leadId);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -517,21 +517,21 @@ app.post('/api/bot/toggle', async (req, res) => {
   try {
     const { leadId, enabled } = req.body;
     console.log(`🤖 Toggle bot — leadId: ${leadId}, enabled: ${enabled}`);
-    if (!leadId) return res.status(400).json({ error: \"Falta leadId\" });
+    if (!leadId) return res.status(400).json({ error: "Falta leadId" });
     let result;
     if (enabled) {
       result = await db.run(
-        \"UPDATE leads SET botActive = 1, priority = 'normal', handoff_reason = NULL, estado = 'Activo' WHERE id = ?\",
+        "UPDATE leads SET botActive = 1, priority = 'normal', handoff_reason = NULL, estado = 'Activo' WHERE id = ?",
         leadId
       );
     } else {
-      result = await db.run(\"UPDATE leads SET botActive = 0 WHERE id = ?\", leadId);
+      result = await db.run("UPDATE leads SET botActive = 0 WHERE id = ?", leadId);
     }
     console.log(`✅ Toggle resultado: ${result.changes} fila(s) afectada(s)`);
     if (result.changes === 0) return res.status(404).json({ error: `Lead ${leadId} no encontrado en DB` });
     res.json({ success: true, botActive: !!enabled });
   } catch (err) {
-    console.error(\"❌ Error en toggle:\", err);
+    console.error("❌ Error en toggle:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -544,7 +544,7 @@ app.get('/api/bot/status/:phone', async (req, res) => {
   try {
     const cleanPhone = String(req.params.phone).replace(/\D/g, '');
     const lead = await db.get(
-      \"SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?\",
+      "SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
       cleanPhone
     );
 
@@ -563,7 +563,7 @@ app.get('/api/bot/status/:phone', async (req, res) => {
       found: true
     });
   } catch (err) {
-    console.error(\"❌ Error en /api/bot/status:\", err);
+    console.error("❌ Error en /api/bot/status:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -571,7 +571,7 @@ app.get('/api/bot/status/:phone', async (req, res) => {
 
 app.get('/api/settings', async (_req, res) => {
   try {
-    const rows = await db.all(\"SELECT * FROM settings\");
+    const rows = await db.all("SELECT * FROM settings");
     const settings = {};
     rows.forEach(row => settings[row.key] = row.value);
 
@@ -586,10 +586,10 @@ app.get('/api/settings', async (_req, res) => {
 app.post('/api/settings', async (req, res) => {
   try {
     const { key, value } = req.body;
-    if (!key) throw new Error(\"Key is required\");
+    if (!key) throw new Error("Key is required");
     console.log(`⚙️ Guardando configuración: ${key} (${value?.length || 0} chars)`);
     // Usamos REPLACE INTO para máxima compatibilidad con versiones antiguas de SQLite
-    await db.run(\"REPLACE INTO settings (key, value) VALUES (?, ?)\", key, value);
+    await db.run("REPLACE INTO settings (key, value) VALUES (?, ?)", key, value);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -599,23 +599,23 @@ app.post('/api/settings', async (req, res) => {
 app.post('/api/messages/send', async (req, res) => {
   try {
     const { leadId, text, sender, phone } = req.body;
-    if (!leadId || !text) return res.status(400).json({ error: \"Faltan datos\" });
+    if (!leadId || !text) return res.status(400).json({ error: "Faltan datos" });
 
     const msgSender = sender || 'agent';
     const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-    const result = await db.run(\"INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)\", leadId, msgSender, text, time);
+    const result = await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", leadId, msgSender, text, time);
     const savedMessage = { id: result.lastID, lead_id: leadId, sender: msgSender, text, timestamp: time };
 
     if (!sender && msgSender === 'agent' && N8N_OUTBOUND_WEBHOOK) {
-      const lead = await db.get(\"SELECT phone FROM leads WHERE id = ?\", leadId);
+      const lead = await db.get("SELECT phone FROM leads WHERE id = ?", leadId);
       const targetPhone = phone || lead?.phone;
       if (targetPhone) {
         fetch(N8N_OUTBOUND_WEBHOOK, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: targetPhone, text })
-        }).catch(err => console.error(\"❌ Error enviando a n8n:\", err.message));
+        }).catch(err => console.error("❌ Error enviando a n8n:", err.message));
       }
     }
 
@@ -627,7 +627,7 @@ app.post('/api/messages/send', async (req, res) => {
 
 app.get('/api/rag/documents', async (_req, res) => {
   try {
-    const rows = await db.all(\"SELECT id, name, category, timestamp, SUBSTR(content, 1, 200) as content FROM documents ORDER BY id DESC\");
+    const rows = await db.all("SELECT id, name, category, timestamp, SUBSTR(content, 1, 200) as content FROM documents ORDER BY id DESC");
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -638,7 +638,7 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
   try {
     const { name, category } = req.body;
     const filePath = req.file.path;
-    let content = \"\";
+    let content = "";
 
     if (req.file.mimetype === 'application/pdf') {
       const dataBuffer = fs.readFileSync(filePath);
@@ -648,7 +648,7 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
       content = fs.readFileSync(filePath, 'utf8');
     }
 
-    await db.run(\"INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)\", 
+    await db.run("INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)", 
       name || req.file.originalname, category || 'General', content, new Date().toLocaleString());
 
     fs.unlinkSync(filePath); 
@@ -662,8 +662,8 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
 app.post('/api/rag/save', async (req, res) => {
   try {
     const { name, category, content } = req.body;
-    if (!name || !content) return res.status(400).json({ error: \"Nombre y contenido requeridos\" });
-    await db.run(\"INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)\",
+    if (!name || !content) return res.status(400).json({ error: "Nombre y contenido requeridos" });
+    await db.run("INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)",
       name, category || 'General', content, new Date().toLocaleString());
     res.json({ success: true });
   } catch (err) {
@@ -675,7 +675,7 @@ app.post('/api/rag/save', async (req, res) => {
 app.put('/api/rag/documents/:id', async (req, res) => {
   try {
     const { name, category, content } = req.body;
-    await db.run(\"UPDATE documents SET name = ?, category = ?, content = ? WHERE id = ?\",
+    await db.run("UPDATE documents SET name = ?, category = ?, content = ? WHERE id = ?",
       name, category, content, req.params.id);
     res.json({ success: true });
   } catch (err) {
@@ -685,7 +685,7 @@ app.put('/api/rag/documents/:id', async (req, res) => {
 
 app.delete('/api/rag/documents/:id', async (req, res) => {
   try {
-    await db.run(\"DELETE FROM documents WHERE id = ?\", req.params.id);
+    await db.run("DELETE FROM documents WHERE id = ?", req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -698,7 +698,7 @@ app.get('/api/agent/prompt', async (req, res) => {
   try {
     const tipo = (req.query.tipo || 'recepcionista').toLowerCase();
 
-    const rows = await db.all(\"SELECT key, value FROM settings\");
+    const rows = await db.all("SELECT key, value FROM settings");
     const s = {};
     rows.forEach(r => s[r.key] = r.value);
 
@@ -717,23 +717,23 @@ app.get('/api/agent/prompt', async (req, res) => {
     const instrucciones = promptMap[tipo] || promptMap.recepcionista;
 
     // Obtener catálogo de productos dinámicamente
-    const prods = await db.all(\"SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre\");
-    let catalogText = \"\";
+    const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
+    let catalogText = "";
     if (prods.length > 0) {
-      catalogText = \"CATÁLOGO DE PRODUCTOS DISPONIBLES (Usa esta información para cotizar y dar precios reales):\\n\";
+      catalogText = "CATÁLOGO DE PRODUCTOS DISPONIBLES (Usa esta información para cotizar y dar precios reales):\n";
       prods.forEach(p => {
-        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'} | Stock: ${p.stock}\\n`;
-        if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\\n`;
+        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'} | Stock: ${p.stock}\n`;
+        if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\n`;
       });
     }
 
     // Obtener base de conocimiento (RAG)
-    const docs = await db.all(\"SELECT * FROM documents ORDER BY timestamp DESC\");
-    let ragText = \"\";
+    const docs = await db.all("SELECT * FROM documents ORDER BY timestamp DESC");
+    let ragText = "";
     if (docs.length > 0) {
-      ragText = \"BASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\\n\";
+      ragText = "BASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\n";
       docs.forEach(d => {
-        ragText += `--- ${d.name} (${d.category || 'General'}) ---\\n${d.content}\\n\\n`;
+        ragText += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n\n`;
       });
     }
 
@@ -765,17 +765,17 @@ REGLAS IMPORTANTES:
 // ─── CATÁLOGO DE PRODUCTOS ────────────────────────────────────────────────────
 app.get('/api/products', async (_req, res) => {
   try {
-    res.json(await db.all(\"SELECT * FROM products ORDER BY categoria, nombre\"));
+    res.json(await db.all("SELECT * FROM products ORDER BY categoria, nombre"));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/products', async (req, res) => {
   try {
     const { nombre, descripcion, precio, categoria, stock, imagen, catalog_link } = req.body;
-    if (!nombre) return res.status(400).json({ error: \"Nombre requerido\" });
+    if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      \"INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?)\",
+      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?)",
       nombre, descripcion || '', precio || '', categoria || 'General', stock || 'En stock', imagen || '', catalog_link || '', ts
     );
     res.json({ success: true, id: r.lastID });
@@ -786,7 +786,7 @@ app.put('/api/products/:id', async (req, res) => {
   try {
     const { nombre, descripcion, precio, categoria, stock, activo, imagen, catalog_link } = req.body;
     await db.run(
-      \"UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=?, catalog_link=? WHERE id=?\",
+      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=?, catalog_link=? WHERE id=?",
       nombre, descripcion, precio, categoria, stock, activo ?? 1, imagen ?? '', catalog_link ?? '', req.params.id
     );
     res.json({ success: true });
@@ -795,7 +795,7 @@ app.put('/api/products/:id', async (req, res) => {
 
 app.delete('/api/products/:id', async (req, res) => {
   try {
-    await db.run(\"DELETE FROM products WHERE id = ?\", req.params.id);
+    await db.run("DELETE FROM products WHERE id = ?", req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -803,7 +803,7 @@ app.delete('/api/products/:id', async (req, res) => {
 // SUBIR IMAGEN DE PRODUCTO
 app.post('/api/products/upload-image', productImagesUpload.single('image'), (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: \"No se subió ninguna imagen\" });
+    if (!req.file) return res.status(400).json({ error: "No se subió ninguna imagen" });
     const host = req.get('host');
     const protocol = req.protocol;
     const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
@@ -817,8 +817,8 @@ app.post('/api/products/upload-image', productImagesUpload.single('image'), (req
 // Contexto RAG de productos para n8n
 app.get('/api/products/context', async (_req, res) => {
   try {
-    const rows = await db.all(\"SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre\");
-    let context = \"\";
+    const rows = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
+    let context = "";
     
     if (rows.length > 0) {
       const grouped = rows.reduce((acc, p) => {
@@ -826,32 +826,32 @@ app.get('/api/products/context', async (_req, res) => {
         acc[p.categoria].push(p);
         return acc;
       }, {});
-      context += \"CATÁLOGO DE PRODUCTOS:\\n\\n\";
+      context += "CATÁLOGO DE PRODUCTOS:\n\n";
       for (const [cat, prods] of Object.entries(grouped)) {
-        context += `[${cat}]\\n`;
+        context += `[${cat}]\n`;
         for (const p of prods) {
           context += `• ${p.nombre}`;
           if (p.precio) context += ` — ${p.precio}`;
           if (p.stock) context += ` (${p.stock})`;
-          context += '\\n';
-          if (p.descripcion) context += `  ${p.descripcion}\\n`;
-          if (p.imagen) context += `  IMAGEN: ${p.imagen}\\n`;
-          if (p.catalog_link) context += `  CATALOGO_LINK: ${p.catalog_link}\\n`;
+          context += '\n';
+          if (p.descripcion) context += `  ${p.descripcion}\n`;
+          if (p.imagen) context += `  IMAGEN: ${p.imagen}\n`;
+          if (p.catalog_link) context += `  CATALOGO_LINK: ${p.catalog_link}\n`;
         }
-        context += '\\n';
+        context += '\n';
       }
     }
 
     // Obtener documentos RAG generales
-    const docs = await db.all(\"SELECT * FROM documents ORDER BY timestamp DESC\");
+    const docs = await db.all("SELECT * FROM documents ORDER BY timestamp DESC");
     if (docs.length > 0) {
-      context += \"\\nBASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\\n\";
+      context += "\nBASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\n";
       docs.forEach(d => {
-        context += `--- ${d.name} (${d.category || 'General'}) ---\\n${d.content}\\n\\n`;
+        context += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n\n`;
       });
     }
 
-    if (!context) return res.json({ context: \"\", found: false });
+    if (!context) return res.json({ context: "", found: false });
     
     res.json({ context: context.trim(), found: true, total: rows.length + docs.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -866,26 +866,26 @@ app.post('/api/leads/update-contact', async (req, res) => {
 
     if (!id && phone) {
       const cleanPhone = String(phone).replace(/\D/g, '');
-      const lead = await db.get(\"SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?\", cleanPhone);
-      if (!lead) return res.status(404).json({ error: \"Lead no encontrado\" });
+      const lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+      if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
       id = lead.id;
     }
 
-    if (!id) return res.status(400).json({ error: \"Se necesita leadId o phone\" });
+    if (!id) return res.status(400).json({ error: "Se necesita leadId o phone" });
 
     const updates = [];
     const values = [];
-    if (nombre) { updates.push(\"nombre = ?\"); values.push(nombre); }
-    if (email)  { updates.push(\"email = ?\");  values.push(email); }
-    if (motor)  { updates.push(\"motor = ?\");  values.push(motor); }
-    if (falla)  { updates.push(\"falla = ?\");  values.push(falla); }
-    if (zona)   { updates.push(\"zona = ?\");   values.push(zona); }
+    if (nombre) { updates.push("nombre = ?"); values.push(nombre); }
+    if (email)  { updates.push("email = ?");  values.push(email); }
+    if (motor)  { updates.push("motor = ?");  values.push(motor); }
+    if (falla)  { updates.push("falla = ?");  values.push(falla); }
+    if (zona)   { updates.push("zona = ?");   values.push(zona); }
 
-    if (updates.length === 0) return res.status(400).json({ error: \"No hay campos para actualizar\" });
+    if (updates.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
 
     values.push(id);
-    await db.run(`UPDATE leads SET ${updates.join(\", \")} WHERE id = ?`, ...values);
-    console.log(`✏️ Contacto ${id} actualizado: ${updates.join(\", \")}`);
+    await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...values);
+    console.log(`✏️ Contacto ${id} actualizado: ${updates.join(", ")}`);
     res.json({ success: true, leadId: id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -900,19 +900,19 @@ app.get('/api/rag/context', async (req, res) => {
   try {
     const q = req.query.q || req.query.query || req.query.search;
     const maxChars = req.query.maxChars || 2500;
-    if (!q) return res.json({ context: \"No se proporcionó consulta\", found: false, sources: [] });
+    if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
 
     // Cargar documentos y productos
-    const docs = await db.all(\"SELECT name, category, COALESCE(content, '') as content FROM documents\");
-    const prods = await db.all(\"SELECT nombre as name, categoria as category, COALESCE(descripcion, '') || ' - Precio: ' || COALESCE(precio, 'Consultar') || ' - Imagen: ' || COALESCE(imagen, '') || ' - Link: ' || COALESCE(catalog_link, '') as content FROM products WHERE activo = 1\");
+    const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
+    const prods = await db.all("SELECT nombre as name, categoria as category, COALESCE(descripcion, '') || ' - Precio: ' || COALESCE(precio, 'Consultar') || ' - Imagen: ' || COALESCE(imagen, '') || ' - Link: ' || COALESCE(catalog_link, '') as content FROM products WHERE activo = 1");
     
     const allKnowledge = [...docs, ...prods];
 
-    if (allKnowledge.length === 0) return res.json({ context: \"No hay información en la base de datos\", found: false, sources: [] });
+    if (allKnowledge.length === 0) return res.json({ context: "No hay información en la base de datos", found: false, sources: [] });
 
     // Búsqueda simple por palabras clave (Mejorada para plurales)
     const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
-    const keywords = q.toLowerCase().split(/\\s+/)
+    const keywords = q.toLowerCase().split(/\s+/)
                       .filter(k => k.length > 2)
                       .map(normalizeKw);
     
@@ -923,17 +923,17 @@ app.get('/api/rag/context', async (req, res) => {
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
-    if (scored.length === 0) return res.json({ context: \"No se encontró información relevante para: \" + q, found: false, sources: [] });
+    if (scored.length === 0) return res.json({ context: "No se encontró información relevante para: " + q, found: false, sources: [] });
 
     // Construir respuesta
-    let context = \"\";
+    let context = "";
     const sources = [];
     scored.slice(0, 5).forEach(doc => {
-      context += `--- RESULTADO: ${doc.name} ---\\n${doc.content}\\n\\n`;
+      context += `--- RESULTADO: ${doc.name} ---\n${doc.content}\n\n`;
       sources.push(doc.name);
     });
 
-    if (context.length > maxChars) context = context.substring(0, maxChars) + \"...\";
+    if (context.length > maxChars) context = context.substring(0, maxChars) + "...";
 
     res.json({ context: context.trim(), found: true, sources });
   } catch (err) { res.status(500).json({ error: err.message }); }
