@@ -18,7 +18,13 @@ import {
  */
 const N8N_WEBHOOK_URL = "";
 const CURRENT_USER_ID = "user_777_guatemala";
-const API_BASE_URL = import.meta.env.PROD ? '' : 'http://localhost:3001';
+// Detectar automáticamente si estamos en desarrollo o producción
+const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+// Si estamos en el puerto de Vite (5173) pero no en producción, apuntamos al 3001
+const API_BASE_URL = (isDev && window.location.port === '5173') ? 'http://localhost:3001' : '';
+
+console.log(`🌐 Host: ${window.location.hostname}:${window.location.port}`);
+console.log(`🌐 API_BASE_URL detectado: "${API_BASE_URL || '(relativo)'}"`);
 
 const CARD_CATEGORIES = ['Precios', 'Productos', 'FAQ', 'Políticas', 'Técnico', 'General'];
 const PRODUCT_CATEGORIES = ['Motores', 'Controles', 'Accesorios', 'Repuestos', 'Servicios', 'General'];
@@ -402,44 +408,59 @@ const App = () => {
   });
 
   const fetchSettings = useCallback(() => {
-    fetch(`${API_BASE_URL}/api/settings`)
-      .then(res => res.json())
+    const url = `${API_BASE_URL}/api/settings`;
+    console.log(`[FETCH] Cargando configuración desde: ${url}`);
+    
+    fetch(url)
+      .then(res => {
+        console.log(`[FETCH] Respuesta settings: ${res.status}`);
+        return res.json();
+      })
       .then(data => {
+        console.log(`[FETCH] Datos recibidos:`, Object.keys(data));
         setPrompts({
           Recepcionista: data.prompt_recepcionista || "",
           Vendedor: data.prompt_ventas || "",
           Soporte: data.prompt_soporte || ""
         });
         // Cargar config del agente si existe
-        if (data.agent_nombre) setAgentConfig(prev => ({ ...prev,
-          nombre: data.agent_nombre || prev.nombre,
-          rol: data.agent_rol || prev.rol,
-          descripcion: data.agent_descripcion || prev.descripcion,
-          empresa: data.agent_empresa || prev.empresa,
-        }));
+        if (data.agent_nombre) {
+          setAgentConfig(prev => ({ ...prev,
+            nombre: data.agent_nombre || prev.nombre,
+            rol: data.agent_rol || prev.rol,
+            descripcion: data.agent_descripcion || prev.descripcion,
+            empresa: data.agent_empresa || prev.empresa,
+          }));
+        }
       })
-      .catch(console.error);
+      .catch(err => console.error(`[FETCH] Error cargando settings:`, err));
   }, []);
 
   const saveSetting = (key, value) => {
-    fetch(`${API_BASE_URL}/api/settings`, {
+    const url = `${API_BASE_URL}/api/settings`;
+    console.log(`[SAVE] Intentando guardar: ${key}`, { url, valueLength: value?.length });
+    
+    fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value: value || "" })
     })
     .then(async res => {
+      console.log(`[SAVE] Respuesta recibida: ${res.status}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al guardar');
+      if (!res.ok) throw new Error(data.error || `Error HTTP ${res.status}`);
       return data;
     })
     .then(() => {
-      setNotification(`Prompt de ${selectedAgent} guardado`);
+      console.log(`[SAVE] ¡Éxito! Refrescando...`);
+      setNotification(`✅ Prompt de ${selectedAgent} guardado`);
       setTimeout(() => setNotification(null), 3000);
+      fetchSettings();
     })
     .catch(err => {
-      console.error(err);
-      setNotification(`Error: ${err.message}`);
-      setTimeout(() => setNotification(null), 5000);
+      console.error(`[SAVE] Error fatal:`, err);
+      setNotification(`❌ Error: ${err.message}`);
+      setTimeout(() => setNotification(null), 8000);
     });
   };
 

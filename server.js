@@ -575,40 +575,8 @@ app.get('/api/settings', async (_req, res) => {
     const settings = {};
     rows.forEach(row => settings[row.key] = row.value);
 
-    // Inyección automática de Catálogo en el prompt para n8n
-    try {
-      const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
-      if (prods.length > 0) {
-        let catalog = "\n--- 📦 CATÁLOGO OFICIAL DEL DASHBOARD (DATOS REALES) ---\n";
-        prods.forEach(p => {
-          catalog += `• ${p.nombre}: Q${p.precio || 'Consultar'} - ${p.descripcion || ''}\n`;
-          if (p.imagen) catalog += `  IMAGEN: ${p.imagen}\n`;
-          if (p.catalog_link) catalog += `  LINK CATÁLOGO: ${p.catalog_link}\n`;
-        });
-        
-        const injection = `\n⚠️ INSTRUCCIÓN DE SEGURIDAD: Tienes productos cargados en el sistema. 
-${catalog}
-Si el usuario pregunta por estos productos, DA EL PRECIO QUE APARECE ARRIBA. Es información REAL y ACTUALIZADA.
-No digas que no tienes el precio. Prioriza esta lista sobre cualquier herramienta externa.\n`;
-
-        // Inyectar en todos los prompts disponibles
-        ['prompt_recepcionista', 'prompt_ventas', 'prompt_soporte'].forEach(pKey => {
-          if (settings[pKey]) {
-            let pText = settings[pKey];
-            
-            // ELIMINACIÓN AGRESIVA de la herramienta externa
-            pText = pText.replace(/Usá la herramienta "consultar precios2" para dar el precio exacto\./g, "Busca el precio en el CATÁLOGO DE PRODUCTOS inyectado al inicio.");
-            pText = pText.replace(/NUNCA inventes precios\. Si la herramienta no devuelve dato, decí: "No tengo el dato exacto, dejame consultar con el técnico para no fallarle"\./g, "Si el producto está en el catálogo del Dashboard, usa ese precio.");
-            
-            // Reemplazar secciones de reglas completas
-            pText = pText.replace(/## Regla 1: Precios[\s\S]+?##/g, "## Regla 1: Precios\nUsa el catálogo inyectado al inicio como ÚNICA fuente de verdad para precios de productos.\n\n##");
-            
-            settings[pKey] = injection + pText + `\n\n(ID_ACTUALIZACION: ${new Date().getTime()})`;
-          }
-        });
-      }
-    } catch (e) { console.error("Error inyectando catálogo:", e); }
-
+    // El dashboard debe recibir los prompts limpios. 
+    // n8n usa /api/agent/prompt que ya tiene su propia inyección lógica.
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -619,7 +587,9 @@ app.post('/api/settings', async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key) throw new Error("Key is required");
-    await db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value);
+    console.log(`⚙️ Guardando configuración: ${key} (${value?.length || 0} chars)`);
+    // Usamos REPLACE INTO para máxima compatibilidad con versiones antiguas de SQLite
+    await db.run("REPLACE INTO settings (key, value) VALUES (?, ?)", key, value);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -933,8 +903,8 @@ app.get('/api/rag/context', async (req, res) => {
     if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
 
     // Cargar documentos y productos
-    const docs = await db.all("SELECT name, category, content FROM documents");
-    const prods = await db.all("SELECT nombre as name, categoria as category, descripcion || ' - Precio: ' || precio || ' - Imagen: ' || imagen || ' - Link: ' || catalog_link as content FROM products WHERE activo = 1");
+    const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
+    const prods = await db.all("SELECT nombre as name, categoria as category, COALESCE(descripcion, '') || ' - Precio: ' || COALESCE(precio, 'Consultar') || ' - Imagen: ' || COALESCE(imagen, '') || ' - Link: ' || COALESCE(catalog_link, '') as content FROM products WHERE activo = 1");
     
     const allKnowledge = [...docs, ...prods];
 
@@ -980,7 +950,7 @@ app.use('/uploads', express.static(join(__dirname, 'public/uploads')));
 app.use(express.static(join(__dirname, 'dist')));
 
 // Manejar todas las demás rutas devolviendo index.html para el router de React
-app.get('/{*path}', (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
