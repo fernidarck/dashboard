@@ -219,7 +219,8 @@ app.get('/api/leads', async (_req, res) => {
       SELECT leads.*,
              (SELECT text FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessage,
              (SELECT id FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageId,
-             (SELECT sender FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageSender
+             (SELECT sender FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageSender,
+             (SELECT timestamp FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageTime
       FROM leads ORDER BY leads.id DESC
     `);
     const parsedRows = rows.map(r => ({

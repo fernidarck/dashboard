@@ -810,12 +810,15 @@ const App = () => {
                               </div>
                               <div className="flex-1 min-w-0">
                                  <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
-                                 <p className={`text-[9px] font-black uppercase tracking-tighter ${
-                                   lead.priority === 'urgent' ? 'text-red-500' :
-                                   lead.botActive ? 'text-emerald-500' : 'text-slate-400'
-                                 }`}>
-                                    {lead.priority === 'urgent' ? '🚨 INTERVENCIÓN' : lead.botActive ? `Score: ${lead.score}%` : 'Control Manual'}
-                                 </p>
+                               <div className="flex justify-between items-center">
+                                  <p className={`text-[9px] font-black uppercase tracking-tighter ${
+                                    lead.priority === 'urgent' ? 'text-red-500' :
+                                    lead.botActive ? 'text-emerald-500' : 'text-slate-400'
+                                  }`}>
+                                     {lead.priority === 'urgent' ? '🚨 INTERVENCIÓN' : lead.botActive ? `Score: ${lead.score}%` : 'Control Manual'}
+                                  </p>
+                                  {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums">{lead.lastMessageTime}</span>}
+                               </div>
                               </div>
                            </div>
                            {lead.handoff_reason && (
@@ -836,22 +839,22 @@ const App = () => {
                <div className="flex-1 flex flex-col bg-[#FDFDFD]">
                   {/* BANNER DE HANDOFF URGENTE */}
                   {selectedLead.priority === 'urgent' && (
-                    <div className="bg-red-600 text-white px-8 py-3 flex items-center justify-between shrink-0 shadow-lg">
-                      <div className="flex items-center space-x-3">
-                        <AlertTriangle size={18} className="animate-pulse shrink-0" />
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest leading-none">Intervención Requerida</p>
-                          <p className="text-xs font-bold mt-0.5 opacity-90">⚡ {selectedLead.handoff_reason || 'Handoff detectado'}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleTakeControl(selectedLead.id)}
-                        className="bg-white text-red-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all shadow flex items-center space-x-2 shrink-0"
-                      >
-                        <UserCheck size={14} />
-                        <span>Tomar Control</span>
-                      </button>
-                    </div>
+                     <div className="bg-red-600 text-white px-8 py-3 flex items-center justify-between shrink-0 shadow-lg">
+                       <div className="flex items-center space-x-3">
+                         <AlertTriangle size={18} className="animate-pulse shrink-0" />
+                         <div>
+                           <p className="text-[10px] font-black uppercase tracking-widest leading-none">Intervención Requerida</p>
+                           <p className="text-xs font-bold mt-0.5 opacity-90">⚡ {selectedLead.handoff_reason || 'Handoff detectado'}</p>
+                         </div>
+                       </div>
+                       <button
+                         onClick={() => handleTakeControl(selectedLead.id)}
+                         className="bg-white text-red-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all shadow flex items-center space-x-2 shrink-0"
+                       >
+                         <UserCheck size={14} />
+                         <span>Tomar Control</span>
+                       </button>
+                     </div>
                   )}
                   <div className="h-20 border-b border-slate-100 px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
                      <div className="flex items-center space-x-4">
@@ -902,8 +905,9 @@ const App = () => {
                         </div>
                      ) : messages.map((msg) => (
                        <div key={msg.id} className={`flex flex-col ${msg.sender === 'client' ? 'items-start' : 'items-end'}`}>
-                          <span className="text-[10px] font-black uppercase tracking-widest mb-1 px-2 text-slate-400">
-                            {msg.sender === 'client' ? 'Cliente' : msg.sender === 'bot' ? 'Bot IA' : 'Agente'}
+                          <span className="text-[10px] font-black uppercase tracking-widest mb-1 px-2 text-slate-400 flex items-center space-x-2">
+                            <span>{msg.sender === 'client' ? 'Cliente' : msg.sender === 'bot' ? 'Bot IA' : 'Agente'}</span>
+                            {msg.timestamp && <span className="opacity-60 tabular-nums">· {msg.timestamp}</span>}
                           </span>
                           <div className={`max-w-[70%] p-5 rounded-[28px] text-sm font-medium italic leading-relaxed shadow-sm ${
                             msg.sender === 'client'
