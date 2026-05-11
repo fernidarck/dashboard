@@ -7,6 +7,8 @@ import { dirname, join } from 'path';
 import multer from 'multer';
 import pdf from 'pdf-parse';
 import fs from 'fs';
+import * as XLSX from 'xlsx';
+
 
 process.on('uncaughtException', (err) => {
   console.error('❌ UNCAUGHT EXCEPTION:', err.message);
@@ -356,7 +358,7 @@ app.post('/webhook/n8n', async (req, res) => {
       } else {
         await db.run("UPDATE leads SET estado = ?, time = ? WHERE id = ?", estado, time, existingLead.id);
       }
-      // Actualizar nombre si el actual es "Cliente Nuevo" y n8n ya capturó el real
+      // Actualizar nombre si el actual es "Cliente Nuevo" and n8n ya capturó el real
       if (nombre && nombre !== "Cliente Nuevo" && existingLead.nombre === "Cliente Nuevo") {
         await db.run("UPDATE leads SET nombre = ? WHERE id = ?", nombre, existingLead.id);
         console.log(`   ✏️ Nombre actualizado: "${existingLead.nombre}" → "${nombre}"`);
@@ -644,6 +646,15 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
       const dataBuffer = fs.readFileSync(filePath);
       const data = await pdf(dataBuffer);
       content = data.text;
+    } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || req.file.mimetype === 'application/vnd.ms-excel') {
+      const workbook = XLSX.readFile(filePath);
+      let fullText = "";
+      workbook.SheetNames.forEach(sheetName => {
+        const worksheet = workbook.Sheets[sheetName];
+        fullText += `--- Hoja: ${sheetName} ---\n`;
+        fullText += XLSX.utils.sheet_to_txt(worksheet) + "\n\n";
+      });
+      content = fullText;
     } else {
       content = fs.readFileSync(filePath, 'utf8');
     }
