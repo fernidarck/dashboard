@@ -99,6 +99,9 @@ const App = () => {
   const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'General', stock: 'En stock', imagen: '' };
   const [newProduct, setNewProduct] = useState(emptyProduct);
   const [editingLead, setEditingLead] = useState(null);
+  const [showNewCita, setShowNewCita] = useState(false);
+  const emptyCita = { cliente: '', phone: '', fecha: '', hora: '', servicio: '', duracion: '1 hora' };
+  const [newCita, setNewCita] = useState(emptyCita);
 
   const fetchDocuments = useCallback(() => {
     fetch(`${API_BASE_URL}/api/rag/documents`)
@@ -1090,34 +1093,119 @@ const App = () => {
           {activeTab === 'agenda' && (
             <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
                <div className="flex justify-between items-end">
-                  <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Agenda OneControl</h2>
-                    <p className="text-sm font-medium text-slate-400 mt-2 italic italic">Citas capturadas automáticamente por la IA</p>
-                  </div>
-                  <div className="flex space-x-3">
-                     {['Lista', 'Mes'].map(tab => (
-                        <button key={tab} onClick={() => setAgendaView(tab)} className={`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest border-2 transition-all ${agendaView === tab ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}>{tab}</button>
-                     ))}
-                  </div>
+                 <div>
+                   <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Agenda OneControl</h2>
+                   <p className="text-sm font-medium text-slate-400 mt-2 italic">Citas capturadas por la IA y agendadas manualmente</p>
+                 </div>
+                 <div className="flex space-x-3">
+                   <button onClick={() => setShowNewCita(true)} className="flex items-center space-x-2 px-6 py-3 bg-[#FF6B00] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-orange-200 hover:bg-orange-600 transition-all">
+                     <Plus size={15} /><span>Nueva Cita</span>
+                   </button>
+                   {['Lista', 'Mes'].map(tab => (
+                     <button key={tab} onClick={() => setAgendaView(tab)} className={`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest border-2 transition-all ${agendaView === tab ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}>{tab}</button>
+                   ))}
+                 </div>
                </div>
-               
+
+               {/* MODAL NUEVA CITA */}
+               {showNewCita && (
+                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                   <div className="bg-white rounded-[40px] p-10 w-full max-w-lg shadow-2xl space-y-6">
+                     <div className="flex items-center justify-between">
+                       <div>
+                         <h3 className="text-xl font-black text-slate-900 italic tracking-tight">Nueva Cita</h3>
+                         <p className="text-[11px] text-slate-400 mt-1 font-medium">Completa los datos de la cita</p>
+                       </div>
+                       <button onClick={() => { setShowNewCita(false); setNewCita(emptyCita); }} className="p-2 text-slate-400 hover:text-slate-700 transition-colors"><X size={20} /></button>
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                       <div className="col-span-2">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Cliente</label>
+                         <input type="text" placeholder="Nombre del cliente" value={newCita.cliente} onChange={e => setNewCita({...newCita, cliente: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                       </div>
+                       <div className="col-span-2">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Teléfono</label>
+                         <input type="text" placeholder="+502 0000 0000" value={newCita.phone} onChange={e => setNewCita({...newCita, phone: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                       </div>
+                       <div>
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Fecha</label>
+                         <input type="date" value={newCita.fecha} onChange={e => setNewCita({...newCita, fecha: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                       </div>
+                       <div>
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Hora</label>
+                         <input type="time" value={newCita.hora} onChange={e => setNewCita({...newCita, hora: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                       </div>
+                       <div className="col-span-2">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Servicio</label>
+                         <input type="text" placeholder="Ej: Mantenimiento motor, Instalación portón..." value={newCita.servicio} onChange={e => setNewCita({...newCita, servicio: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                       </div>
+                       <div className="col-span-2">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Duración estimada</label>
+                         <select value={newCita.duracion} onChange={e => setNewCita({...newCita, duracion: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all">
+                           {['30 min', '1 hora', '1.5 horas', '2 horas', 'Medio día', 'Todo el día'].map(d => <option key={d}>{d}</option>)}
+                         </select>
+                       </div>
+                     </div>
+                     <div className="flex justify-end space-x-3 pt-2">
+                       <button onClick={() => { setShowNewCita(false); setNewCita(emptyCita); }} className="px-6 py-3 text-[11px] font-black uppercase text-slate-400 hover:text-slate-600 transition-colors">Cancelar</button>
+                       <button onClick={async () => {
+                         if (!newCita.cliente.trim() || !newCita.fecha) return;
+                         await fetch(`${API_BASE_URL}/api/agenda`, {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify(newCita)
+                         });
+                         setShowNewCita(false);
+                         setNewCita(emptyCita);
+                         fetch(`${API_BASE_URL}/api/agenda`).then(r => r.json()).then(setAgenda);
+                         setNotification('✅ Cita agendada correctamente');
+                         setTimeout(() => setNotification(null), 3000);
+                       }} className="px-8 py-3 bg-[#FF6B00] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-orange-200 hover:bg-orange-600 transition-all">
+                         Guardar Cita
+                       </button>
+                     </div>
+                   </div>
+                 </div>
+               )}
+
                {agendaView === 'Lista' ? (
                  <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
+                   {agenda.length === 0 ? (
+                     <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                       <Calendar size={40} className="text-slate-200" />
+                       <p className="text-sm font-bold text-slate-400 italic">No hay citas agendadas</p>
+                       <button onClick={() => setShowNewCita(true)} className="flex items-center space-x-2 px-6 py-3 bg-[#FF6B00] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all">
+                         <Plus size={14} /><span>Agregar primera cita</span>
+                       </button>
+                     </div>
+                   ) : (
                    <table className="w-full text-left">
                       <thead className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                        <tr><th className="px-8 py-5">FECHA/HORA</th><th className="px-6 py-5">CLIENTE</th><th className="px-6 py-5">SERVICIO</th><th className="px-6 py-5 text-center">ESTADO</th></tr>
+                        <tr><th className="px-8 py-5">FECHA/HORA</th><th className="px-6 py-5">CLIENTE</th><th className="px-6 py-5">SERVICIO</th><th className="px-6 py-5">DURACIÓN</th><th className="px-6 py-5 text-center">ESTADO</th></tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {agenda.map( cita => (
+                        {agenda.map(cita => (
                           <tr key={cita.id} className="hover:bg-slate-50 transition-colors">
-                             <td className="px-8 py-5"><p className="text-xs font-bold text-slate-800">{cita.fecha}</p><p className="text-[10px] font-medium text-slate-400 italic mt-1 leading-none">{cita.hora}</p></td>
-                             <td className="px-6 py-5"><p className="text-xs font-black text-slate-800 leading-none">{cita.cliente}</p><p className="text-[10px] text-slate-400 font-bold mt-1 tracking-tighter leading-none">{cita.phone}</p></td>
-                             <td className="px-6 py-5 text-xs text-slate-500 italic max-w-[200px] truncate leading-relaxed">{cita.servicio}</td>
-                             <td className="px-4 py-5 text-center"><span className="bg-amber-50 text-amber-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">{cita.estado}</span></td>
+                             <td className="px-8 py-5">
+                               <p className="text-xs font-black text-slate-800">{cita.fecha}</p>
+                               <p className="text-[10px] font-bold text-[#FF6B00] mt-1">{cita.hora}</p>
+                             </td>
+                             <td className="px-6 py-5">
+                               <p className="text-xs font-black text-slate-800 leading-none">{cita.cliente}</p>
+                               <p className="text-[10px] text-slate-400 font-bold mt-1">{cita.phone}</p>
+                             </td>
+                             <td className="px-6 py-5 text-xs text-slate-600 font-semibold italic max-w-[200px]">{cita.servicio}</td>
+                             <td className="px-6 py-5">
+                               <span className="text-[10px] font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">{cita.duracion || '—'}</span>
+                             </td>
+                             <td className="px-6 py-5 text-center">
+                               <span className="bg-amber-50 text-amber-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">{cita.estado}</span>
+                             </td>
                           </tr>
                         ))}
                       </tbody>
                    </table>
+                   )}
                  </div>
                ) : <MonthView />}
             </div>
