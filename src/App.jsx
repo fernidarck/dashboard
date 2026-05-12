@@ -472,7 +472,11 @@ const App = () => {
       } else {
         setNotification('❌ Error al subir imagen');
       }
-    } catch (err) { setNotification('❌ Error de conexión'); }
+    } catch (err) { 
+      setNotification('❌ Error de conexión'); 
+    } finally {
+      setLoading(false);
+    }
     setLoading(false);
     setTimeout(() => setNotification(null), 3000);
   };
@@ -1917,15 +1921,15 @@ const App = () => {
                       </div>
                       <button onClick={() => { setShowNewProduct(false); setNewProduct(emptyProduct); }} className="text-slate-300 hover:text-slate-600"><X size={20} /></button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="md:col-span-2 space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="md:col-span-3 space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Nombre del Producto</label>
                         <input type="text" placeholder="Ej: Motor Liftmaster 1/2 HP" value={newProduct.nombre} onChange={e => setNewProduct(p => ({...p, nombre: e.target.value}))}
                           className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-slate-900 transition-all" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Precio</label>
-                        <input type="text" placeholder="Ej: Q1,200.00" value={newProduct.precio} onChange={e => setNewProduct(p => ({...p, precio: e.target.value}))}
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Precio (Q)</label>
+                        <input type="text" placeholder="1,200.00" value={newProduct.precio} onChange={e => setNewProduct(p => ({...p, precio: e.target.value}))}
                           className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-slate-900 transition-all" />
                       </div>
                     </div>
@@ -1987,14 +1991,14 @@ const App = () => {
                       </div>
                       <button onClick={() => setEditingProduct(null)} className="text-slate-300 hover:text-slate-600"><X size={20} /></button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="md:col-span-2 space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Nombre</label>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="md:col-span-3 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Nombre del Producto</label>
                         <input type="text" value={editingProduct.nombre} onChange={e => setEditingProduct(p => ({...p, nombre: e.target.value}))}
                           className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-[#FF6B00] transition-all" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Precio</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Precio (Q)</label>
                         <input type="text" value={editingProduct.precio} onChange={e => setEditingProduct(p => ({...p, precio: e.target.value}))}
                           className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic focus:ring-2 focus:ring-[#FF6B00] transition-all" />
                       </div>
