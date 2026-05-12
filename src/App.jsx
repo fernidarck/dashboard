@@ -8,7 +8,7 @@ import {
   Bot, Sparkles, BookOpen, Tag, LineChart, Globe, Link2
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://187.124.146.232:3002';
+const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 const CURRENT_USER_ID = 'fer';
 
 // --- STYLES & CONSTANTS ---
