@@ -97,6 +97,17 @@ async function setup() {
     console.log("✅ Conexión establecida.");
 
     console.log("🏗️ Asegurando tablas...");
+    
+    // Diagnóstico de Frontend
+    const distPath = join(__dirname, 'dist');
+    console.log(`📂 Verificando archivos estáticos en: ${distPath}`);
+    if (fs.existsSync(distPath)) {
+      const files = fs.readdirSync(distPath);
+      console.log(`   ✅ Carpeta dist encontrada. Archivos: ${files.join(', ')}`);
+    } else {
+      console.log(`   ⚠️ ADVERTENCIA: Carpeta dist NO encontrada. El frontend no cargará.`);
+    }
+
     await db.exec(`CREATE TABLE IF NOT EXISTS leads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nombre TEXT,
