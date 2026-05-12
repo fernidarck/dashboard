@@ -9,7 +9,7 @@ import {
   TrendingUp, Globe, Mail, Phone, Lock, Trash2,
   PieChart, ArrowUpRight, Sparkles, Paperclip, SendHorizontal, X,
   BadgeCheck, Handshake, Trophy, ThumbsDown, Briefcase, UserCircle,
-  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen, ShoppingBag
+  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen, ShoppingBag, Archive, Mail, Trash
 } from 'lucide-react';
 
 
@@ -207,6 +207,38 @@ const App = () => {
     }
   };
 
+  const handleArchiveLead = async (id, currentStatus) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/leads/${id}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !currentStatus })
+      });
+      fetchLeads();
+      setNotification(currentStatus ? 'Lead restaurado' : 'Lead archivado');
+      setTimeout(() => setNotification(null), 2000);
+    } catch(err) { setNotification(`❌ Error: ${err.message}`); }
+  };
+
+  const handleDeleteMessages = async (id) => {
+    if (!confirm('¿Eliminar todos los mensajes de esta conversación? Esta acción no se puede deshacer.')) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/leads/${id}/messages`, { method: 'DELETE' });
+      setNotification('✅ Mensajes eliminados');
+      setTimeout(() => setNotification(null), 2000);
+    } catch(err) { setNotification(`❌ Error: ${err.message}`); }
+  };
+
+  const handleDeleteLead = async (id) => {
+    if (!confirm('¿Eliminar cliente y toda su información por completo?')) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/leads/${id}`, { method: 'DELETE' });
+      fetchLeads();
+      setNotification('🗑️ Cliente eliminado');
+      setTimeout(() => setNotification(null), 2000);
+    } catch(err) { setNotification(`❌ Error: ${err.message}`); }
+  };
+
   const handleUpdateLead = async () => {
     if (!editingLead) return;
     try {
@@ -222,7 +254,11 @@ const App = () => {
           nit: editingLead.nit,
           motor: editingLead.motor,
           falla: editingLead.falla,
-          zona: editingLead.zona
+          zona: editingLead.zona,
+          etiquetas: editingLead.etiquetas,
+          whatsapp_id: editingLead.whatsapp_id,
+          score: editingLead.score,
+          estado: editingLead.estado
         })
       });
       if (!res.ok) throw new Error("Error al actualizar");
@@ -664,7 +700,7 @@ const App = () => {
                   </span>
                 )}
               </div>
-              <SidebarItem icon={Users} label="CRM & Leads" id="crm" />
+              <SidebarItem icon={Users} label="Base de Clientes" id="crm" />
               <SidebarItem icon={Calendar} label="Agenda IA" id="agenda" />
               <SidebarItem icon={ShoppingBag} label="Pedidos IA" id="pedidos" />
             </div>
@@ -760,18 +796,6 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* ── PANEL DEBUG NOTIFICACIONES (temporal) ── */}
-                {debugInfo && (
-                  <div className="bg-slate-900 text-emerald-400 p-4 rounded-2xl font-mono text-[10px] space-y-1 border border-emerald-900">
-                    <p className="font-black text-emerald-300 uppercase tracking-widest">🔍 Debug Notificaciones — Última poll: {debugInfo.time}</p>
-                    <p>Leads previos en memoria: <span className="text-white font-black">{debugInfo.prevCount}</span></p>
-                    {debugInfo.leads.map((l, i) => (
-                      <p key={i}>Lead {l.id} ({l.nombre}): lastMsgId=<span className="text-yellow-300 font-black">{l.lastMsgId ?? 'null'}</span> sender=<span className="text-blue-300">{l.sender ?? 'null'}</span></p>
-                    ))}
-                    <p className="text-slate-500 italic">Haz clic en "Test" (arriba derecha) para probar el sonido y toast.</p>
-                  </div>
-                )}
-
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   {[
                     { l: 'Tus Leads', v: totalLeads, i: Target, c: 'text-blue-600', bg: 'bg-blue-50' },
@@ -787,40 +811,6 @@ const App = () => {
                       <h3 className={`text-3xl font-black tracking-tighter ${s.c} relative z-10`}>{s.v}</h3>
                     </div>
                   ))}
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="bg-slate-900 p-10 rounded-[40px] text-white flex flex-col justify-between shadow-2xl relative overflow-hidden">
-                     <div className="relative z-10">
-                        <p className="text-[10px] font-black text-[#FF6B00] uppercase tracking-[0.3em] mb-4">Performance IA</p>
-                        <h4 className="text-2xl font-black italic mb-2 tracking-tight">
-                          Tu Agente IA ha gestionado <span className="text-emerald-400">{totalLeads} leads</span> y ahorrado aprox. <span className="text-emerald-400">{horasAhorradas}h</span> de atención.
-                        </h4>
-                        <p className="text-slate-400 text-xs font-bold mt-4">
-                          {leads.filter(l => l.botActive).length} con bot activo · {leads.filter(l => !l.botActive).length} en control manual
-                        </p>
-                     </div>
-                     <ArrowUpRight className="absolute -right-8 -top-8 text-white/5 w-64 h-64" />
-                  </div>
-                  <div className="bg-white p-10 rounded-[40px] border border-slate-200 flex flex-col justify-between shadow-sm">
-                     <div className="flex justify-between items-start mb-6">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Distribución de Leads</p>
-                        <PieChart size={20} className="text-slate-300" />
-                     </div>
-                     <div className="space-y-4">
-                        {origenes.length > 0 ? origenes.map(([origen, count], idx) => (
-                          <div key={idx} className="flex items-center justify-between">
-                             <span className="text-xs font-bold text-slate-500 truncate max-w-[120px]">{origen}</span>
-                             <div className="flex-1 mx-4 h-1.5 bg-slate-50 rounded-full overflow-hidden">
-                                <div className="h-full bg-[#FF6B00] rounded-full transition-all" style={{width: `${Math.round((count / maxOrigen) * 100)}%`}}></div>
-                             </div>
-                             <span className="text-[10px] font-black text-slate-800">{Math.round((count / totalLeads) * 100)}%</span>
-                          </div>
-                        )) : (
-                          <p className="text-slate-400 text-xs italic text-center">Sin datos de leads aún</p>
-                        )}
-                     </div>
-                  </div>
                 </div>
               </div>
             );
@@ -883,25 +873,6 @@ const App = () => {
                </div>
 
                <div className="flex-1 flex flex-col bg-[#FDFDFD]">
-                  {/* BANNER DE HANDOFF URGENTE */}
-                  {selectedLead.priority === 'urgent' && (
-                     <div className="bg-red-600 text-white px-8 py-3 flex items-center justify-between shrink-0 shadow-lg">
-                       <div className="flex items-center space-x-3">
-                         <AlertTriangle size={18} className="animate-pulse shrink-0" />
-                         <div>
-                           <p className="text-[10px] font-black uppercase tracking-widest leading-none">Intervención Requerida</p>
-                           <p className="text-xs font-bold mt-0.5 opacity-90">⚡ {selectedLead.handoff_reason || 'Handoff detectado'}</p>
-                         </div>
-                       </div>
-                       <button
-                         onClick={() => handleTakeControl(selectedLead.id)}
-                         className="bg-white text-red-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all shadow flex items-center space-x-2 shrink-0"
-                       >
-                         <UserCheck size={14} />
-                         <span>Tomar Control</span>
-                       </button>
-                     </div>
-                  )}
                   <div className="h-20 border-b border-slate-100 px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
                      <div className="flex items-center space-x-4">
                         <div className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00]">OC</div>
@@ -912,37 +883,39 @@ const App = () => {
                            </p>
                         </div>
                      </div>
-                     <button onClick={async () => {
-                        const newState = !selectedLead.botActive;
-                        const leadId = selectedLead.id;
-                        console.log(`[BOT TOGGLE] leadId=${leadId}, newState=${newState}, selectedLead.botActive=${selectedLead.botActive}`);
-                        if (!leadId) {
-                          setNotification('❌ Error: leadId es 0 — selecciona un contacto');
-                          setTimeout(() => setNotification(null), 5000);
-                          return;
-                        }
-                        setLeads(prev => prev.map(l => l.id === leadId ? {...l, botActive: newState} : l));
-                        try {
-                          const res = await fetch(`${API_BASE_URL}/api/bot/toggle`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ leadId, enabled: newState })
-                          });
-                          const json = await res.json();
-                          console.log('[BOT TOGGLE] Respuesta servidor:', res.status, json);
-                          if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-                          setNotification(newState ? `✅ Bot activado (lead ${leadId})` : `🔴 Bot desactivado (lead ${leadId})`);
-                          setTimeout(() => setNotification(null), 3000);
-                          fetchLeads();
-                        } catch(err) {
-                          console.error('[BOT TOGGLE] Error:', err);
-                          setLeads(prev => prev.map(l => l.id === leadId ? {...l, botActive: !newState} : l));
-                          setNotification(`❌ Error toggle: ${err.message}`);
-                          setTimeout(() => setNotification(null), 8000);
-                        }
-                     }} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedLead.botActive ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'}`}>
-                        {selectedLead.botActive ? 'Desactivar Bot' : 'Activar Bot'}
-                     </button>
+                     <div className="flex items-center space-x-2">
+                        <button 
+                          onClick={() => handleArchiveLead(selectedLead.id, selectedLead.archived)}
+                          title="Archivar Conversación"
+                          className="p-2.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-100 transition-all"
+                        >
+                          <Archive size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteMessages(selectedLead.id)}
+                          title="Eliminar Mensajes"
+                          className="p-2.5 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition-all"
+                        >
+                          <Trash size={16} />
+                        </button>
+                        <button onClick={async () => {
+                           const newState = !selectedLead.botActive;
+                           const leadId = selectedLead.id;
+                           if (!leadId) return;
+                           setLeads(prev => prev.map(l => l.id === leadId ? {...l, botActive: newState} : l));
+                           try {
+                             await fetch(`${API_BASE_URL}/api/bot/toggle`, {
+                               method: 'POST',
+                               headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ leadId, enabled: newState })
+                             });
+                             setNotification(newState ? `✅ Bot activado` : `🔴 Bot desactivado`);
+                             setTimeout(() => setNotification(null), 3000);
+                           } catch(err) { fetchLeads(); }
+                        }} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedLead.botActive ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                           {selectedLead.botActive ? 'Desactivar Bot' : 'Activar Bot'}
+                        </button>
+                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar bg-slate-50/20">
                      {messages.length === 0 ? (
@@ -962,34 +935,14 @@ const App = () => {
                               ? 'bg-emerald-700 text-white rounded-tr-none border-r-4 border-emerald-400'
                               : 'bg-slate-800 text-white rounded-tr-none border-r-4 border-[#FF6B00]'
                           }`}>
-                             {msg.mediaUrl && (
-                               <div className="mb-3">
-                                 <img 
-                                   src={msg.mediaUrl} 
-                                   alt="Media" 
-                                   className="rounded-xl max-w-full h-auto border border-slate-200/50 cursor-pointer hover:opacity-90 transition-opacity min-h-[100px] bg-slate-100" 
-                                   onClick={() => window.open(msg.mediaUrl, '_blank')}
-                                   onError={(e) => {
-                                     console.error("Error cargando imagen:", msg.mediaUrl);
-                                     e.target.style.display = 'none';
-                                     const p = document.createElement('p');
-                                     p.className = 'text-[10px] text-red-400 font-bold italic';
-                                     p.innerText = '⚠️ Error al cargar imagen (El enlace podría ser privado o haber caducado)';
-                                     e.target.parentNode.appendChild(p);
-                                   }}
-                                 />
-                               </div>
-                             )}
                              {msg.text}
                           </div>
                        </div>
                      ))}
-                     <div ref={messagesEndRef} />
                   </div>
                   <div className="p-8 bg-white border-t border-slate-100">
                      <div className="max-w-4xl mx-auto flex space-x-4">
                         <div className="flex-1 relative flex items-center">
-                           <Paperclip size={18} className="absolute left-4 text-slate-400 cursor-pointer" />
                            <input 
                              type="text" 
                              placeholder="Intervenir chat..." 
@@ -1005,100 +958,124 @@ const App = () => {
                </div>
             </div>
           )}
+           {/* VIEW: CLIENTES (CRM EVOLUCIONADO) */}
+           {activeTab === 'crm' && (
+              <div className="max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                 <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Base de Clientes</h2>
+                      <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Control total de datos, estados y seguimiento</p>
+                    </div>
+                    <div className="flex space-x-4">
+                       <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                          <input type="text" placeholder="Buscar cliente..." className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none w-64 shadow-sm italic" />
+                       </div>
+                    </div>
+                 </div>
 
-          {/* VIEW: CRM & LEADS */}
-          {activeTab === 'crm' && (
-             <div className="max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-                <div className="flex justify-between items-start">
-                   <div>
-                     <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Gestión de Leads</h2>
-                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Calificación y seguimiento automático</p>
-                   </div>
-                   <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <input type="text" placeholder="Buscar cliente..." className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none w-64 shadow-sm italic" />
-                   </div>
-                </div>
-
-                <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
-                   <table className="w-full text-left min-w-[900px]">
-                      <thead className="bg-slate-50 border-b border-slate-100">
-                         <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                            <th className="px-10 py-6">CLIENTE</th>
-                            <th className="px-6 py-6">TELÉFONO</th>
-                            <th className="px-6 py-6">NIT</th>
-                            <th className="px-6 py-6">DIRECCIÓN</th>
-                            <th className="px-6 py-6">NOTAS</th>
-                            <th className="px-6 py-6 text-center">ESTADO</th>
-                            <th className="px-10 py-6 text-right">ACCIONES</th>
-                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                         {leads.map(lead => (
-                           <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors group">
-                              {/* CLIENTE */}
-                              <td className="px-10 py-5">
-                                 <div className="flex items-center space-x-3">
-                                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${lead.priority === 'urgent' ? 'bg-red-600 text-white' : 'bg-slate-900 text-[#FF6B00]'}`}>
-                                       {lead.priority === 'urgent' ? '🚨' : lead.nombre[0]}
-                                    </div>
-                                    <div>
-                                       <p className="text-sm font-black text-slate-800 leading-none group-hover:text-[#FF6B00] transition-colors">{lead.nombre}</p>
-                                       <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{lead.origen || 'WhatsApp'}</p>
-                                    </div>
-                                 </div>
-                              </td>
-                              {/* TELÉFONO */}
-                              <td className="px-6 py-5">
-                                 <span className="text-[11px] font-bold text-slate-700 tabular-nums">{lead.phone || '—'}</span>
-                              </td>
-                              {/* NIT */}
-                              <td className="px-6 py-5">
-                                 {lead.nit
-                                   ? <span className="px-3 py-1 bg-orange-50 border border-orange-100 text-[#FF6B00] text-[10px] font-black rounded-lg">{lead.nit}</span>
-                                   : <span className="text-[10px] text-slate-300 italic font-medium">Sin NIT</span>
-                                 }
-                              </td>
-                              {/* DIRECCIÓN */}
-                              <td className="px-6 py-5 max-w-[200px]">
-                                 {lead.direccion
-                                   ? <span className="text-[11px] font-semibold text-slate-700 leading-tight line-clamp-2">{lead.direccion}</span>
-                                   : <span className="text-[10px] text-slate-300 italic font-medium">Sin dirección</span>
-                                 }
-                              </td>
-                              {/* NOTAS */}
-                              <td className="px-6 py-5 max-w-[200px]">
-                                 {lead.notas
-                                   ? <span className="text-[11px] font-semibold text-slate-500 italic leading-tight line-clamp-2">"{lead.notas}"</span>
-                                   : <span className="text-[10px] text-slate-300 italic font-medium">Sin notas</span>
-                                 }
-                              </td>
-                              {/* ESTADO */}
-                              <td className="px-6 py-5 text-center">
-                                 <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                                   lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
-                                   lead.botActive ? 'bg-emerald-50 text-emerald-600' :
-                                   'bg-slate-100 text-slate-500'
-                                 }`}>{lead.estado || 'Nuevo'}</span>
-                              </td>
-                              {/* ACCIONES */}
-                              <td className="px-10 py-5 text-right">
-                                 <div className="flex items-center justify-end space-x-2">
-                                    <button onClick={() => setEditingLead({...lead})} title="Editar datos" className="p-2 rounded-xl bg-orange-50 text-[#FF6B00] hover:bg-orange-100 transition-colors border border-orange-100">
-                                      <Pencil size={15} />
-                                    </button>
-                                    <button title="Marcar resuelto" className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors border border-emerald-100">
-                                      <CheckCircle2 size={15} />
-                                    </button>
-                                 </div>
-                              </td>
-                           </tr>
-                         ))}
-                      </tbody>
-                   </table>
-                </div>
-             </div>
-          )}
+                 <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
+                    <table className="w-full text-left min-w-[1200px]">
+                       <thead className="bg-slate-50 border-b border-slate-100">
+                          <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                             <th className="px-8 py-6">CLIENTE / ID</th>
+                             <th className="px-6 py-6">CONTACTO</th>
+                             <th className="px-6 py-6">DATOS CAPTURADOS</th>
+                             <th className="px-6 py-6">ESTADO / SCORE</th>
+                             <th className="px-6 py-6">PROGRESO</th>
+                             <th className="px-6 py-6">ETIQUETAS</th>
+                             <th className="px-8 py-6 text-right">ACCIONES</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100">
+                          {leads.filter(l => !l.archived).map(lead => (
+                            <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors group">
+                               <td className="px-8 py-5">
+                                  <div className="flex items-center space-x-3">
+                                     <div className={`h-12 w-12 rounded-[18px] flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${lead.priority === 'urgent' ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-900 text-[#FF6B00]'}`}>
+                                        {lead.priority === 'urgent' ? '!' : (lead.nombre?.[0] || '?')}
+                                     </div>
+                                     <div>
+                                        <p className="text-sm font-black text-slate-800 leading-none group-hover:text-[#FF6B00] transition-colors">{lead.nombre}</p>
+                                        <p className="text-[9px] font-bold text-slate-400 mt-1.5 uppercase tracking-tighter">ID WA: {lead.whatsapp_id || lead.phone || '—'}</p>
+                                        <p className="text-[8px] font-black text-slate-300 mt-0.5 tracking-widest uppercase">REGISTRO: {lead.time || '—'}</p>
+                                     </div>
+                                  </div>
+                               </td>
+                               <td className="px-6 py-5">
+                                  <div className="space-y-1">
+                                     <div className="flex items-center space-x-2 text-[11px] font-black text-slate-700">
+                                        <Phone size={10} className="text-slate-300" />
+                                        <span>{lead.phone || '—'}</span>
+                                     </div>
+                                     <div className="flex items-center space-x-2 text-[10px] font-bold text-slate-400 italic">
+                                        <Mail size={10} className="text-slate-300" />
+                                        <span>{lead.email || '—'}</span>
+                                     </div>
+                                  </div>
+                               </td>
+                               <td className="px-6 py-5 max-w-[200px]">
+                                  <div className="space-y-1.5">
+                                     {lead.nit && <p className="text-[9px] font-black text-[#FF6B00] bg-orange-50 border border-orange-100 px-2 py-0.5 rounded w-fit uppercase tracking-widest">NIT: {lead.nit}</p>}
+                                     {lead.direccion && <p className="text-[10px] font-bold text-slate-600 leading-tight line-clamp-1">📍 {lead.direccion}</p>}
+                                     {lead.notas && <p className="text-[9px] font-medium text-slate-400 italic line-clamp-1 leading-none">"{lead.notas}"</p>}
+                                     {!lead.nit && !lead.direccion && !lead.notas && <span className="text-[10px] text-slate-300 italic">Sin datos capturados</span>}
+                                  </div>
+                               </td>
+                               <td className="px-6 py-5">
+                                  <div className="flex flex-col space-y-2">
+                                     <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest w-fit shadow-sm ${
+                                       lead.priority === 'urgent' ? 'bg-red-500 text-white' :
+                                       lead.estado === 'Venta' ? 'bg-emerald-500 text-white' :
+                                       'bg-slate-100 text-slate-600'
+                                     }`}>{lead.estado || 'Nuevo'}</span>
+                                     <div className="flex items-center space-x-1">
+                                        {[1,2,3,4,5].map(s => (
+                                          <div key={s} className={`h-1.5 w-1.5 rounded-full ${s <= (lead.score || 0)/20 ? 'bg-amber-400' : 'bg-slate-200'}`} />
+                                        ))}
+                                        <span className="text-[10px] font-black text-slate-400 ml-1">{(lead.score || 0)}%</span>
+                                     </div>
+                                  </div>
+                               </td>
+                               <td className="px-6 py-5">
+                                  <div className="w-32 space-y-1.5">
+                                     <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+                                        <span>PASO {lead.estado === 'Venta' ? '3/3' : '1/3'}</span>
+                                        <span>{lead.estado === 'Venta' ? '100%' : '33%'}</span>
+                                     </div>
+                                     <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                        <div className={`h-full transition-all duration-1000 ${lead.estado === 'Venta' ? 'w-full bg-emerald-500' : 'w-1/3 bg-slate-300'}`} />
+                                     </div>
+                                  </div>
+                               </td>
+                               <td className="px-6 py-5">
+                                  <div className="flex flex-wrap gap-1 max-w-[120px]">
+                                     {(lead.etiquetas || '').split(',').filter(e => e.trim()).map((tag, i) => (
+                                       <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md text-[8px] font-black uppercase tracking-tighter border border-slate-200">{tag.trim()}</span>
+                                     ))}
+                                     {!lead.etiquetas && <span className="text-[9px] text-slate-300 italic font-bold tracking-widest uppercase">Sin tags</span>}
+                                  </div>
+                               </td>
+                               <td className="px-8 py-5 text-right">
+                                  <div className="flex items-center justify-end space-x-1.5">
+                                     <button onClick={() => setEditingLead({...lead})} title="Editar Cliente" className="p-2.5 rounded-xl bg-slate-900 text-[#FF6B00] hover:bg-black transition-all shadow-sm">
+                                       <Pencil size={14} />
+                                     </button>
+                                     <button onClick={() => handleArchiveLead(lead.id, lead.archived)} title="Archivar" className="p-2.5 rounded-xl bg-amber-50 text-amber-600 hover:bg-amber-100 transition-all border border-amber-100">
+                                       <Archive size={14} />
+                                     </button>
+                                     <button onClick={() => handleDeleteLead(lead.id)} title="Eliminar Cliente" className="p-2.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-all border border-red-100">
+                                       <Trash size={14} />
+                                     </button>
+                                  </div>
+                               </td>
+                            </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+              </div>
+           )}
 
           {/* VIEW: AGENDA */}
           {activeTab === 'agenda' && (
@@ -1887,11 +1864,25 @@ const App = () => {
                   <input type="text" value={editingLead.nit || ''} onChange={e => setEditingLead({...editingLead, nit: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" placeholder="Ej: 1234567-8" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Zona / Ubicación</label>
-                  <input type="text" value={editingLead.zona || ''} onChange={e => setEditingLead({...editingLead, zona: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Etiquetas (separadas por coma)</label>
+                  <input type="text" value={editingLead.etiquetas || ''} onChange={e => setEditingLead({...editingLead, etiquetas: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" placeholder="Ej: VIP, Cliente Fiel, Motor..." />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">ID WhatsApp / Usuario</label>
+                  <input type="text" value={editingLead.whatsapp_id || ''} onChange={e => setEditingLead({...editingLead, whatsapp_id: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Estado</label>
+                  <select value={editingLead.estado || 'Nuevo'} onChange={e => setEditingLead({...editingLead, estado: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                    {['Nuevo', 'Calificado', 'Venta', 'Soporte', 'Rechazado'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Puntuación (%)</label>
+                  <input type="number" value={editingLead.score || 0} onChange={e => setEditingLead({...editingLead, score: parseInt(e.target.value)})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Notas del Cliente</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Notas del Cliente</label>
                   <textarea value={editingLead.notas || ''} onChange={e => setEditingLead({...editingLead, notas: e.target.value})} className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic resize-none" placeholder="Cualquier observación importante..." />
                 </div>
               </div>

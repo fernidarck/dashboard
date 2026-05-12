@@ -118,6 +118,9 @@ async function setup() {
     try { await db.exec(`ALTER TABLE leads ADD COLUMN direccion TEXT`); } catch(_) {}
     try { await db.exec(`ALTER TABLE leads ADD COLUMN notas TEXT`); } catch(_) {}
     try { await db.exec(`ALTER TABLE leads ADD COLUMN nit TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN etiquetas TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN whatsapp_id TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN archived INTEGER DEFAULT 0`); } catch(_) {}
     try { await db.exec(`ALTER TABLE products ADD COLUMN imagen TEXT`); } catch(_) {}
     try { await db.exec(`ALTER TABLE products ADD COLUMN catalog_link TEXT`); } catch(_) {}
 
@@ -608,6 +611,32 @@ app.get('/api/bot/status/:phone', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Archivar lead
+app.post('/api/leads/:id/archive', async (req, res) => {
+  try {
+    const { archived } = req.body;
+    await db.run("UPDATE leads SET archived = ? WHERE id = ?", archived ? 1 : 0, req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Eliminar conversación (mensajes)
+app.delete('/api/leads/:id/messages', async (req, res) => {
+  try {
+    await db.run("DELETE FROM messages WHERE lead_id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Eliminar lead completo
+app.delete('/api/leads/:id', async (req, res) => {
+  try {
+    await db.run("DELETE FROM messages WHERE lead_id = ?", req.params.id);
+    await db.run("DELETE FROM leads WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── PEDIDOS (Sistema de Órdenes) ─────────────────────────────────────────────
@@ -978,7 +1007,7 @@ app.get('/api/products/context', async (_req, res) => {
 // Endpoint para que n8n actualice datos del contacto (nombre, email, etc.)
 app.post('/api/leads/update-contact', async (req, res) => {
   try {
-    const { phone, leadId, nombre, email, motor, falla, zona, direccion, notas, nit } = req.body;
+    const { phone, leadId, nombre, email, motor, falla, zona, direccion, notas, nit, etiquetas, whatsapp_id, score, estado } = req.body;
     let id = leadId;
 
     if (!id && phone) {
@@ -1000,6 +1029,10 @@ app.post('/api/leads/update-contact', async (req, res) => {
     if (direccion) { updates.push("direccion = ?"); values.push(direccion); }
     if (notas)     { updates.push("notas = ?");     values.push(notas); }
     if (nit)       { updates.push("nit = ?");       values.push(nit); }
+    if (etiquetas) { updates.push("etiquetas = ?"); values.push(etiquetas); }
+    if (whatsapp_id) { updates.push("whatsapp_id = ?"); values.push(whatsapp_id); }
+    if (score !== undefined) { updates.push("score = ?"); values.push(score); }
+    if (estado)    { updates.push("estado = ?");    values.push(estado); }
 
     if (updates.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
 
