@@ -662,76 +662,6 @@ const App = () => {
     );
   };
 
-  return (
-    <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-hidden">
-      {/* Sidebar Overlay for Mobile */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] md:hidden animate-in fade-in duration-300"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`fixed md:static inset-y-0 left-0 w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto no-scrollbar z-[101] transition-transform duration-500 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="p-8">
-          <div className="flex items-center justify-between mb-10">
-            <div className="flex items-center space-x-3">
-              <div className="bg-[#FF6B00] p-2.5 rounded-2xl shadow-xl shadow-orange-100 ring-4 ring-orange-50">
-                <Zap className="text-white" size={24} />
-              </div>
-              <div>
-                <h1 className="text-xl font-black leading-none tracking-tighter uppercase italic text-slate-800">OneControl</h1>
-                <span className="text-[9px] text-[#FF6B00] font-black uppercase tracking-[0.3em]">SaaS Elite v4.0</span>
-              </div>
-            </div>
-            <button onClick={() => setSidebarOpen(false)} className="md:hidden p-2 text-slate-400">
-               <X size={20} />
-            </button>
-          </div>
-
-          <nav className="space-y-6">
-            <div>
-              <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Negocio</p>
-              <SidebarItem icon={LayoutDashboard} label="Dashboard" id="dashboard" />
-              <div className="relative">
-                <SidebarItem icon={MessageSquare} label="Conversaciones" id="conversaciones" />
-                {leads.filter(l => l.priority === 'urgent').length > 0 && (
-                  <span className="absolute top-2 right-4 h-5 w-5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-lg">
-                    {leads.filter(l => l.priority === 'urgent').length}
-                  </span>
-                )}
-              </div>
-              <SidebarItem icon={Users} label="Base de Clientes" id="crm" />
-              <SidebarItem icon={Calendar} label="Agenda IA" id="agenda" />
-              <SidebarItem icon={ShoppingBag} label="Pedidos IA" id="pedidos" />
-            </div>
-            <div>
-              <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
-              <SidebarItem icon={Brain} label="Agente IA" id="cerebro" />
-              <SidebarItem icon={Database} label="Base RAG" id="rag" />
-            </div>
-          </nav>
-        </div>
-
-        <div className="mt-auto p-8 border-t border-slate-100 bg-slate-50/30">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              <ShieldCheck size={14} className="text-emerald-500" />
-              <span>Maestro Activo</span>
-            </div>
-            <div className="text-[9px] font-bold text-slate-400">ID: {CURRENT_USER_ID}</div>
-          </div>
-          <button 
-            onClick={() => { setBotEnabled(!botEnabled); handleAction('toggle_bot', { enabled: !botEnabled }); }}
-            className={`w-full py-3 rounded-2xl flex items-center justify-center space-x-2 font-black text-[10px] uppercase tracking-widest transition-all ${botEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-200 text-slate-500'}`}
-          >
-            <Power size={14} />
-            <span>IA {botEnabled ? 'Encendida' : 'Manual'}</span>
-          </button>
-        </div>
-      </aside>
-
   const renderClientSidebar = (lead) => {
     if (!lead) return (
       <div className="w-80 border-l border-slate-100 bg-white flex flex-col items-center justify-center p-8 text-center space-y-4">
@@ -884,6 +814,77 @@ const App = () => {
       </div>
     );
   };
+
+  return (
+    <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-hidden">
+      {/* Sidebar Overlay for Mobile */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] md:hidden animate-in fade-in duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`fixed md:static inset-y-0 left-0 w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto no-scrollbar z-[101] transition-transform duration-500 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="p-8">
+          <div className="flex items-center justify-between mb-10">
+            <div className="flex items-center space-x-3">
+              <div className="bg-[#FF6B00] p-2.5 rounded-2xl shadow-xl shadow-orange-100 ring-4 ring-orange-50">
+                <Zap className="text-white" size={24} />
+              </div>
+              <div>
+                <h1 className="text-xl font-black leading-none tracking-tighter uppercase italic text-slate-800">OneControl</h1>
+                <span className="text-[9px] text-[#FF6B00] font-black uppercase tracking-[0.3em]">SaaS Elite v4.0</span>
+              </div>
+            </div>
+            <button onClick={() => setSidebarOpen(false)} className="md:hidden p-2 text-slate-400">
+               <X size={20} />
+            </button>
+          </div>
+
+          <nav className="space-y-6">
+            <div>
+              <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Negocio</p>
+              <SidebarItem icon={LayoutDashboard} label="Dashboard" id="dashboard" />
+              <div className="relative">
+                <SidebarItem icon={MessageSquare} label="Conversaciones" id="conversaciones" />
+                {leads.filter(l => l.priority === 'urgent').length > 0 && (
+                  <span className="absolute top-2 right-4 h-5 w-5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-lg">
+                    {leads.filter(l => l.priority === 'urgent').length}
+                  </span>
+                )}
+              </div>
+              <SidebarItem icon={Users} label="Base de Clientes" id="crm" />
+              <SidebarItem icon={Calendar} label="Agenda IA" id="agenda" />
+              <SidebarItem icon={ShoppingBag} label="Pedidos IA" id="pedidos" />
+            </div>
+            <div>
+              <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
+              <SidebarItem icon={Brain} label="Agente IA" id="cerebro" />
+              <SidebarItem icon={Database} label="Base RAG" id="rag" />
+            </div>
+          </nav>
+        </div>
+
+        <div className="mt-auto p-8 border-t border-slate-100 bg-slate-50/30">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <ShieldCheck size={14} className="text-emerald-500" />
+              <span>Maestro Activo</span>
+            </div>
+            <div className="text-[9px] font-bold text-slate-400">ID: {CURRENT_USER_ID}</div>
+          </div>
+          <button 
+            onClick={() => { setBotEnabled(!botEnabled); handleAction('toggle_bot', { enabled: !botEnabled }); }}
+            className={`w-full py-3 rounded-2xl flex items-center justify-center space-x-2 font-black text-[10px] uppercase tracking-widest transition-all ${botEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-200 text-slate-500'}`}
+          >
+            <Power size={14} />
+            <span>IA {botEnabled ? 'Encendida' : 'Manual'}</span>
+          </button>
+        </div>
+      </aside>
+
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC]">
