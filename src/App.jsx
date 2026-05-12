@@ -343,7 +343,7 @@ const App = () => {
   const handleSaveCard = async () => {
     if (!newCard.name.trim() || !newCard.content.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/api/documents`, {
+      await fetch(`${API_BASE_URL}/api/rag/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCard)
@@ -358,7 +358,7 @@ const App = () => {
 
   const handleUpdateCard = async (id) => {
     try {
-      await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+      await fetch(`${API_BASE_URL}/api/rag/documents/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingCard)
@@ -403,7 +403,7 @@ const App = () => {
   const handleDeleteDocument = async (id) => {
     if (!window.confirm('¿Eliminar esta tarjeta de conocimiento?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/documents/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/api/rag/documents/${id}`, { method: 'DELETE' });
       fetchRAG();
     } catch (err) { console.error(err); }
   };
