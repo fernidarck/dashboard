@@ -5,7 +5,7 @@ import {
   MoreVertical, CheckCircle2, AlertTriangle, UserCircle, Phone, 
   Pencil, Trash2, Plus, Save, TrendingUp, Target, Archive,
   RefreshCw, Power, ShieldCheck, ChevronRight, ChevronLeft,
-  Bot, Sparkles, BookOpen, Tag, LineChart
+  Bot, Sparkles, BookOpen, Tag, LineChart, Globe, Link2
 } from 'lucide-react';
 
 const API_BASE_URL = 'http://187.124.146.232:3002';
@@ -619,7 +619,7 @@ const App = () => {
                 onClick={() => handleDeleteMessages(lead.id)}
                 className="w-full py-3.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 border border-red-100 hover:bg-red-100 transition-all active:scale-95"
               >
-                <Trash size={14} />
+                <Trash2 size={14} />
                 <span>Eliminar conversación</span>
               </button>
            </div>
@@ -872,7 +872,7 @@ const App = () => {
                           title="Eliminar Mensajes"
                           className="p-2.5 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition-all"
                         >
-                          <Trash size={16} />
+                          <Trash2 size={16} />
                         </button>
                         <button 
                           onClick={() => setShowClientSidebarChat(!showClientSidebarChat)}
