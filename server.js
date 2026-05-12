@@ -35,9 +35,25 @@ console.log(`📌 Webhook detectado: ${N8N_OUTBOUND_WEBHOOK}`);
 app.use(cors());
 app.use(express.json());
 
+// Logger de peticiones (Para depuración en logs de EasyPanel)
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 // --- HEALTH CHECK (Para EasyPanel) ---
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+  res.status(200).send('OK');
+});
+
+// Ruta raíz explícita
+app.get('/', (req, res, next) => {
+  const indexPath = join(process.cwd(), 'dist/index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    next(); // Pasar a static o error
+  }
 });
 
 // --- CONFIGURACIÓN DE ARCHIVOS (RAG) ---
