@@ -9,8 +9,9 @@ import {
   TrendingUp, Globe, Mail, Phone, Lock, Trash2,
   PieChart, ArrowUpRight, Sparkles, Paperclip, SendHorizontal, X,
   BadgeCheck, Handshake, Trophy, ThumbsDown, Briefcase, UserCircle,
-  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag
+  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen
 } from 'lucide-react';
+import MobileGate from './components/MobileGate';
 
 /**
  * CONFIGURACIÓN GLOBAL SAAS
@@ -97,6 +98,7 @@ const App = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'General', stock: 'En stock', imagen: '' };
   const [newProduct, setNewProduct] = useState(emptyProduct);
+  const [editingLead, setEditingLead] = useState(null);
 
   const fetchDocuments = useCallback(() => {
     fetch(`${API_BASE_URL}/api/rag/documents`)
@@ -200,8 +202,36 @@ const App = () => {
     }
   };
 
+  const handleUpdateLead = async () => {
+    if (!editingLead) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/leads/update-contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId: editingLead.id,
+          nombre: editingLead.nombre,
+          email: editingLead.email,
+          direccion: editingLead.direccion,
+          notas: editingLead.notas,
+          nit: editingLead.nit,
+          motor: editingLead.motor,
+          falla: editingLead.falla,
+          zona: editingLead.zona
+        })
+      });
+      if (!res.ok) throw new Error("Error al actualizar");
+      setEditingLead(null);
+      fetchLeads();
+      setNotification('✅ Lead actualizado');
+      setTimeout(() => setNotification(null), 2000);
+    } catch(err) {
+      setNotification(`❌ Error: ${err.message}`);
+    }
+  };
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages]);
 
   useEffect(() => {
@@ -623,6 +653,7 @@ const App = () => {
               </div>
               <SidebarItem icon={Users} label="CRM & Leads" id="crm" />
               <SidebarItem icon={Calendar} label="Agenda IA" id="agenda" />
+              <SidebarItem icon={DoorOpen} label="Configuración ESP32" id="gate" />
             </div>
             <div>
               <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
@@ -782,6 +813,9 @@ const App = () => {
             );
           })()}
 
+          {/* VIEW: CONTROL PORTÓN */}
+          {activeTab === 'gate' && <MobileGate />}
+
           {/* VIEW: CONVERSACIONES */}
           {activeTab === 'conversaciones' && (
             <div className="flex h-full animate-in fade-in duration-500 bg-white border-t border-slate-100">
@@ -810,12 +844,15 @@ const App = () => {
                               </div>
                               <div className="flex-1 min-w-0">
                                  <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
-                                 <p className={`text-[9px] font-black uppercase tracking-tighter ${
-                                   lead.priority === 'urgent' ? 'text-red-500' :
-                                   lead.botActive ? 'text-emerald-500' : 'text-slate-400'
-                                 }`}>
-                                    {lead.priority === 'urgent' ? '🚨 INTERVENCIÓN' : lead.botActive ? `Score: ${lead.score}%` : 'Control Manual'}
-                                 </p>
+                               <div className="flex justify-between items-center">
+                                  <p className={`text-[9px] font-black uppercase tracking-tighter ${
+                                    lead.priority === 'urgent' ? 'text-red-500' :
+                                    lead.botActive ? 'text-emerald-500' : 'text-slate-400'
+                                  }`}>
+                                     {lead.priority === 'urgent' ? '🚨 INTERVENCIÓN' : lead.botActive ? `Score: ${lead.score}%` : 'Control Manual'}
+                                  </p>
+                                  {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums">{lead.lastMessageTime}</span>}
+                               </div>
                               </div>
                            </div>
                            {lead.handoff_reason && (
@@ -902,8 +939,9 @@ const App = () => {
                         </div>
                      ) : messages.map((msg) => (
                        <div key={msg.id} className={`flex flex-col ${msg.sender === 'client' ? 'items-start' : 'items-end'}`}>
-                          <span className="text-[10px] font-black uppercase tracking-widest mb-1 px-2 text-slate-400">
-                            {msg.sender === 'client' ? 'Cliente' : msg.sender === 'bot' ? 'Bot IA' : 'Agente'}
+                          <span className="text-[10px] font-black uppercase tracking-widest mb-1 px-2 text-slate-400 flex items-center space-x-2">
+                            <span>{msg.sender === 'client' ? 'Cliente' : msg.sender === 'bot' ? 'Bot IA' : 'Agente'}</span>
+                            {msg.timestamp && <span className="opacity-60 tabular-nums">· {msg.timestamp}</span>}
                           </span>
                           <div className={`max-w-[70%] p-5 rounded-[28px] text-sm font-medium italic leading-relaxed shadow-sm ${
                             msg.sender === 'client'
@@ -971,50 +1009,75 @@ const App = () => {
                 </div>
 
                 <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
-                   <table className="w-full text-left min-w-[800px]">
+                   <table className="w-full text-left min-w-[900px]">
                       <thead className="bg-slate-50 border-b border-slate-100">
                          <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                             <th className="px-10 py-6">CLIENTE</th>
-                            <th className="px-6 py-6 text-center">MOTOR / FALLA</th>
-                            <th className="px-6 py-6 text-center">ZONA</th>
-                            <th className="px-6 py-6 text-center">SCORE IA</th>
+                            <th className="px-6 py-6">TELÉFONO</th>
+                            <th className="px-6 py-6">NIT</th>
+                            <th className="px-6 py-6">DIRECCIÓN</th>
+                            <th className="px-6 py-6">NOTAS</th>
                             <th className="px-6 py-6 text-center">ESTADO</th>
                             <th className="px-10 py-6 text-right">ACCIONES</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                          {leads.map(lead => (
-                           <tr key={lead.id} className="hover:bg-slate-50 transition-colors group">
-                              <td className="px-10 py-6">
+                           <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors group">
+                              {/* CLIENTE */}
+                              <td className="px-10 py-5">
                                  <div className="flex items-center space-x-3">
-                                    <div className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center font-black text-[#FF6B00] text-xs">
-                                       {lead.nombre[0]}
+                                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${lead.priority === 'urgent' ? 'bg-red-600 text-white' : 'bg-slate-900 text-[#FF6B00]'}`}>
+                                       {lead.priority === 'urgent' ? '🚨' : lead.nombre[0]}
                                     </div>
                                     <div>
                                        <p className="text-sm font-black text-slate-800 leading-none group-hover:text-[#FF6B00] transition-colors">{lead.nombre}</p>
-                                       <p className="text-[10px] font-bold text-slate-400 mt-1">{lead.phone}</p>
+                                       <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{lead.origen || 'WhatsApp'}</p>
                                     </div>
                                  </div>
                               </td>
-                              <td className="px-6 py-6 text-center">
-                                 <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-slate-800 uppercase">{lead.motor || 'N/A'}</span>
-                                    <span className="text-[9px] font-medium text-slate-400 italic">{lead.falla || 'No detectada'}</span>
-                                 </div>
+                              {/* TELÉFONO */}
+                              <td className="px-6 py-5">
+                                 <span className="text-[11px] font-bold text-slate-700 tabular-nums">{lead.phone || '—'}</span>
                               </td>
-                              <td className="px-6 py-6 text-center">
-                                 <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{lead.zona || 'Buscando...'}</span>
+                              {/* NIT */}
+                              <td className="px-6 py-5">
+                                 {lead.nit
+                                   ? <span className="px-3 py-1 bg-orange-50 border border-orange-100 text-[#FF6B00] text-[10px] font-black rounded-lg">{lead.nit}</span>
+                                   : <span className="text-[10px] text-slate-300 italic font-medium">Sin NIT</span>
+                                 }
                               </td>
-                              <td className="px-6 py-6 text-center">
-                                 <span className={`text-xs font-black ${lead.score > 80 ? 'text-emerald-500' : 'text-orange-500'}`}>{lead.score}%</span>
+                              {/* DIRECCIÓN */}
+                              <td className="px-6 py-5 max-w-[200px]">
+                                 {lead.direccion
+                                   ? <span className="text-[11px] font-semibold text-slate-700 leading-tight line-clamp-2">{lead.direccion}</span>
+                                   : <span className="text-[10px] text-slate-300 italic font-medium">Sin dirección</span>
+                                 }
                               </td>
-                              <td className="px-6 py-6 text-center">
-                                 <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[9px] font-black uppercase tracking-widest">{lead.estado}</span>
+                              {/* NOTAS */}
+                              <td className="px-6 py-5 max-w-[200px]">
+                                 {lead.notas
+                                   ? <span className="text-[11px] font-semibold text-slate-500 italic leading-tight line-clamp-2">"{lead.notas}"</span>
+                                   : <span className="text-[10px] text-slate-300 italic font-medium">Sin notas</span>
+                                 }
                               </td>
-                              <td className="px-10 py-6 text-right">
-                                 <div className="flex items-center justify-end space-x-2 text-slate-300">
-                                    <button className="p-2 hover:text-emerald-500 transition-colors"><CheckCircle2 size={16} /></button>
-                                    <button className="p-2 hover:text-[#FF6B00] transition-colors"><MoreVertical size={16} /></button>
+                              {/* ESTADO */}
+                              <td className="px-6 py-5 text-center">
+                                 <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                   lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
+                                   lead.botActive ? 'bg-emerald-50 text-emerald-600' :
+                                   'bg-slate-100 text-slate-500'
+                                 }`}>{lead.estado || 'Nuevo'}</span>
+                              </td>
+                              {/* ACCIONES */}
+                              <td className="px-10 py-5 text-right">
+                                 <div className="flex items-center justify-end space-x-2">
+                                    <button onClick={() => setEditingLead({...lead})} title="Editar datos" className="p-2 rounded-xl bg-orange-50 text-[#FF6B00] hover:bg-orange-100 transition-colors border border-orange-100">
+                                      <Pencil size={15} />
+                                    </button>
+                                    <button title="Marcar resuelto" className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors border border-emerald-100">
+                                      <CheckCircle2 size={15} />
+                                    </button>
                                  </div>
                               </td>
                            </tr>
@@ -1110,79 +1173,86 @@ const App = () => {
                   ))}
                </div>
 
-               {subTabIA === 'General' && (
-                 <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-                   {/* Panel de Integración n8n */}
-                   <div className="bg-slate-900 p-8 rounded-[32px] text-white">
-                     <div className="flex items-center justify-between mb-6">
-                       <div>
-                         <p className="text-[10px] font-black text-[#FF6B00] uppercase tracking-[0.3em] mb-1">Integración Activa</p>
-                         <h3 className="text-lg font-black italic tracking-tight">Cómo n8n se conecta a este Dashboard</h3>
+                {subTabIA === 'Captura de Datos' && (
+                  <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                       <div className="flex items-center justify-between border-b border-slate-50 pb-6">
+                          <div>
+                             <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                                <Database size={18} className="text-[#FF6B00]" />
+                                <span>Configuración de Captura de Datos</span>
+                             </h3>
+                             <p className="text-[10px] text-slate-400 italic mt-1">Cómo la IA debe recolectar la información del cliente</p>
+                          </div>
+                          <div className="flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase">
+                             <Sparkles size={14} />
+                             <span>Automatización Activa</span>
+                          </div>
                        </div>
-                       <div className="flex items-center space-x-2 bg-emerald-500/20 border border-emerald-500/30 px-4 py-2 rounded-xl">
-                         <div className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse" />
-                         <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">En vivo</span>
-                       </div>
-                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                       {[
-                         { label: '📨 Recibir Mensajes', method: 'POST', url: '/webhook/n8n', desc: 'n8n envía aquí los mensajes de WhatsApp', fields: 'phone, nombre, mensaje, respuesta_bot' },
-                         { label: '🧠 Leer Configuración', method: 'GET', url: '/api/settings', desc: 'n8n lee el Prompt y config del agente antes de responder', fields: 'Retorna: prompt_recepcionista, agent_nombre, etc.' },
-                         { label: '🤖 Estado del Bot', method: 'GET', url: '/api/bot/status/:phone', desc: 'n8n verifica si el bot está activo para ese cliente', fields: 'Retorna: botActive, priority, handoff_reason' },
-                       ].map((endpoint, i) => (
-                         <div key={i} className="bg-white/5 border border-white/10 rounded-[20px] p-5">
-                           <p className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest mb-2">{endpoint.label}</p>
-                           <div className="flex items-center space-x-2 mb-3">
-                             <span className={`text-[9px] font-black px-2 py-1 rounded-lg ${ endpoint.method === 'POST' ? 'bg-blue-500/30 text-blue-300' : 'bg-emerald-500/30 text-emerald-300'}`}>{endpoint.method}</span>
-                             <code className="text-[10px] text-slate-300 font-mono">{endpoint.url}</code>
-                           </div>
-                           <p className="text-[10px] text-slate-400 italic mb-2">{endpoint.desc}</p>
-                           <p className="text-[9px] text-slate-500 font-mono">{endpoint.fields}</p>
-                         </div>
-                       ))}
-                     </div>
-                     <div className="mt-5 bg-white/5 border border-white/10 rounded-[16px] p-4">
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">URL Base de este Dashboard</p>
-                       <code className="text-emerald-400 text-sm font-mono font-bold">https://ycloud-dashboard.83aqlq.easypanel.host</code>
-                     </div>
-                   </div>
 
-                   {/* Formulario de Identidad */}
-                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
-                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
-                           <UserCircle size={18} className="text-[#FF6B00]" />
-                           <span>Identidad del Agente</span>
-                        </h3>
-                        <div className="space-y-6">
-                           <div className="space-y-2">
-                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Nombre del Agente</label>
-                              <input type="text" value={agentConfig.nombre} onChange={(e) => setAgentConfig({...agentConfig, nombre: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
-                           </div>
-                           <div className="space-y-2">
-                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Rol y Tono</label>
-                              <input type="text" value={agentConfig.rol} onChange={(e) => setAgentConfig({...agentConfig, rol: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
-                           </div>
-                           <div className="space-y-2">
-                              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Empresa</label>
-                              <input type="text" value={agentConfig.empresa} onChange={(e) => setAgentConfig({...agentConfig, empresa: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none italic" />
-                           </div>
-                        </div>
-                     </div>
-                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
-                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
-                           <Briefcase size={18} className="text-[#FF6B00]" />
-                           <span>Información del Negocio</span>
-                        </h3>
-                        <div className="space-y-2">
-                           <label className="text-[10px] font-black text-slate-400 uppercase ml-2 leading-none">Descripción para el Bot</label>
-                           <textarea value={agentConfig.descripcion} onChange={(e) => setAgentConfig({...agentConfig, descripcion: e.target.value})} className="w-full h-48 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium outline-none italic resize-none" />
-                        </div>
-                        <p className="text-[9px] text-slate-400 italic">💡 Esta descripción se envía automáticamente a n8n cuando consulta <code className="font-mono">/api/settings</code></p>
-                     </div>
-                   </div>
-                 </div>
-               )}
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          <div className="space-y-6">
+                             <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                <h4 className="text-xs font-black text-slate-700 uppercase mb-4 flex items-center space-x-2">
+                                   <div className="h-2 w-2 bg-emerald-500 rounded-full" />
+                                   <span>Campos que la IA detecta</span>
+                                </h4>
+                                <ul className="space-y-3">
+                                   {[
+                                      { l: 'Nombre Completo', d: 'Se guarda automáticamente al inicio' },
+                                      { l: 'Dirección de Entrega', d: 'Detectado por frases como "estoy en..." o "vivo en..."' },
+                                      { l: 'NIT / Facturación', d: 'Detectado por números de 6-9 dígitos o mención de NIT' },
+                                      { l: 'Notas Especiales', d: 'Cualquier detalle relevante de la conversación' }
+                                   ].map((f, i) => (
+                                      <li key={i} className="flex flex-col">
+                                         <span className="text-[11px] font-black text-slate-800">{f.l}</span>
+                                         <span className="text-[9px] text-slate-400 italic">{f.d}</span>
+                                      </li>
+                                   ))}
+                                </ul>
+                             </div>
+                             
+                             <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100">
+                                <h4 className="text-xs font-black text-orange-700 uppercase mb-2">Instrucciones para el Prompt</h4>
+                                <p className="text-[10px] text-orange-600 leading-relaxed italic">
+                                   Para que esto funcione, asegúrate de que tu <b>Prompt</b> (pestaña Prompt) incluya una instrucción como:
+                                   <br/><br/>
+                                   <code className="bg-white/50 p-2 rounded block text-[9px] border border-orange-200">
+                                      "Si el cliente muestra interés, solicita amablemente su nombre, dirección para la entrega y su NIT para la factura."
+                                   </code>
+                                </p>
+                             </div>
+                          </div>
+
+                          <div className="bg-slate-900 p-8 rounded-[32px] text-white">
+                             <h4 className="text-xs font-black text-[#FF6B00] uppercase mb-4 tracking-widest italic">Guía técnica para n8n</h4>
+                             <p className="text-[11px] text-slate-400 mb-6 leading-relaxed">
+                                Tu flujo de n8n debe enviar un <b>POST</b> a <code className="text-emerald-400">/webhook/n8n</code> con estos campos en el JSON:
+                             </p>
+                             <div className="space-y-3 font-mono text-[10px]">
+                                <div className="flex justify-between border-b border-white/5 pb-2">
+                                   <span className="text-blue-400">"direccion"</span>
+                                   <span className="text-slate-500">// Texto de la ubicación</span>
+                                </div>
+                                <div className="flex justify-between border-b border-white/5 pb-2">
+                                   <span className="text-blue-400">"nit"</span>
+                                   <span className="text-slate-500">// NIT del cliente</span>
+                                </div>
+                                <div className="flex justify-between border-b border-white/5 pb-2">
+                                   <span className="text-blue-400">"notas"</span>
+                                   <span className="text-slate-500">// Detalles adicionales</span>
+                                </div>
+                             </div>
+                             <div className="mt-8 p-4 bg-white/5 rounded-2xl border border-white/10">
+                                <p className="text-[9px] text-slate-400 italic">
+                                   💡 La IA calificará el lead con mayor score a medida que proporcione estos datos.
+                                </p>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+                )}
 
                {subTabIA === 'Handoff' && (
                   <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
@@ -1614,6 +1684,63 @@ const App = () => {
           )}
 
         </div>
+
+        {/* MODAL EDITAR LEAD */}
+        {editingLead && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+            <div className="bg-white rounded-[40px] border-2 border-[#FF6B00] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center space-x-4">
+                  <div className="bg-[#FF6B00] p-3 rounded-2xl shadow-lg shadow-orange-100">
+                    <UserCircle className="text-white" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 italic uppercase leading-none">Editar Lead</h3>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Actualización manual de datos</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditingLead(null)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto max-h-[60vh] no-scrollbar">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre Completo</label>
+                  <input type="text" value={editingLead.nombre} onChange={e => setEditingLead({...editingLead, nombre: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Email</label>
+                  <input type="text" value={editingLead.email} onChange={e => setEditingLead({...editingLead, email: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Dirección de Entrega</label>
+                  <input type="text" value={editingLead.direccion || ''} onChange={e => setEditingLead({...editingLead, direccion: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" placeholder="Ej: 4ta Ave 10-20 Zona 10..." />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">NIT (Facturación)</label>
+                  <input type="text" value={editingLead.nit || ''} onChange={e => setEditingLead({...editingLead, nit: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" placeholder="Ej: 1234567-8" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Zona / Ubicación</label>
+                  <input type="text" value={editingLead.zona || ''} onChange={e => setEditingLead({...editingLead, zona: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Notas del Cliente</label>
+                  <textarea value={editingLead.notas || ''} onChange={e => setEditingLead({...editingLead, notas: e.target.value})} className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-[#FF6B00] transition-all italic resize-none" placeholder="Cualquier observación importante..." />
+                </div>
+              </div>
+
+              <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end space-x-4">
+                <button onClick={() => setEditingLead(null)} className="px-8 py-3 text-[11px] font-black uppercase text-slate-400 hover:text-slate-600 transition-colors">Cancelar</button>
+                <button onClick={handleUpdateLead} className="bg-slate-900 text-white px-10 py-3 rounded-2xl text-[11px] font-black uppercase shadow-xl hover:bg-black transition-all flex items-center space-x-2">
+                  <Save size={16} />
+                  <span>Guardar Cambios</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

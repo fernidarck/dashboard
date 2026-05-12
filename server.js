@@ -7,6 +7,8 @@ import { dirname, join } from 'path';
 import multer from 'multer';
 import pdf from 'pdf-parse';
 import fs from 'fs';
+import * as XLSX from 'xlsx';
+
 
 process.on('uncaughtException', (err) => {
   console.error('❌ UNCAUGHT EXCEPTION:', err.message);
@@ -104,12 +106,18 @@ async function setup() {
       falla TEXT,
       zona TEXT,
       priority TEXT DEFAULT 'normal',
-      handoff_reason TEXT
+      handoff_reason TEXT,
+      direccion TEXT,
+      notas TEXT,
+      nit TEXT
     )`);
 
     // Migración: añadir columnas nuevas si no existen
     try { await db.exec(`ALTER TABLE leads ADD COLUMN priority TEXT DEFAULT 'normal'`); } catch(_) {}
     try { await db.exec(`ALTER TABLE leads ADD COLUMN handoff_reason TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN direccion TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN notas TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE leads ADD COLUMN nit TEXT`); } catch(_) {}
     try { await db.exec(`ALTER TABLE products ADD COLUMN imagen TEXT`); } catch(_) {}
     try { await db.exec(`ALTER TABLE products ADD COLUMN catalog_link TEXT`); } catch(_) {}
 
@@ -217,7 +225,8 @@ app.get('/api/leads', async (_req, res) => {
       SELECT leads.*,
              (SELECT text FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessage,
              (SELECT id FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageId,
-             (SELECT sender FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageSender
+             (SELECT sender FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageSender,
+             (SELECT timestamp FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageTime
       FROM leads ORDER BY leads.id DESC
     `);
     const parsedRows = rows.map(r => ({
@@ -336,7 +345,9 @@ app.post('/webhook/n8n', async (req, res) => {
   const score = data.score || 50;
   const estado = data.etiqueta || "Nuevo";
   const origen = "WhatsApp (n8n)";
-  const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  const now = new Date();
+  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
   const motor = data.motor || "N/A";
   const falla = data.falla || "N/A";
   const zona = data.zona || "N/A";
@@ -356,16 +367,25 @@ app.post('/webhook/n8n', async (req, res) => {
       } else {
         await db.run("UPDATE leads SET estado = ?, time = ? WHERE id = ?", estado, time, existingLead.id);
       }
-      // Actualizar nombre si el actual es "Cliente Nuevo" y n8n ya capturó el real
-      if (nombre && nombre !== "Cliente Nuevo" && existingLead.nombre === "Cliente Nuevo") {
-        await db.run("UPDATE leads SET nombre = ? WHERE id = ?", nombre, existingLead.id);
-        console.log(`   ✏️ Nombre actualizado: "${existingLead.nombre}" → "${nombre}"`);
+      // Actualizar campos si vienen en el payload
+      const updates = [];
+      const params = [];
+      if (nombre && nombre !== "Cliente Nuevo" && nombre !== existingLead.nombre) { updates.push("nombre = ?"); params.push(nombre); }
+      if (data.direccion) { updates.push("direccion = ?"); params.push(data.direccion); }
+      if (data.notas) { updates.push("notas = ?"); params.push(data.notas); }
+      if (data.nit) { updates.push("nit = ?"); params.push(data.nit); }
+      
+      if (updates.length > 0) {
+        params.push(existingLead.id);
+        await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
+        console.log(`   ✏️ Campos actualizados para lead ${existingLead.id}: ${updates.join(", ")}`);
       }
+      
       leadId = existingLead.id;
     } else {
       console.log("   🆕 Creando nuevo lead...");
-      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        nombre, data.phone, email, score, estado, origen, 1, motor, falla, zona);
+      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        nombre, data.phone, email, score, estado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null);
       leadId = result.lastID;
     }
 
@@ -460,7 +480,9 @@ app.post('/api/leads/handoff', async (req, res) => {
     if (currentLead && (currentLead.estado === 'En Gestión' || currentLead.botActive === 1)) {
       // Solo guardar el mensaje del cliente si viene, pero no re-marcar como urgente
       if (mensaje && mensaje.trim()) {
-        const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const now = new Date();
+  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
         await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
       }
       const skipReason = currentLead.botActive === 1 ? 'Bot activo — handoff ignorado' : 'Lead ya en gestión manual';
@@ -476,7 +498,9 @@ app.post('/api/leads/handoff', async (req, res) => {
 
     // Bug 3 fix: guardar el mensaje del cliente aunque el bot esté apagado
     if (mensaje && mensaje.trim()) {
-      const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const now = new Date();
+  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
       await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
     }
 
@@ -644,6 +668,15 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
       const dataBuffer = fs.readFileSync(filePath);
       const data = await pdf(dataBuffer);
       content = data.text;
+    } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || req.file.mimetype === 'application/vnd.ms-excel') {
+      const workbook = XLSX.readFile(filePath);
+      let fullText = "";
+      workbook.SheetNames.forEach(sheetName => {
+        const worksheet = workbook.Sheets[sheetName];
+        fullText += `--- Hoja: ${sheetName} ---\n`;
+        fullText += XLSX.utils.sheet_to_txt(worksheet) + "\n\n";
+      });
+      content = fullText;
     } else {
       content = fs.readFileSync(filePath, 'utf8');
     }
@@ -861,7 +894,7 @@ app.get('/api/products/context', async (_req, res) => {
 // Endpoint para que n8n actualice datos del contacto (nombre, email, etc.)
 app.post('/api/leads/update-contact', async (req, res) => {
   try {
-    const { phone, leadId, nombre, email, motor, falla, zona } = req.body;
+    const { phone, leadId, nombre, email, motor, falla, zona, direccion, notas, nit } = req.body;
     let id = leadId;
 
     if (!id && phone) {
@@ -875,11 +908,14 @@ app.post('/api/leads/update-contact', async (req, res) => {
 
     const updates = [];
     const values = [];
-    if (nombre) { updates.push("nombre = ?"); values.push(nombre); }
-    if (email)  { updates.push("email = ?");  values.push(email); }
-    if (motor)  { updates.push("motor = ?");  values.push(motor); }
-    if (falla)  { updates.push("falla = ?");  values.push(falla); }
-    if (zona)   { updates.push("zona = ?");   values.push(zona); }
+    if (nombre)    { updates.push("nombre = ?");    values.push(nombre); }
+    if (email)     { updates.push("email = ?");     values.push(email); }
+    if (motor)     { updates.push("motor = ?");     values.push(motor); }
+    if (falla)     { updates.push("falla = ?");     values.push(falla); }
+    if (zona)      { updates.push("zona = ?");      values.push(zona); }
+    if (direccion) { updates.push("direccion = ?"); values.push(direccion); }
+    if (notas)     { updates.push("notas = ?");     values.push(notas); }
+    if (nit)       { updates.push("nit = ?");       values.push(nit); }
 
     if (updates.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
 
@@ -950,7 +986,7 @@ app.use('/uploads', express.static(join(__dirname, 'public/uploads')));
 app.use(express.static(join(__dirname, 'dist')));
 
 // Manejar todas las demás rutas devolviendo index.html para el router de React
-app.get('(.*)', (req, res) => {
+app.get('*path', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
