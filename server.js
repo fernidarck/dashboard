@@ -370,7 +370,9 @@ app.post('/webhook/n8n', async (req, res) => {
       // Actualizar campos si vienen en el payload
       const updates = [];
       const params = [];
-      if (nombre && nombre !== "Cliente Nuevo" && nombre !== existingLead.nombre) { updates.push("nombre = ?"); params.push(nombre); }
+      const genericNames = ['cliente nuevo', 'cliente', 'new client', 'unknown'];
+      const isGeneric = (n) => !n || genericNames.includes(String(n).toLowerCase().trim());
+      if (!isGeneric(nombre) && nombre !== existingLead.nombre) { updates.push("nombre = ?"); params.push(nombre); }
       if (data.direccion) { updates.push("direccion = ?"); params.push(data.direccion); }
       if (data.notas) { updates.push("notas = ?"); params.push(data.notas); }
       if (data.nit) { updates.push("nit = ?"); params.push(data.nit); }

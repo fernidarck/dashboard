@@ -11,7 +11,7 @@ import {
   BadgeCheck, Handshake, Trophy, ThumbsDown, Briefcase, UserCircle,
   ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen
 } from 'lucide-react';
-import MobileGate from './components/MobileGate';
+
 
 /**
  * CONFIGURACIÓN GLOBAL SAAS
@@ -653,7 +653,6 @@ const App = () => {
               </div>
               <SidebarItem icon={Users} label="CRM & Leads" id="crm" />
               <SidebarItem icon={Calendar} label="Agenda IA" id="agenda" />
-              <SidebarItem icon={DoorOpen} label="Configuración ESP32" id="gate" />
             </div>
             <div>
               <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
@@ -813,8 +812,7 @@ const App = () => {
             );
           })()}
 
-          {/* VIEW: CONTROL PORTÓN */}
-          {activeTab === 'gate' && <MobileGate />}
+
 
           {/* VIEW: CONVERSACIONES */}
           {activeTab === 'conversaciones' && (
