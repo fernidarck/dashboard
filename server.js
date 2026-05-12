@@ -24,7 +24,7 @@ process.on('unhandledRejection', (reason) => {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-console.log("🚀 Iniciando servidor del Dashboard...");
+console.log("🚀 SERVER VERSION: 1.0.4 (FIXED SYNTAX) - Iniciando servidor del Dashboard...");
 const app = express();
 const port = process.env.PORT || 3000;
 const N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
