@@ -922,23 +922,28 @@ const App = () => {
                         <div className="flex h-full items-center justify-center">
                            <p className="text-slate-400 text-xs italic font-bold">No hay mensajes grabados en esta conversación.</p>
                         </div>
-                     ) : messages.map((msg) => (
-                       <div key={msg.id} className={`flex flex-col ${msg.sender === 'client' ? 'items-start' : 'items-end'}`}>
-                          <span className="text-[10px] font-black uppercase tracking-widest mb-1 px-2 text-slate-400 flex items-center space-x-2">
-                            <span>{msg.sender === 'client' ? 'Cliente' : msg.sender === 'bot' ? 'Bot IA' : 'Agente'}</span>
-                            {msg.timestamp && <span className="opacity-60 tabular-nums">· {msg.timestamp}</span>}
-                          </span>
-                          <div className={`max-w-[70%] p-5 rounded-[28px] text-sm font-medium italic leading-relaxed shadow-sm ${
-                            msg.sender === 'client'
-                              ? 'bg-blue-50 border border-blue-200 rounded-tl-none text-slate-700'
-                              : msg.sender === 'bot'
-                              ? 'bg-emerald-700 text-white rounded-tr-none border-r-4 border-emerald-400'
-                              : 'bg-slate-800 text-white rounded-tr-none border-r-4 border-[#FF6B00]'
-                          }`}>
-                             {msg.text}
-                          </div>
-                       </div>
-                     ))}
+                     ) : (
+                       <>
+                         {messages.map((msg) => (
+                           <div key={msg.id} className={`flex flex-col ${msg.sender === 'client' ? 'items-start' : 'items-end'}`}>
+                              <span className="text-[10px] font-black uppercase tracking-widest mb-1 px-2 text-slate-400 flex items-center space-x-2">
+                                <span>{msg.sender === 'client' ? 'Cliente' : msg.sender === 'bot' ? 'Bot IA' : 'Agente'}</span>
+                                {msg.timestamp && <span className="opacity-60 tabular-nums">· {msg.timestamp}</span>}
+                              </span>
+                              <div className={`max-w-[70%] p-5 rounded-[28px] text-sm font-medium italic leading-relaxed shadow-sm ${
+                                msg.sender === 'client'
+                                  ? 'bg-blue-50 border border-blue-200 rounded-tl-none text-slate-700'
+                                  : msg.sender === 'bot'
+                                  ? 'bg-emerald-700 text-white rounded-tr-none border-r-4 border-emerald-400'
+                                  : 'bg-slate-800 text-white rounded-tr-none border-r-4 border-[#FF6B00]'
+                              }`}>
+                                 {msg.text}
+                              </div>
+                           </div>
+                         ))}
+                         <div ref={messagesEndRef} />
+                       </>
+                     )}
                   </div>
                   <div className="p-8 bg-white border-t border-slate-100">
                      <div className="max-w-4xl mx-auto flex space-x-4">
@@ -1040,11 +1045,17 @@ const App = () => {
                                <td className="px-6 py-5">
                                   <div className="w-32 space-y-1.5">
                                      <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-tighter">
-                                        <span>PASO {lead.estado === 'Venta' ? '3/3' : '1/3'}</span>
-                                        <span>{lead.estado === 'Venta' ? '100%' : '33%'}</span>
+                                        <span>INTERÉS</span>
+                                        <span>{(lead.score || 0)}%</span>
                                      </div>
                                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                        <div className={`h-full transition-all duration-1000 ${lead.estado === 'Venta' ? 'w-full bg-emerald-500' : 'w-1/3 bg-slate-300'}`} />
+                                        <div 
+                                          className={`h-full transition-all duration-1000 ${
+                                            (lead.score || 0) > 70 ? 'bg-emerald-500' : 
+                                            (lead.score || 0) > 30 ? 'bg-amber-400' : 'bg-slate-300'
+                                          }`} 
+                                          style={{ width: `${Math.max(10, lead.score || 0)}%` }}
+                                        />
                                      </div>
                                   </div>
                                </td>
