@@ -1480,6 +1480,83 @@ const App = () => {
                   ))}
                </div>
 
+                {subTabIA === 'General' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Nombre del Asistente</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.nombre}
+                            onChange={e => setAgentConfig({...agentConfig, nombre: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Rol / Puesto</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.rol}
+                            onChange={e => setAgentConfig({...agentConfig, rol: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Empresa</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.empresa}
+                            onChange={e => setAgentConfig({...agentConfig, empresa: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4 md:col-span-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Descripción del Negocio (Contexto para la IA)</label>
+                          <textarea 
+                            rows={4}
+                            value={agentConfig.descripcion}
+                            onChange={e => setAgentConfig({...agentConfig, descripcion: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500 italic"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {subTabIA === 'Mensajes' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm">
+                      <div className="flex items-center space-x-4 mb-8">
+                        <div className="h-12 w-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center">
+                          <MessageSquare size={24} />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Flujo de Conversación</h3>
+                          <p className="text-[10px] text-slate-400 italic">Configura cómo inicia la charla el bot</p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-6">
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Saludo Inicial</span>
+                            <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
+                          </div>
+                          <p className="text-xs text-slate-600 italic">"Hola, soy {agentConfig.nombre} de {agentConfig.empresa}. ¿En qué puedo ayudarte hoy?"</p>
+                        </div>
+                        <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                           <p className="text-[9px] text-blue-700 italic leading-relaxed text-center">
+                             💡 Estos mensajes se generan dinámicamente usando el cerebro de la IA. No necesitas configurarlos manualmente.
+                           </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+
                 {subTabIA === 'Captura de Datos' && (
                   <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
