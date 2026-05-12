@@ -1187,7 +1187,15 @@ app.get('*', (req, res) => {
 
 
 setup().then(() => {
-  app.listen(port, () => {
-    console.log(`🚀 Backend del Dashboard escuchando en http://localhost:${port}`);
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 Backend del Dashboard escuchando en http://0.0.0.0:${port}`);
   });
+  
+  server.on('error', (err) => {
+    console.error("❌ ERROR AL INICIAR SERVIDOR:", err);
+    process.exit(1);
+  });
+}).catch(err => {
+  console.error("❌ ERROR CRÍTICO EN SETUP:", err);
+  process.exit(1);
 });
