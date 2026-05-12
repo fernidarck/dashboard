@@ -167,6 +167,20 @@ async function setup() {
       value TEXT
     )`);
 
+    await db.exec(`CREATE TABLE IF NOT EXISTS pedidos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cliente TEXT,
+      phone TEXT,
+      producto TEXT,
+      cantidad TEXT DEFAULT '1',
+      precio TEXT,
+      notas TEXT,
+      estado TEXT DEFAULT 'Nuevo',
+      timestamp TEXT
+    )`);
+    try { await db.exec(`ALTER TABLE pedidos ADD COLUMN precio TEXT`); } catch(_) {}
+    try { await db.exec(`ALTER TABLE pedidos ADD COLUMN notas TEXT`); } catch(_) {}
+
     // --- MIGRACIONES ---
     console.log("🛠️ Verificando migraciones de tabla...");
     const columns = await db.all("PRAGMA table_info(messages)");
@@ -595,6 +609,73 @@ app.get('/api/bot/status/:phone', async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─── PEDIDOS (Sistema de Órdenes) ─────────────────────────────────────────────
+const OWNER_PHONE = '+50235154362';
+const YCLOUD_API_KEY = 'a25aaba6428e12e4df6310296f675272';
+const YCLOUD_FROM = '+50244315578';
+
+async function notificarDueno(mensaje) {
+  try {
+    await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': YCLOUD_API_KEY },
+      body: JSON.stringify({
+        from: YCLOUD_FROM,
+        to: OWNER_PHONE,
+        type: 'text',
+        text: { body: mensaje }
+      })
+    });
+    console.log(`📲 Notificación enviada al dueño: ${mensaje.substring(0,50)}...`);
+  } catch(e) {
+    console.error('❌ Error enviando notificación al dueño:', e.message);
+  }
+}
+
+app.post('/api/pedidos', async (req, res) => {
+  try {
+    const { cliente, phone, producto, cantidad, precio, notas } = req.body;
+    if (!producto) return res.status(400).json({ error: 'Falta el producto' });
+    const now = new Date();
+    const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+    const timestamp = guateTime.getUTCFullYear() + '-' +
+      String(guateTime.getUTCMonth()+1).padStart(2,'0') + '-' + 
+      String(guateTime.getUTCDate()).padStart(2,'0') + ' ' + 
+      String(guateTime.getUTCHours()).padStart(2,'0') + ':' + 
+      String(guateTime.getUTCMinutes()).padStart(2,'0');
+    const result = await db.run(
+      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, timestamp) VALUES (?,?,?,?,?,?,'Nuevo',?)`,
+      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', timestamp
+    );
+    console.log(`🛒 Nuevo pedido #${result.lastID}: ${producto} — ${cliente}`);
+    // Notificar al dueño por WhatsApp
+    const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
+    await notificarDueno(msg);
+    res.json({ success: true, id: result.lastID });
+  } catch(err) {
+    console.error('❌ Error creando pedido:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pedidos', async (_req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM pedidos ORDER BY id DESC');
+    res.json(rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/pedidos/:id/estado', async (req, res) => {
+  try {
+    const { estado } = req.body;
+    const validStates = ['Nuevo', 'En Proceso', 'Completado', 'Cancelado'];
+    if (!validStates.includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
+    await db.run('UPDATE pedidos SET estado = ? WHERE id = ?', estado, req.params.id);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+// ──────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/settings', async (_req, res) => {
   try {

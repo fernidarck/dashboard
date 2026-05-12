@@ -9,7 +9,7 @@ import {
   TrendingUp, Globe, Mail, Phone, Lock, Trash2,
   PieChart, ArrowUpRight, Sparkles, Paperclip, SendHorizontal, X,
   BadgeCheck, Handshake, Trophy, ThumbsDown, Briefcase, UserCircle,
-  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen
+  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen, ShoppingBag
 } from 'lucide-react';
 
 
@@ -102,6 +102,8 @@ const App = () => {
   const [showNewCita, setShowNewCita] = useState(false);
   const emptyCita = { cliente: '', phone: '', fecha: '', hora: '', servicio: '', duracion: '1 hora' };
   const [newCita, setNewCita] = useState(emptyCita);
+  const [pedidos, setPedidos] = useState([]);
+
 
   const fetchDocuments = useCallback(() => {
     fetch(`${API_BASE_URL}/api/rag/documents`)
@@ -360,9 +362,17 @@ const App = () => {
       .then(res => res.json())
       .then(data => setAgenda(data))
       .catch(console.error);
+
+    fetch(`${API_BASE_URL}/api/pedidos`)
+      .then(res => res.json())
+      .then(data => setPedidos(data))
+      .catch(console.error);
       
     // Polling for real-time updates
-    const interval = setInterval(fetchLeads, 5000);
+    const interval = setInterval(() => {
+      fetchLeads();
+      fetch(`${API_BASE_URL}/api/pedidos`).then(r => r.json()).then(setPedidos).catch(console.error);
+    }, 5000);
     return () => clearInterval(interval);
   }, [fetchLeads]);
 
@@ -656,6 +666,7 @@ const App = () => {
               </div>
               <SidebarItem icon={Users} label="CRM & Leads" id="crm" />
               <SidebarItem icon={Calendar} label="Agenda IA" id="agenda" />
+              <SidebarItem icon={ShoppingBag} label="Pedidos IA" id="pedidos" />
             </div>
             <div>
               <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
@@ -1208,6 +1219,74 @@ const App = () => {
                    )}
                  </div>
                ) : <MonthView />}
+            </div>
+          )}
+
+          {/* VIEW: PEDIDOS (Tablero Kanban) */}
+          {activeTab === 'pedidos' && (
+            <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+               <div className="flex justify-between items-end">
+                 <div>
+                   <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Gestión de Pedidos</h2>
+                   <p className="text-sm font-medium text-slate-400 mt-2 italic">Control de ventas y coordinación de entregas</p>
+                 </div>
+                 <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center space-x-2">
+                   <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
+                   <span>Pedidos en tiempo real</span>
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                 {['Nuevo', 'En Proceso', 'Completado'].map(col => (
+                   <div key={col} className="bg-slate-50/50 rounded-[40px] p-6 border border-slate-100 min-h-[70vh] flex flex-col space-y-4">
+                     <div className="flex items-center justify-between px-4 mb-2">
+                       <h3 className={`text-[11px] font-black uppercase tracking-widest ${col === 'Nuevo' ? 'text-orange-600' : col === 'En Proceso' ? 'text-blue-600' : 'text-emerald-600'}`}>{col}</h3>
+                       <span className="bg-white px-3 py-1 rounded-full text-[10px] font-black text-slate-400 border border-slate-100">{pedidos.filter(p => p.estado === col).length}</span>
+                     </div>
+
+                     <div className="space-y-4 overflow-y-auto max-h-[65vh] pr-2 custom-scrollbar">
+                       {pedidos.filter(p => p.estado === col).map(pedido => (
+                         <div key={pedido.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                           <div className="flex justify-between items-start mb-4">
+                             <span className="text-[9px] font-black text-slate-300 uppercase tracking-tighter">#{pedido.id}</span>
+                             <span className="text-[9px] font-bold text-slate-400 italic">{pedido.timestamp}</span>
+                           </div>
+                           <h4 className="text-sm font-black text-slate-900 mb-1">{pedido.producto}</h4>
+                           <div className="flex items-center space-x-2 text-[11px] font-bold text-slate-500 mb-4">
+                             <Users size={12} className="text-slate-300" />
+                             <span>{pedido.cliente}</span>
+                           </div>
+
+                           {pedido.notas && (
+                             <p className="text-[10px] text-slate-400 italic leading-relaxed mb-4 line-clamp-2">{pedido.notas}</p>
+                           )}
+
+                           <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                             <div className="flex -space-x-1">
+                               {col !== 'Nuevo' && (
+                                 <button onClick={() => updatePedidoEstado(pedido.id, 'Nuevo')} className="h-8 w-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-orange-50 hover:text-orange-500 transition-colors border border-white"><ChevronLeft size={14} /></button>
+                               )}
+                               {col !== 'Completado' && (
+                                 <button onClick={() => updatePedidoEstado(pedido.id, col === 'Nuevo' ? 'En Proceso' : 'Completado')} className="h-8 w-16 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest flex items-center justify-center hover:bg-[#FF6B00] transition-all border border-white shadow-sm">
+                                   Siguiente <ChevronRight size={12} className="ml-1" />
+                                 </button>
+                               )}
+                             </div>
+                             {col === 'Completado' && (
+                               <div className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center border border-emerald-100"><CheckCircle2 size={14} /></div>
+                             )}
+                           </div>
+                         </div>
+                       ))}
+                       {pedidos.filter(p => p.estado === col).length === 0 && (
+                         <div className="py-10 text-center">
+                           <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Sin pedidos</p>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 ))}
+               </div>
             </div>
           )}
 
