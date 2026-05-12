@@ -522,8 +522,6 @@ app.post('/webhook/n8n', async (req, res) => {
         lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
     };
 
-    const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
-    const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
     const mediaUrl = data.media_url || data.image_url || data.file_url;
     const mediaType = data.media_type || (mediaUrl ? 'image' : null);
     const senderPrincipal = data.sender || 'client';
