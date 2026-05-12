@@ -9,7 +9,7 @@ import {
   TrendingUp, Globe, Mail, Phone, Lock, Trash2,
   PieChart, ArrowUpRight, Sparkles, Paperclip, SendHorizontal, X,
   BadgeCheck, Handshake, Trophy, ThumbsDown, Briefcase, UserCircle,
-  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen, ShoppingBag, Archive, Mail, Trash
+  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen, ShoppingBag, Archive, Trash
 } from 'lucide-react';
 
 
