@@ -26,7 +26,7 @@ const __dirname = dirname(__filename);
 
 console.log("🚀 Iniciando servidor del Dashboard...");
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3000;
 const N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
 
 console.log(`📌 Puerto detectado: ${port}`);
@@ -34,6 +34,11 @@ console.log(`📌 Webhook detectado: ${N8N_OUTBOUND_WEBHOOK}`);
 
 app.use(cors());
 app.use(express.json());
+
+// --- HEALTH CHECK (Para EasyPanel) ---
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
 
 // --- CONFIGURACIÓN DE ARCHIVOS (RAG) ---
 if (!fs.existsSync('uploads')) {
@@ -1160,8 +1165,13 @@ app.use('/uploads', express.static(join(__dirname, 'public/uploads')));
 app.use(express.static(join(__dirname, 'dist')));
 
 // Manejar todas las demás rutas devolviendo index.html para el router de React
-app.get('*path', (req, res) => {
-  res.sendFile(join(__dirname, 'dist', 'index.html'));
+app.get('*', (req, res) => {
+  const indexPath = join(__dirname, 'dist', 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('Frontend dist/index.html no encontrado. Asegúrate de ejecutar npm run build.');
+  }
 });
 
 
