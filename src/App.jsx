@@ -191,7 +191,7 @@ const App = () => {
   const fetchRAG = async () => {
     try {
       const [docsRes, prodsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/documents`),
+        fetch(`${API_BASE_URL}/api/rag/documents`),
         fetch(`${API_BASE_URL}/api/products`)
       ]);
       setDocuments(await docsRes.json());
