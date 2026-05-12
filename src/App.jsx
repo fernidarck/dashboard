@@ -873,22 +873,22 @@ const App = () => {
                <div className="flex-1 flex flex-col bg-[#FDFDFD]">
                   {/* BANNER DE HANDOFF URGENTE */}
                   {selectedLead.priority === 'urgent' && (
-                    <div className="bg-red-600 text-white px-8 py-3 flex items-center justify-between shrink-0 shadow-lg">
-                      <div className="flex items-center space-x-3">
-                        <AlertTriangle size={18} className="animate-pulse shrink-0" />
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest leading-none">Intervención Requerida</p>
-                          <p className="text-xs font-bold mt-0.5 opacity-90">⚡ {selectedLead.handoff_reason || 'Handoff detectado'}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleTakeControl(selectedLead.id)}
-                        className="bg-white text-red-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all shadow flex items-center space-x-2 shrink-0"
-                      >
-                        <UserCheck size={14} />
-                        <span>Tomar Control</span>
-                      </button>
-                    </div>
+                     <div className="bg-red-600 text-white px-8 py-3 flex items-center justify-between shrink-0 shadow-lg">
+                       <div className="flex items-center space-x-3">
+                         <AlertTriangle size={18} className="animate-pulse shrink-0" />
+                         <div>
+                           <p className="text-[10px] font-black uppercase tracking-widest leading-none">Intervención Requerida</p>
+                           <p className="text-xs font-bold mt-0.5 opacity-90">⚡ {selectedLead.handoff_reason || 'Handoff detectado'}</p>
+                         </div>
+                       </div>
+                       <button
+                         onClick={() => handleTakeControl(selectedLead.id)}
+                         className="bg-white text-red-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all shadow flex items-center space-x-2 shrink-0"
+                       >
+                         <UserCheck size={14} />
+                         <span>Tomar Control</span>
+                       </button>
+                     </div>
                   )}
                   <div className="h-20 border-b border-slate-100 px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
                      <div className="flex items-center space-x-4">
