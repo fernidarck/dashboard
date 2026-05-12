@@ -309,6 +309,54 @@ app.get('/api/proxy-media', async (req, res) => {
   }
 });
 
+// ─── MOTOR DE DETECCIÓN DE ESTADO AUTOMÁTICO ───────────────────────────────
+const STATUS_FUNNEL = ['Nuevo', 'Interesado', 'Cita Agendada', 'Venta', 'Post-Venta', 'Perdido', 'Intervención Requerida'];
+const STATUS_SCORES = {
+  'Nuevo': 10,
+  'Interesado': 40,
+  'Cita Agendada': 75,
+  'Venta': 100,
+  'Post-Venta': 100,
+  'Perdido': 0,
+  'Intervención Requerida': 85
+};
+
+function detectStatus(text, currentStatus) {
+  if (!text || typeof text !== 'string') return currentStatus;
+  const t = text.toLowerCase();
+  const getRank = (s) => STATUS_FUNNEL.indexOf(s);
+  
+  let detected = currentStatus;
+
+  // Prioridad: Venta / Pago
+  if (t.includes("pago") || t.includes("comprobante") || t.includes("transferencia") || t.includes("deposito") || t.includes("ya pagué") || t.includes("listo el deposito")) {
+    detected = "Venta";
+  }
+  // Prioridad: Cita / Visita
+  else if (t.includes("agendar") || t.includes("cita") || t.includes("reunión") || t.includes("visita") || t.includes("mañana a las") || t.includes("llegar a") || t.includes("ubicación")) {
+    detected = "Cita Agendada";
+  }
+  // Prioridad: Interés / Precio
+  else if (t.includes("precio") || t.includes("cuánto") || t.includes("costo") || t.includes("presupuesto") || t.includes("cotización") || t.includes("me interesa") || t.includes("información")) {
+    if (getRank(currentStatus) < getRank("Interesado")) detected = "Interesado";
+  }
+  // Prioridad: Post-Venta (solo si ya vendió)
+  else if (t.includes("gracias") || t.includes("instalado") || t.includes("quedó bien") || t.includes("funciona")) {
+    if (getRank(currentStatus) >= getRank("Venta")) detected = "Post-Venta";
+  }
+  // Prioridad: Perdido
+  else if (t.includes("no gracias") || t.includes("muy caro") || t.includes("no me interesa") || t.includes("caro") || t.includes("después")) {
+    detected = "Perdido";
+  }
+
+  // Avanzar en el funnel o marcar como perdido
+  if (getRank(detected) > getRank(currentStatus) || detected === 'Perdido') {
+    return detected;
+  }
+  
+  return currentStatus;
+}
+
 // ─── MOTOR DE DETECCIÓN DE HANDOFF INTELIGENTE (dinámico desde BD) ────────────
 async function detectHandoff(text) {
   if (!text) return null;
@@ -371,41 +419,50 @@ app.post('/webhook/n8n', async (req, res) => {
 
   try {
     const cleanPhone = String(data.phone).replace(/\D/g, '');
-    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
+    const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
+    const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
 
-    const existingLead = await db.get("SELECT id, nombre FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
+    const existingLead = await db.get("SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+    
+    let currentEstado = data.etiqueta || (existingLead ? existingLead.estado : "Nuevo");
+    let detectedEstado = detectStatus(mensajePrincipal, currentEstado);
+    detectedEstado = detectStatus(mensajeSecundario, detectedEstado);
+    
+    const finalEstado = detectedEstado;
+    const finalScore = STATUS_SCORES[finalEstado] || data.score || (existingLead ? existingLead.score : 10);
+
     let leadId;
 
     if (existingLead) {
       console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id} (nombre: ${existingLead.nombre})`);
-      // No tocar botActive — el agente lo controla manualmente desde el dashboard
+      
+      const updates = ["estado = ?", "score = ?", "time = ?"];
+      const params = [finalEstado, finalScore, time];
+
       if (data.bot_apagado !== undefined) {
-        await db.run("UPDATE leads SET estado = ?, time = ?, botActive = ? WHERE id = ?", estado, time, data.bot_apagado ? 0 : 1, existingLead.id);
-      } else {
-        await db.run("UPDATE leads SET estado = ?, time = ? WHERE id = ?", estado, time, existingLead.id);
+        updates.push("botActive = ?");
+        params.push(data.bot_apagado ? 0 : 1);
       }
-      // Actualizar campos si vienen en el payload
-      const updates = [];
-      const params = [];
+
+      // Actualizar campos si vienen en el payload o si el nombre es genérico
       const genericNames = ['cliente nuevo', 'cliente', 'new client', 'unknown', 'reach'];
       const isGeneric = (n) => !n || genericNames.includes(String(n).toLowerCase().trim());
-      // Solo actualizar nombre si el nombre actual en BD es genérico (proteger nombres reales capturados por IA)
+      
       if (!isGeneric(nombre) && isGeneric(existingLead.nombre)) { updates.push("nombre = ?"); params.push(nombre); }
       if (data.direccion) { updates.push("direccion = ?"); params.push(data.direccion); }
       if (data.notas) { updates.push("notas = ?"); params.push(data.notas); }
       if (data.nit) { updates.push("nit = ?"); params.push(data.nit); }
       
-      if (updates.length > 0) {
-        params.push(existingLead.id);
-        await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
-        console.log(`   ✏️ Campos actualizados para lead ${existingLead.id}: ${updates.join(", ")}`);
-      }
+      params.push(existingLead.id);
+      await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
+      console.log(`   ✏️ Lead ${existingLead.id} actualizado: Estado=${finalEstado}, Score=${finalScore}`);
       
       leadId = existingLead.id;
     } else {
       console.log("   🆕 Creando nuevo lead...");
       const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        nombre, data.phone, email, score, estado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null);
+        nombre, data.phone, email, finalScore, finalEstado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null);
       leadId = result.lastID;
     }
 
