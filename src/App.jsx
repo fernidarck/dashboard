@@ -128,9 +128,6 @@ const App = () => {
   const [agendaView, setAgendaView] = useState('Lista');
   const [showNewCita, setShowNewCita] = useState(false);
   const [newCita, setNewCita] = useState(emptyCita);
-  const [pedidos, setPedidos] = useState([]);
-  const [aiInsights, setAiInsights] = useState([]);
-  const [aiKnowledge, setAiKnowledge] = useState([]);
   const [testQuery, setTestQuery] = useState('');
   const [testResults, setTestResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
