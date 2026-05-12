@@ -1250,7 +1250,27 @@ app.get('/api/ai/insights', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// ─────────────────────────────────────────────────────────────────────────────
+
+app.get('/api/rag/test-search', async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.json({ results: [] });
+
+  try {
+    const searchTerm = `%${query}%`;
+    const docs = await db.all(
+      "SELECT 'Tarjeta' as tipo, name as titulo, content as contenido FROM documents WHERE name LIKE ? OR content LIKE ? LIMIT 5",
+      [searchTerm, searchTerm]
+    );
+    const prods = await db.all(
+      "SELECT 'Producto' as tipo, nombre as titulo, descripcion as contenido FROM products WHERE nombre LIKE ? OR descripcion LIKE ? LIMIT 5",
+      [searchTerm, searchTerm]
+    );
+
+    res.json({ results: [...docs, ...prods] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.use(express.static(join(__dirname, 'dist')));
 

@@ -122,6 +122,9 @@ const App = () => {
   const [pedidos, setPedidos] = useState([]);
   const [aiInsights, setAiInsights] = useState([]);
   const [aiKnowledge, setAiKnowledge] = useState([]);
+  const [testQuery, setTestQuery] = useState('');
+  const [testResults, setTestResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
 
 
   const fetchDocuments = useCallback(() => {
@@ -591,6 +594,20 @@ const App = () => {
       .then(setAiKnowledge);
     setNotification('✅ Conocimiento aprobado');
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const runTestSearch = async () => {
+    if (!testQuery.trim()) return;
+    setIsSearching(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/rag/test-search?query=${encodeURIComponent(testQuery)}`);
+      const data = await res.json();
+      setTestResults(data.results || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   // --- LOGICA DE COMUNICACIÓN CON N8N ---
@@ -1915,7 +1932,11 @@ const App = () => {
 
               {/* Tabs */}
               <div className="flex space-x-1 bg-slate-100 p-1 rounded-2xl w-fit">
-                {[['conocimiento', 'Conocimiento', BookOpen], ['catalogo', 'Catálogo', Tag]].map(([id, label, Icon]) => (
+                {[
+                  ['conocimiento', 'Conocimiento', BookOpen], 
+                  ['catalogo', 'Catálogo', Tag],
+                  ['tester', 'Probador', Search]
+                ].map(([id, label, Icon]) => (
                   <button key={id} onClick={() => setRagSubTab(id)} className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                     <Icon size={13} /><span>{label}</span>
                   </button>
@@ -2044,6 +2065,67 @@ const App = () => {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* ── PROBADOR DE BÚSQUEDA ── */}
+              {ragSubTab === 'tester' && (
+                <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8">
+                  <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                    <div className="max-w-2xl mx-auto text-center space-y-4">
+                      <h3 className="text-xl font-black text-slate-800 italic uppercase">Probador de Inteligencia</h3>
+                      <p className="text-[11px] text-slate-400 font-medium leading-relaxed px-10">
+                        Escribe una pregunta como la haría un cliente. El sistema buscará en tus tarjetas y catálogo para mostrarte qué información encontrará la IA.
+                      </p>
+                      
+                      <div className="relative mt-8">
+                        <input 
+                          type="text" 
+                          value={testQuery}
+                          onChange={e => setTestQuery(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && runTestSearch()}
+                          placeholder="¿Qué precios tienen los motores?"
+                          className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[30px] text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] pr-32 transition-all italic shadow-inner"
+                        />
+                        <button 
+                          onClick={runTestSearch}
+                          disabled={isSearching}
+                          className="absolute right-3 top-3 bottom-3 bg-[#FF6B00] text-white px-8 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all disabled:opacity-50"
+                        >
+                          {isSearching ? 'Buscando...' : 'Probar'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="flex items-center space-x-3 border-b border-slate-50 pb-4">
+                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resultados Encontrados</span>
+                         <span className="h-px flex-1 bg-slate-50" />
+                      </div>
+
+                      {testResults.length === 0 ? (
+                        <div className="py-20 text-center border-2 border-dashed border-slate-50 rounded-[40px]">
+                           <Search size={40} className="mx-auto text-slate-100 mb-4" />
+                           <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No hay resultados para mostrar</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {testResults.map((res, i) => (
+                            <div key={i} className="bg-slate-50 border border-slate-100 rounded-[32px] p-6 space-y-3 hover:border-[#FF6B00]/30 transition-all group">
+                               <div className="flex justify-between items-center">
+                                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${res.tipo === 'Tarjeta' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                    {res.tipo}
+                                  </span>
+                                  <div className="h-1.5 w-1.5 bg-emerald-400 rounded-full group-hover:animate-ping" />
+                               </div>
+                               <h4 className="text-xs font-black text-slate-800 uppercase italic">{res.titulo}</h4>
+                               <p className="text-[10px] text-slate-400 leading-relaxed line-clamp-4 italic">{res.contenido}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
