@@ -156,6 +156,16 @@ async function setup() {
     try { await db.exec(`ALTER TABLE products ADD COLUMN imagen TEXT`); } catch(_) {}
     try { await db.exec(`ALTER TABLE products ADD COLUMN catalog_link TEXT`); } catch(_) {}
 
+    await db.exec(`CREATE TABLE IF NOT EXISTS knowledge_base (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic TEXT,
+      content TEXT,
+      source_lead_id INTEGER,
+      frequency INTEGER DEFAULT 1,
+      last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      status TEXT DEFAULT 'pending' -- pending, approved, ignored
+    )`);
+
     await db.exec(`CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nombre TEXT NOT NULL,
@@ -1183,6 +1193,62 @@ app.get('/api/rag/context', async (req, res) => {
 app.get('/api/rag/query', async (req, res) => {
   req.url = '/api/rag/context' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '');
   res.redirect(307, `/api/rag/context?${new URLSearchParams(req.query)}`);
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── SISTEMA DE APRENDIZAJE IA ──────────────────────────────────────────────
+app.get('/api/ai/knowledge', async (req, res) => {
+  try {
+    const knowledge = await db.all("SELECT * FROM knowledge_base ORDER BY frequency DESC");
+    res.json(knowledge);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/knowledge/approve/:id', async (req, res) => {
+  try {
+    await db.run("UPDATE knowledge_base SET status = 'approved' WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ai/insights', async (req, res) => {
+  try {
+    // Análisis simplificado: Buscar palabras clave frecuentes en mensajes de clientes
+    const recentMessages = await db.all("SELECT text FROM messages WHERE sender = 'client' ORDER BY id DESC LIMIT 200");
+    
+    const keywords = {
+      'precio': 0, 'cuánto cuesta': 0, 'valor': 0,
+      'ubicación': 0, 'dónde están': 0, 'dirección': 0,
+      'horario': 0, 'a qué hora': 0, 'abierto': 0,
+      'envío': 0, 'domicilio': 0, 'entrega': 0,
+      'garantía': 0, 'seguro': 0,
+      'pago': 0, 'transferencia': 0, 'tarjeta': 0
+    };
+
+    recentMessages.forEach(m => {
+      const txt = (m.text || "").toLowerCase();
+      Object.keys(keywords).forEach(k => {
+        if (txt.includes(k)) keywords[k]++;
+      });
+    });
+
+    const topInsights = Object.entries(keywords)
+      .filter(([_, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([keyword, count]) => ({
+        topic: keyword.charAt(0).toUpperCase() + keyword.slice(1),
+        count,
+        trend: count > 5 ? 'Subiendo' : 'Estable'
+      }));
+
+    res.json(topInsights);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 // ─────────────────────────────────────────────────────────────────────────────
 

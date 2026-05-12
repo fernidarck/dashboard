@@ -1469,7 +1469,7 @@ const App = () => {
                </div>
 
                <div className="flex space-x-8 border-b border-slate-200">
-                  {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff'].map(t => (
+                  {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff', 'Aprendizaje'].map(t => (
                     <button 
                       key={t}
                       onClick={() => setSubTabIA(t)}
@@ -1619,6 +1619,77 @@ const App = () => {
                                  </div>
                               </div>
                            ))}
+                        </div>
+                     </div>
+                  </div>
+               )}
+
+               {subTabIA === 'Aprendizaje' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8">
+                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Panel de Insights */}
+                        <div className="lg:col-span-1 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
+                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                              <LineChart size={18} className="text-emerald-500" />
+                              <span>Insights de Mercado</span>
+                           </h3>
+                           <div className="space-y-4">
+                              {[
+                                { t: 'Precio y Cotizaciones', c: '42%', v: 'Alta' },
+                                { t: 'Horarios de Atención', c: '18%', v: 'Media' },
+                                { t: 'Métodos de Pago', c: '15%', v: 'Media' },
+                                { t: 'Garantía de Productos', c: '12%', v: 'Baja' }
+                              ].map((ins, i) => (
+                                <div key={i} className="p-4 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center">
+                                  <div>
+                                    <p className="text-[11px] font-black text-slate-700">{ins.t}</p>
+                                    <p className="text-[9px] text-slate-400 uppercase tracking-widest">Frecuencia: {ins.c}</p>
+                                  </div>
+                                  <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase ${ins.v === 'Alta' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>{ins.v}</span>
+                                </div>
+                              ))}
+                           </div>
+                           <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                              <p className="text-[9px] text-emerald-700 italic leading-relaxed">
+                                💡 "Precio" es el tema más consultado. Considera añadir una sección de precios clara en el catálogo.
+                              </p>
+                           </div>
+                        </div>
+
+                        {/* Mapa de Conocimiento */}
+                        <div className="lg:col-span-2 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                           <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+                              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                                 <Brain size={18} className="text-[#FF6B00]" />
+                                 <span>Mapa de Conocimiento (Aprendido)</span>
+                              </h3>
+                              <button className="bg-slate-100 text-slate-500 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Ver Historial</button>
+                           </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {[
+                                { q: '¿Tienen tienda física?', a: 'Estamos ubicados en Zona 10, Edificio Sixtino...', s: 'Aprobado' },
+                                { q: '¿Aceptan Visa Cuotas?', a: 'Sí, hasta 12 cuotas sin intereses...', s: 'Aprobado' },
+                                { q: '¿Hacen envíos a Xela?', a: 'Sí, por medio de GuateExpor...', s: 'Pendiente' },
+                                { q: '¿Qué garantía tienen?', a: '1 año por desperfectos de fábrica...', s: 'Pendiente' }
+                              ].map((k, i) => (
+                                <div key={i} className={`p-6 rounded-[32px] border ${k.s === 'Aprobado' ? 'bg-white border-slate-100' : 'bg-orange-50/30 border-orange-100'} space-y-3`}>
+                                  <div className="flex justify-between">
+                                    <span className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest italic">Nuevo Conocimiento</span>
+                                    <span className={`text-[8px] font-black uppercase ${k.s === 'Aprobado' ? 'text-emerald-500' : 'text-orange-500 animate-pulse'}`}>{k.s}</span>
+                                  </div>
+                                  <p className="text-[11px] font-black text-slate-800 italic">Q: {k.q}</p>
+                                  <p className="text-[10px] text-slate-400 italic leading-relaxed">A: {k.a}</p>
+                                  <div className="pt-2 flex space-x-2">
+                                    {k.s === 'Pendiente' && (
+                                      <>
+                                        <button className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Validar</button>
+                                        <button className="flex-1 py-2 bg-slate-200 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest">Ignorar</button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                           </div>
                         </div>
                      </div>
                   </div>
