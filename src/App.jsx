@@ -1036,9 +1036,18 @@ const App = () => {
                         <div className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00]">OC</div>
                         <div>
                            <p className="text-sm font-black text-slate-800">{selectedLead.nombre}</p>
-                           <p className={`text-[10px] font-bold uppercase tracking-widest ${selectedLead.botActive ? 'text-emerald-500' : 'text-red-500'}`}>
-                             {selectedLead.botActive ? 'IA Gestionando' : 'Modo Manual'}
-                           </p>
+                           <div className="flex items-center space-x-2">
+                             <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedLead.botActive ? 'text-emerald-500' : 'text-red-500'}`}>
+                               {selectedLead.botActive ? 'IA Gestionando' : 'Modo Manual'}
+                             </p>
+                             <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                               selectedLead.estado === 'Venta' ? 'bg-emerald-500 text-white' :
+                               selectedLead.estado === 'Cita Agendada' ? 'bg-blue-500 text-white' :
+                               selectedLead.estado === 'Interesado' ? 'bg-amber-400 text-white' :
+                               selectedLead.estado === 'Perdido' ? 'bg-slate-400 text-white' :
+                               'bg-slate-100 text-slate-500'
+                             }`}>{selectedLead.estado || 'Nuevo'}</span>
+                           </div>
                         </div>
                      </div>
                      <div className="flex items-center space-x-2">
@@ -1193,11 +1202,15 @@ const App = () => {
                                   </td>
                                   <td className="px-6 py-5">
                                      <div className="flex flex-col space-y-2">
-                                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest w-fit shadow-sm ${
-                                          lead.priority === 'urgent' ? 'bg-red-500 text-white' :
-                                          lead.estado === 'Venta' ? 'bg-emerald-500 text-white' :
-                                          'bg-slate-100 text-slate-600'
-                                        }`}>{lead.estado || 'Nuevo'}</span>
+                                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest w-fit shadow-sm border ${
+                                           lead.priority === 'urgent' ? 'bg-red-500 text-white border-red-500' :
+                                           lead.estado === 'Venta' ? 'bg-emerald-500 text-white border-emerald-500' :
+                                           lead.estado === 'Cita Agendada' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                           lead.estado === 'Interesado' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                           lead.estado === 'Post-Venta' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                                           lead.estado === 'Perdido' ? 'bg-slate-50 text-slate-400 border-slate-100' :
+                                           'bg-slate-100 text-slate-500 border-slate-200'
+                                         }`}>{lead.estado || 'Nuevo'}</span>
                                         <div className="flex items-center space-x-1">
                                            {[1,2,3,4,5].map(s => (
                                              <div key={s} className={`h-1.5 w-1.5 rounded-full ${s <= (lead.score || 0)/20 ? 'bg-amber-400' : 'bg-slate-200'}`} />
