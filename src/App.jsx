@@ -100,6 +100,7 @@ const App = () => {
   const [newProduct, setNewProduct] = useState(emptyProduct);
   const [editingLead, setEditingLead] = useState(null);
   const [showClientSidebarCRM, setShowClientSidebarCRM] = useState(false);
+  const [showClientSidebarChat, setShowClientSidebarChat] = useState(true);
   const [sidebarLeadId, setSidebarLeadId] = useState(null);
   const [showNewCita, setShowNewCita] = useState(false);
   const emptyCita = { cliente: '', phone: '', fecha: '', hora: '', servicio: '', duracion: '1 hora' };
@@ -662,155 +663,158 @@ const App = () => {
     );
   };
 
-  const renderClientSidebar = (lead) => {
-    if (!lead) return (
-      <div className="w-80 border-l border-slate-100 bg-white flex flex-col items-center justify-center p-8 text-center space-y-4">
-        <UserCircle size={40} className="text-slate-100" />
-        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Selecciona un cliente para ver detalles</p>
-      </div>
-    );
-
+  const renderClientSidebar = (lead, isOpen, onClose) => {
     return (
-      <div className="w-80 border-l border-slate-100 bg-white overflow-y-auto no-scrollbar p-8 space-y-8 shrink-0 animate-in slide-in-from-right duration-500 relative">
-         <div className="flex items-center justify-between">
-            <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-2">
-               <UserCircle size={16} className="text-[#FF6B00]" />
-               <span>Datos del Cliente</span>
-            </h3>
-            {activeTab === 'crm' && (
-              <button onClick={() => setShowClientSidebarCRM(false)} className="p-2 text-slate-400 hover:text-slate-700 transition-colors">
-                <X size={18} />
-              </button>
-            )}
-         </div>
+      <div className={`transition-all duration-700 ease-in-out overflow-hidden border-l border-slate-100 bg-white flex-shrink-0 ${isOpen ? 'w-80 opacity-100' : 'w-0 opacity-0 border-none'}`}>
+        <div className="w-80 h-full flex flex-col relative">
+          {!lead ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+              <UserCircle size={40} className="text-slate-100" />
+              <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Selecciona un cliente para ver detalles</p>
+              <button onClick={onClose} className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest hover:underline mt-4">Ocultar Panel</button>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto no-scrollbar p-8 space-y-8 animate-in slide-in-from-right duration-500">
+               <div className="flex items-center justify-between">
+                  <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-2">
+                     <UserCircle size={16} className="text-[#FF6B00]" />
+                     <span>Datos del Cliente</span>
+                  </h3>
+                  <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 transition-colors">
+                    <X size={18} />
+                  </button>
+               </div>
 
-         {/* Estado del Lead */}
-         <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Estado del Lead</label>
-              <ChevronDown size={12} className="text-slate-300" />
-            </div>
-            <select 
-              value={lead.estado || 'Nuevo'} 
-              onChange={async (e) => {
-                const newEstado = e.target.value;
-                setLeads(prev => prev.map(l => l.id === lead.id ? {...l, estado: newEstado} : l));
-                try {
-                  await fetch(`${API_BASE_URL}/api/leads/update-contact`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ leadId: lead.id, estado: newEstado })
-                  });
-                  setNotification(`✅ Estado: ${newEstado}`);
-                  setTimeout(() => setNotification(null), 2000);
-                } catch(err) { fetchLeads(); }
-              }}
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-[#FF6B00] appearance-none"
-            >
-              {['Nuevo', 'Interesado', 'Cita Agendada', 'Venta', 'Post-Venta', 'Perdido'].map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-         </div>
+               {/* Estado del Lead */}
+               <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Estado del Lead</label>
+                    <ChevronDown size={12} className="text-slate-300" />
+                  </div>
+                  <select 
+                    value={lead.estado || 'Nuevo'} 
+                    onChange={async (e) => {
+                      const newEstado = e.target.value;
+                      setLeads(prev => prev.map(l => l.id === lead.id ? {...l, estado: newEstado} : l));
+                      try {
+                        await fetch(`${API_BASE_URL}/api/leads/update-contact`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ leadId: lead.id, estado: newEstado })
+                        });
+                        setNotification(`✅ Estado: ${newEstado}`);
+                        setTimeout(() => setNotification(null), 2000);
+                      } catch(err) { fetchLeads(); }
+                    }}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-[#FF6B00] appearance-none"
+                  >
+                    {['Nuevo', 'Interesado', 'Cita Agendada', 'Venta', 'Post-Venta', 'Perdido'].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+               </div>
 
-         {/* Puntuación */}
-         <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Puntuación</label>
-              <span className="text-[10px] font-black text-emerald-500">{(lead.score || 0)}%</span>
-            </div>
-            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-               <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${lead.score || 0}%` }} />
-            </div>
-         </div>
+               {/* Puntuación */}
+               <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Puntuación</label>
+                    <span className="text-[10px] font-black text-emerald-500">{(lead.score || 0)}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                     <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${lead.score || 0}%` }} />
+                  </div>
+               </div>
 
-         {/* Progreso del Paso */}
-         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Progreso del Paso</label>
-              <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded uppercase font-black tracking-tighter italic">Presentación</span>
-            </div>
-            <div className="space-y-3">
-               {[
-                 { l: 'Opciones presentadas', checked: lead.score > 30 },
-                 { l: 'Interés detectado', checked: lead.score > 60 },
-                 { l: 'Datos capturados', checked: !!(lead.nit || lead.direccion) }
-               ].map((step, i) => (
-                 <div key={i} className="flex items-center space-x-3 group cursor-pointer">
-                    <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center transition-all ${step.checked ? 'bg-emerald-500 border-emerald-500 shadow-sm' : 'border-slate-200 bg-white'}`}>
-                       {step.checked && <CheckCircle2 size={10} className="text-white" />}
-                    </div>
-                    <span className={`text-[11px] font-bold ${step.checked ? 'text-slate-700' : 'text-slate-400'} group-hover:text-slate-800 transition-colors`}>{step.l}</span>
-                 </div>
-               ))}
-            </div>
-         </div>
+               {/* Progreso del Paso */}
+               <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Progreso del Paso</label>
+                    <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded uppercase font-black tracking-tighter italic">Presentación</span>
+                  </div>
+                  <div className="space-y-3">
+                     {[
+                       { l: 'Opciones presentadas', checked: lead.score > 30 },
+                       { l: 'Interés detectado', checked: lead.score > 60 },
+                       { l: 'Datos capturados', checked: !!(lead.nit || lead.direccion) }
+                     ].map((step, i) => (
+                       <div key={i} className="flex items-center space-x-3 group cursor-pointer">
+                          <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center transition-all ${step.checked ? 'bg-emerald-500 border-emerald-500 shadow-sm' : 'border-slate-200 bg-white'}`}>
+                             {step.checked && <CheckCircle2 size={10} className="text-white" />}
+                          </div>
+                          <span className={`text-[11px] font-bold ${step.checked ? 'text-slate-700' : 'text-slate-400'} group-hover:text-slate-800 transition-colors`}>{step.l}</span>
+                       </div>
+                     ))}
+                  </div>
+               </div>
 
-         {/* Datos Capturados */}
-         <div className="space-y-4">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Datos Capturados</label>
-            <div className="space-y-4">
-               {[
-                 { l: 'Nombre', v: lead.nombre, i: UserCircle },
-                 { l: 'Email', v: lead.email, i: Mail },
-                 { l: 'Teléfono', v: lead.phone, i: Phone }
-               ].map((d, i) => (
-                 <div key={i} className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-2">
-                       <d.i size={12} className="text-slate-300" />
-                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{d.l}</span>
-                    </div>
-                    <span className="text-[11px] font-black text-slate-800 truncate pl-5">{d.v || '—'}</span>
-                 </div>
-               ))}
-            </div>
-         </div>
+               {/* Datos Capturados */}
+               <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Datos Capturados</label>
+                  <div className="space-y-4">
+                     {[
+                       { l: 'Nombre', v: lead.nombre, i: UserCircle },
+                       { l: 'Email', v: lead.email, i: Mail },
+                       { l: 'Teléfono', v: lead.phone, i: Phone }
+                     ].map((d, i) => (
+                       <div key={i} className="flex flex-col space-y-1">
+                          <div className="flex items-center space-x-2">
+                             <d.i size={12} className="text-slate-300" />
+                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{d.l}</span>
+                          </div>
+                          <span className="text-[11px] font-black text-slate-800 truncate pl-5">{d.v || '—'}</span>
+                       </div>
+                     ))}
+                  </div>
+               </div>
 
-         {/* Etiquetas */}
-         <div className="space-y-4">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Etiquetas</label>
-            <div className="flex flex-wrap gap-2">
-               {(lead.etiquetas || '').split(',').filter(e => e.trim()).map((tag, i) => (
-                 <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-slate-200 hover:bg-[#FF6B00] hover:text-white hover:border-[#FF6B00] transition-all cursor-default">
-                   {tag.trim()}
-                 </span>
-               ))}
-               <button 
-                 onClick={() => setEditingLead({...lead})}
-                 className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-emerald-100 hover:bg-emerald-100 transition-all"
-               >
-                 + Gestionar
-               </button>
-            </div>
-         </div>
+               {/* Etiquetas */}
+               <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Etiquetas</label>
+                  <div className="flex flex-wrap gap-2">
+                     {(lead.etiquetas || '').split(',').filter(e => e.trim()).map((tag, i) => (
+                       <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-slate-200 hover:bg-[#FF6B00] hover:text-white hover:border-[#FF6B00] transition-all cursor-default">
+                         {tag.trim()}
+                       </span>
+                     ))}
+                     <button 
+                       onClick={() => setEditingLead({...lead})}
+                       className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-emerald-100 hover:bg-emerald-100 transition-all"
+                     >
+                       + Gestionar
+                     </button>
+                  </div>
+               </div>
 
-         {/* Metadata */}
-         <div className="pt-6 border-t border-slate-100 space-y-3">
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">WhatsApp ID</p>
-              <p className="text-[11px] font-bold text-slate-800 tabular-nums">{lead.whatsapp_id || lead.phone || '—'}</p>
-            </div>
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Registrado</p>
-              <p className="text-[11px] font-bold text-slate-800">{lead.time || lead.timestamp || '—'}</p>
-            </div>
-         </div>
+               {/* Metadata */}
+               <div className="pt-6 border-t border-slate-100 space-y-3">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">WhatsApp ID</p>
+                    <p className="text-[11px] font-bold text-slate-800 tabular-nums">{lead.whatsapp_id || lead.phone || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Registrado</p>
+                    <p className="text-[11px] font-bold text-slate-800">{lead.time || lead.timestamp || '—'}</p>
+                  </div>
+               </div>
 
-         {/* Acciones */}
-         <div className="space-y-3 pt-6 border-t border-slate-100">
-            <button 
-              onClick={() => handleArchiveLead(lead.id, lead.archived)}
-              className="w-full py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95"
-            >
-              <Archive size={14} className="text-amber-400" />
-              <span>{lead.archived ? 'Restaurar Lead' : 'Archivar conversación'}</span>
-            </button>
-            <button 
-              onClick={() => handleDeleteMessages(lead.id)}
-              className="w-full py-3.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 border border-red-100 hover:bg-red-100 transition-all active:scale-95"
-            >
-              <Trash size={14} />
-              <span>Eliminar conversación</span>
-            </button>
-         </div>
+               {/* Acciones */}
+               <div className="space-y-3 pt-6 border-t border-slate-100">
+                  <button 
+                    onClick={() => handleArchiveLead(lead.id, lead.archived)}
+                    className="w-full py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95"
+                  >
+                    <Archive size={14} className="text-amber-400" />
+                    <span>{lead.archived ? 'Restaurar Lead' : 'Archivar conversación'}</span>
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteMessages(lead.id)}
+                    className="w-full py-3.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 border border-red-100 hover:bg-red-100 transition-all active:scale-95"
+                  >
+                    <Trash size={14} />
+                    <span>Eliminar conversación</span>
+                  </button>
+               </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -1052,6 +1056,13 @@ const App = () => {
                         >
                           <Trash size={16} />
                         </button>
+                        <button 
+                          onClick={() => setShowClientSidebarChat(!showClientSidebarChat)}
+                          title="Datos del Cliente"
+                          className={`p-2.5 rounded-xl border transition-all ${showClientSidebarChat ? 'bg-[#FF6B00] text-white border-[#FF6B00] shadow-lg shadow-orange-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                        >
+                          <UserCircle size={16} />
+                        </button>
                         <button onClick={async () => {
                            const newState = !selectedLead.botActive;
                            const leadId = selectedLead.id;
@@ -1115,10 +1126,11 @@ const App = () => {
                      </div>
                   </div>
                </div>
-               {renderClientSidebar(selectedLead)}
+               {renderClientSidebar(selectedLead, showClientSidebarChat, () => setShowClientSidebarChat(false))}
             </div>
-          )}
-           {/* VIEW: CLIENTES (CRM EVOLUCIONADO) */}
+           )}
+
+          {/* VIEW: CLIENTES (CRM EVOLUCIONADO) */}
            {activeTab === 'crm' && (
               <div className="max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                  <div className="flex justify-between items-start">
@@ -1131,6 +1143,15 @@ const App = () => {
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                           <input type="text" placeholder="Buscar cliente..." className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none w-64 shadow-sm italic" />
                        </div>
+                       {sidebarLeadId && (
+                           <button 
+                             onClick={() => setShowClientSidebarCRM(!showClientSidebarCRM)}
+                             title="Detalles del Cliente"
+                             className={`p-2.5 rounded-xl border transition-all ${showClientSidebarCRM ? 'bg-[#FF6B00] text-white border-[#FF6B00] shadow-lg shadow-orange-100' : 'bg-white text-slate-400 border-slate-200 shadow-sm'}`}
+                           >
+                             <UserCircle size={18} />
+                           </button>
+                        )}
                     </div>
                  </div>
 
@@ -1203,7 +1224,7 @@ const App = () => {
                           </tbody>
                        </table>
                     </div>
-                    {showClientSidebarCRM && renderClientSidebar(leads.find(l => l.id === sidebarLeadId))}
+                     {renderClientSidebar(leads.find(l => l.id === sidebarLeadId), showClientSidebarCRM, () => setShowClientSidebarCRM(false))}
                  </div>
               </div>
            )}
