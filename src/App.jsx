@@ -1,123 +1,132 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, Users, Calendar, Database, Zap, 
-  BarChart3, Send, Bot, ShieldCheck, HelpCircle, 
-  Search, Plus, MoreVertical, CheckCircle2, Clock, 
-  AlertTriangle, Power, Save, RefreshCw, Filter, 
-  MessageSquare, FileText, Smartphone, Target,
-  Brain, Link2, Bell, Settings, ChevronRight,
-  TrendingUp, Globe, Mail, Phone, Lock, Trash2,
-  PieChart, ArrowUpRight, Sparkles, Paperclip, SendHorizontal, X,
-  BadgeCheck, Handshake, Trophy, ThumbsDown, Briefcase, UserCircle,
-  ChevronLeft, ChevronRight as ChevronRightIcon, UserCheck, Siren, Pencil, BookOpen, Tag, DoorOpen, ShoppingBag, Archive, Trash, MapPin, ChevronDown
+  LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag, 
+  Brain, Database, Zap, SendHorizontal, Search, Bell, X, 
+  MoreVertical, CheckCircle2, AlertTriangle, UserCircle, Phone, 
+  Pencil, Trash2, Plus, Save, TrendingUp, Target, Archive,
+  RefreshCw, Power, ShieldCheck, ChevronRight, ChevronLeft,
+  Bot, Sparkles, BookOpen, Tag, LineChart
 } from 'lucide-react';
 
+const API_BASE_URL = 'http://187.124.146.232:3002';
+const CURRENT_USER_ID = 'fer';
 
-/**
- * CONFIGURACIÓN GLOBAL SAAS
- * Vinculado a la Guía de Arquitectura v4.0
- */
-const N8N_WEBHOOK_URL = "";
-const CURRENT_USER_ID = "user_777_guatemala";
-// Detectar automáticamente si estamos en desarrollo o producción
-const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-// Si estamos en el puerto de Vite (5173) pero no en producción, apuntamos al 3001
-const API_BASE_URL = (isDev && window.location.port === '5173') ? 'http://localhost:3000' : '';
-
-console.log(`🌐 Host: ${window.location.hostname}:${window.location.port}`);
-console.log(`🌐 API_BASE_URL detectado: "${API_BASE_URL || '(relativo)'}"`);
-
-const CARD_CATEGORIES = ['Precios', 'Productos', 'FAQ', 'Políticas', 'Técnico', 'General'];
-const PRODUCT_CATEGORIES = ['Motores', 'Controles', 'Accesorios', 'Repuestos', 'Servicios', 'General'];
-const STOCK_OPTIONS = ['En stock', 'Bajo stock', 'Sin stock', 'Bajo pedido'];
-const STOCK_STYLES = {
-  'En stock':    'bg-emerald-50 text-emerald-700 border-emerald-100',
-  'Bajo stock':  'bg-amber-50 text-amber-700 border-amber-100',
-  'Sin stock':   'bg-red-50 text-red-600 border-red-100',
-  'Bajo pedido': 'bg-blue-50 text-blue-700 border-blue-100',
-};
+// --- STYLES & CONSTANTS ---
 const CATEGORY_STYLES = {
-  'Precios':   { badge: 'bg-blue-50 text-blue-700 border-blue-100',   dot: 'bg-blue-400' },
-  'Productos': { badge: 'bg-emerald-50 text-emerald-700 border-emerald-100', dot: 'bg-emerald-400' },
-  'FAQ':       { badge: 'bg-purple-50 text-purple-700 border-purple-100', dot: 'bg-purple-400' },
-  'Políticas': { badge: 'bg-amber-50 text-amber-700 border-amber-100', dot: 'bg-amber-400' },
-  'Técnico':   { badge: 'bg-orange-50 text-orange-700 border-orange-100', dot: 'bg-orange-400' },
-  'General':   { badge: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
+  'General': { badge: 'bg-slate-50 text-slate-500 border-slate-100', dot: 'bg-slate-300' },
+  'Precios': { badge: 'bg-emerald-50 text-emerald-600 border-emerald-100', dot: 'bg-emerald-400' },
+  'Soporte': { badge: 'bg-blue-50 text-blue-600 border-blue-100', dot: 'bg-blue-400' },
+  'Horarios': { badge: 'bg-amber-50 text-amber-600 border-amber-100', dot: 'bg-amber-400' },
+  'Técnico': { badge: 'bg-purple-50 text-purple-600 border-purple-100', dot: 'bg-purple-400' }
 };
 
+const CARD_CATEGORIES = ['General', 'Precios', 'Soporte', 'Horarios', 'Técnico'];
+const PRODUCT_CATEGORIES = ['Motores', 'Portones', 'Controles', 'Cámaras', 'Accesorios', 'Servicios'];
+const STOCK_OPTIONS = ['En stock', 'Poco stock', 'Agotado'];
+const STOCK_STYLES = {
+  'En stock': 'bg-emerald-50 text-emerald-600 border-emerald-100',
+  'Poco stock': 'bg-amber-50 text-amber-600 border-amber-100',
+  'Agotado': 'bg-red-50 text-red-600 border-red-100'
+};
+
+const emptyProduct = {
+  nombre: '',
+  descripcion: '',
+  precio: '',
+  categoria: 'Motores',
+  stock: 'En stock',
+  imagen: ''
+};
+
+const emptyCita = {
+  cliente: '',
+  phone: '',
+  fecha: '',
+  hora: '',
+  servicio: '',
+  duracion: '1 hora',
+  estado: 'Pendiente'
+};
+
+// --- LOGIC COMPONENTS ---
 const AprendizajeLogic = ({ API_BASE_URL, subTabIA }) => {
-  const [loading, setLoading] = useState(false);
-  
   useEffect(() => {
     if (subTabIA === 'Aprendizaje') {
-      // Intentar disparar un fetch global o usar un bus de eventos si fuera necesario
-      // Pero aquí lo manejaremos con dispatchers si estuviéramos en Redux. 
-      // Como es simple state, mejor lo hacemos en el componente padre.
+      const syncLearning = async () => {
+        try {
+          await fetch(`${API_BASE_URL}/api/learning/sync`, { method: 'POST' });
+        } catch (e) {
+          console.error("Error syncing learning data", e);
+        }
+      };
+      syncLearning();
     }
-  }, [subTabIA]);
-
+  }, [subTabIA, API_BASE_URL]);
   return null;
 };
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [subTabIA, setSubTabIA] = useState('General');
-  const [agendaView, setAgendaView] = useState('Lista');
-  const [botEnabled, setBotEnabled] = useState(true);
-  const [selectedChatId, setSelectedChatId] = useState(1);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [debugInfo, setDebugInfo] = useState(null); // Para diagnóstico
-  const fileInputRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const leadsRef = useRef([]);
-  const unreadCountRef = useRef(0);
-  const selectedChatIdRef = useRef(1);
-  const activeTabRef = useRef('dashboard');
-
-  useEffect(() => {
-    selectedChatIdRef.current = selectedChatId;
-    activeTabRef.current = activeTab;
-    if (activeTab === 'conversaciones') {
-      unreadCountRef.current = 0;
-      document.title = "OneControl";
-    }
-  }, [selectedChatId, activeTab]);
-
-  // --- PERFIL DE USUARIO ---
-  const [userProfile] = useState({
-    name: "Luis Méndez",
-    accountType: "Agencia Elite",
-    company: "OneControl Guatemala",
-    avatar: "LM"
-  });
-
-  // --- DATOS DE LEADS / CONTACTOS ---
+  
+  // Data States
   const [leads, setLeads] = useState([]);
-
-  // --- DATOS DE AGENDA ---
-  const [agenda, setAgenda] = useState([]);
-
-  // --- DATOS DE MENSAJES ---
   const [messages, setMessages] = useState([]);
-  const [messageText, setMessageText] = useState("");
+  const [agenda, setAgenda] = useState([]);
+  const [pedidos, setPedidos] = useState([]);
   const [documents, setDocuments] = useState([]);
-  const [showNewCard, setShowNewCard] = useState(false);
-  const [newCard, setNewCard] = useState({ name: '', category: 'General', content: '' });
-  const [editingCard, setEditingCard] = useState(null);
-  const [ragSubTab, setRagSubTab] = useState('conocimiento');
   const [products, setProducts] = useState([]);
+  
+  // Selection States
+  const [selectedChatId, setSelectedChatId] = useState(null);
+  const [selectedLead, setSelectedLead] = useState({});
+  const [sidebarLeadId, setSidebarLeadId] = useState(null);
+  
+  // UI States
+  const [showClientSidebarChat, setShowClientSidebarChat] = useState(false);
+  const [showClientSidebarCRM, setShowClientSidebarCRM] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [botEnabled, setBotEnabled] = useState(true);
+  
+  // Agent Config States
+  const [subTabIA, setSubTabIA] = useState('General');
+  const [agentConfig, setAgentConfig] = useState({
+    nombre: 'OneControl Bot',
+    rol: 'Asistente de Ventas',
+    empresa: 'OneControl Guatemala',
+    descripcion: '',
+    personalidad: 'Servicial y Profesional',
+    idioma: 'Español',
+    tono: 'Amigable',
+    productos: ''
+  });
+  
+  const [prompts, setPrompts] = useState({
+    Recepcionista: '',
+    Vendedor: '',
+    Soporte: ''
+  });
+  const [selectedAgent, setSelectedAgent] = useState('Recepcionista');
+  const [handoffTriggers, setHandoffTriggers] = useState([]);
+  
+  // Learning States
+  const [aiInsights, setAiInsights] = useState([]);
+  const [aiKnowledge, setAiKnowledge] = useState([]);
+  
+  // RAG States
+  const [ragSubTab, setRagSubTab] = useState('conocimiento');
+  const [showNewCard, setShowNewCard] = useState(false);
+  const [editingCard, setEditingCard] = useState(null);
+  const [newCard, setNewCard] = useState({ name: '', category: 'General', content: '' });
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'General', stock: 'En stock', imagen: '' };
   const [newProduct, setNewProduct] = useState(emptyProduct);
-  const [editingLead, setEditingLead] = useState(null);
-  const [showClientSidebarCRM, setShowClientSidebarCRM] = useState(false);
-  const [showClientSidebarChat, setShowClientSidebarChat] = useState(true);
-  const [sidebarLeadId, setSidebarLeadId] = useState(null);
+  
+  // Agenda States
+  const [agendaView, setAgendaView] = useState('Lista');
   const [showNewCita, setShowNewCita] = useState(false);
-  const emptyCita = { cliente: '', phone: '', fecha: '', hora: '', servicio: '', duracion: '1 hora' };
   const [newCita, setNewCita] = useState(emptyCita);
   const [pedidos, setPedidos] = useState([]);
   const [aiInsights, setAiInsights] = useState([]);
@@ -126,474 +135,290 @@ const App = () => {
   const [testResults, setTestResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Refs
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const playMessageAlert = useRef(() => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+    audio.play().catch(() => {});
+  });
 
-  const fetchDocuments = useCallback(() => {
-    fetch(`${API_BASE_URL}/api/rag/documents`)
-      .then(res => res.json())
-      .then(data => setDocuments(data))
-      .catch(console.error);
-  }, []);
+  // --- DATA FETCHING ---
+  const fetchLeads = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/leads`);
+      const data = await res.json();
+      setLeads(data);
+      if (data.length > 0 && !selectedChatId) {
+        setSelectedChatId(data[0].id);
+      }
+    } catch (err) { console.error(err); }
+  };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const fetchMessages = async (id) => {
+    if (!id) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/messages/${id}`);
+      const data = await res.json();
+      setMessages(data);
+    } catch (err) { console.error(err); }
+  };
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('name', file.name);
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/settings`);
+      const data = await res.json();
+      const config = { ...agentConfig };
+      const loadedPrompts = { ...prompts };
+      
+      data.forEach(s => {
+        if (s.key === 'agent_nombre') config.nombre = s.value;
+        if (s.key === 'agent_rol') config.rol = s.value;
+        if (s.key === 'agent_empresa') config.empresa = s.value;
+        if (s.key === 'agent_descripcion') config.descripcion = s.value;
+        if (s.key === 'agent_personalidad') config.personalidad = s.value;
+        if (s.key === 'agent_idioma') config.idioma = s.value;
+        if (s.key === 'agent_tono') config.tono = s.value;
+        if (s.key === 'agent_productos') config.productos = s.value;
+        
+        if (s.key === 'prompt_recepcionista') loadedPrompts.Recepcionista = s.value;
+        if (s.key === 'prompt_ventas') loadedPrompts.Vendedor = s.value;
+        if (s.key === 'prompt_soporte') loadedPrompts.Soporte = s.value;
+      });
+      
+      setAgentConfig(config);
+      setPrompts(loadedPrompts);
+    } catch (err) { console.error(err); }
+  };
 
+  const fetchRAG = async () => {
+    try {
+      const [docsRes, prodsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/documents`),
+        fetch(`${API_BASE_URL}/api/products`)
+      ]);
+      setDocuments(await docsRes.json());
+      setProducts(await prodsRes.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchAgenda = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/agenda`);
+      setAgenda(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchPedidos = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/pedidos`);
+      setPedidos(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchLearning = async () => {
+    try {
+      const [insightsRes, knowledgeRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/learning/insights`),
+        fetch(`${API_BASE_URL}/api/learning/knowledge`)
+      ]);
+      setAiInsights(await insightsRes.json());
+      setAiKnowledge(await knowledgeRes.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchHandoff = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/handoff/triggers`);
+      setHandoffTriggers(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  useEffect(() => {
+    fetchLeads();
+    fetchSettings();
+    fetchRAG();
+    fetchAgenda();
+    fetchPedidos();
+    fetchHandoff();
+    fetchLearning();
+    
+    const interval = setInterval(() => {
+      fetchLeads();
+      if (activeTab === 'conversaciones') fetchMessages(selectedChatId);
+      if (activeTab === 'pedidos') fetchPedidos();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [selectedChatId, activeTab]);
+
+  useEffect(() => {
+    if (selectedChatId) {
+      fetchMessages(selectedChatId);
+      const lead = leads.find(l => l.id === selectedChatId);
+      if (lead) setSelectedLead(lead);
+    }
+  }, [selectedChatId, leads]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // --- ACTIONS ---
+  const handleAction = async (action, data) => {
     setLoading(true);
-    fetch(`${API_BASE_URL}/api/rag/upload`, {
-      method: 'POST',
-      body: formData
-    })
-    .then(res => res.json())
-    .then(() => {
-      setNotification("Documento subido y procesado");
-      fetchDocuments();
-    })
-    .catch(err => setNotification(`Error: ${err.message}`))
-    .finally(() => setLoading(false));
+    try {
+      await fetch(`${API_BASE_URL}/api/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, data })
+      });
+    } catch (err) { console.error(err); }
+    setLoading(false);
   };
 
-  const handleDeleteDocument = (id) => {
-    if (!confirm("¿Eliminar esta tarjeta?")) return;
-    fetch(`${API_BASE_URL}/api/rag/documents/${id}`, { method: 'DELETE' })
-      .then(() => fetchDocuments())
-      .catch(console.error);
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !selectedChatId) return;
+    const text = messageText;
+    setMessageText('');
+    try {
+      await fetch(`${API_BASE_URL}/api/messages/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selectedChatId, text, sender: 'agent' })
+      });
+      fetchMessages(selectedChatId);
+    } catch (err) { console.error(err); }
   };
 
+  const saveSetting = async (key, value) => {
+    setLoading(true);
+    try {
+      await fetch(`${API_BASE_URL}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value })
+      });
+      setNotification(`✅ ${key.replace('agent_', '').replace('_', ' ')} guardado`);
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err) { console.error(err); }
+    setLoading(false);
+  };
+
+  const saveHandoffTriggers = async () => {
+    setLoading(true);
+    try {
+      await fetch(`${API_BASE_URL}/api/handoff/triggers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(handoffTriggers)
+      });
+      setNotification('✅ Triggers de Handoff guardados');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err) { console.error(err); }
+    setLoading(false);
+  };
+
+  const approveKnowledge = async (id) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/learning/knowledge/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      fetchLearning();
+      fetchRAG();
+      setNotification('✅ Conocimiento validado e integrado al RAG');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err) { console.error(err); }
+  };
+
+  const updatePedidoEstado = async (id, nuevoEstado) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/pedidos/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, estado: nuevoEstado })
+      });
+      fetchPedidos();
+    } catch (err) { console.error(err); }
+  };
+
+  // --- RAG ACTIONS ---
   const handleSaveCard = async () => {
     if (!newCard.name.trim() || !newCard.content.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/api/rag/save`, {
+      await fetch(`${API_BASE_URL}/api/documents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCard)
       });
       setNewCard({ name: '', category: 'General', content: '' });
       setShowNewCard(false);
-      fetchDocuments();
-      setNotification('✅ Tarjeta guardada');
-      setTimeout(() => setNotification(null), 2000);
-    } catch(err) {
-      setNotification(`❌ Error: ${err.message}`);
-    }
-  };
-
-  const fetchProducts = () => {
-    fetch(`${API_BASE_URL}/api/products`)
-      .then(r => r.json()).then(setProducts).catch(console.error);
-  };
-
-  const handleSaveProduct = async () => {
-    if (!newProduct.nombre.trim()) return;
-    await fetch(`${API_BASE_URL}/api/products`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newProduct)
-    });
-    setNewProduct(emptyProduct); setShowNewProduct(false); fetchProducts();
-    setNotification('✅ Producto guardado'); setTimeout(() => setNotification(null), 2000);
-  };
-
-  const handleUpdateProduct = async (id) => {
-    if (!editingProduct.nombre.trim()) return;
-    await fetch(`${API_BASE_URL}/api/products/${id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editingProduct)
-    });
-    setEditingProduct(null); fetchProducts();
-    setNotification('✅ Producto actualizado'); setTimeout(() => setNotification(null), 2000);
-  };
-
-  const handleDeleteProduct = (id) => {
-    if (!confirm('¿Eliminar este producto?')) return;
-    fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' })
-      .then(() => fetchProducts()).catch(console.error);
+      fetchRAG();
+      setNotification('✅ Tarjeta creada correctamente');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err) { console.error(err); }
   };
 
   const handleUpdateCard = async (id) => {
-    if (!editingCard.name.trim() || !editingCard.content.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/api/rag/documents/${id}`, {
+      await fetch(`${API_BASE_URL}/api/documents/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingCard)
       });
       setEditingCard(null);
-      fetchDocuments();
+      fetchRAG();
       setNotification('✅ Tarjeta actualizada');
-      setTimeout(() => setNotification(null), 2000);
-    } catch(err) {
-      setNotification(`❌ Error: ${err.message}`);
-    }
-  };
-
-  const handleArchiveLead = async (id, currentStatus) => {
-    try {
-      await fetch(`${API_BASE_URL}/api/leads/${id}/archive`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archived: !currentStatus })
-      });
-      fetchLeads();
-      setNotification(currentStatus ? 'Lead restaurado' : 'Lead archivado');
-      setTimeout(() => setNotification(null), 2000);
-    } catch(err) { setNotification(`❌ Error: ${err.message}`); }
-  };
-
-  const handleDeleteMessages = async (id) => {
-    if (!confirm('¿Eliminar todos los mensajes de esta conversación? Esta acción no se puede deshacer.')) return;
-    try {
-      await fetch(`${API_BASE_URL}/api/leads/${id}/messages`, { method: 'DELETE' });
-      setNotification('✅ Mensajes eliminados');
-      setTimeout(() => setNotification(null), 2000);
-    } catch(err) { setNotification(`❌ Error: ${err.message}`); }
-  };
-
-  const handleDeleteLead = async (id) => {
-    if (!confirm('¿Eliminar cliente y toda su información por completo?')) return;
-    try {
-      await fetch(`${API_BASE_URL}/api/leads/${id}`, { method: 'DELETE' });
-      fetchLeads();
-      setNotification('🗑️ Cliente eliminado');
-      setTimeout(() => setNotification(null), 2000);
-    } catch(err) { setNotification(`❌ Error: ${err.message}`); }
-  };
-
-  const handleUpdateLead = async () => {
-    if (!editingLead) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/leads/update-contact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leadId: editingLead.id,
-          nombre: editingLead.nombre,
-          email: editingLead.email,
-          direccion: editingLead.direccion,
-          notas: editingLead.notas,
-          nit: editingLead.nit,
-          motor: editingLead.motor,
-          falla: editingLead.falla,
-          zona: editingLead.zona,
-          etiquetas: editingLead.etiquetas,
-          whatsapp_id: editingLead.whatsapp_id,
-          score: editingLead.score,
-          estado: editingLead.estado
-        })
-      });
-      if (!res.ok) throw new Error("Error al actualizar");
-      setEditingLead(null);
-      fetchLeads();
-      setNotification('✅ Lead actualizado');
-      setTimeout(() => setNotification(null), 2000);
-    } catch(err) {
-      setNotification(`❌ Error: ${err.message}`);
-    }
-  };
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-  }, [messages]);
-
-  useEffect(() => {
-    if (activeTab === 'conversaciones' && selectedChatId) {
-      fetch(`${API_BASE_URL}/api/messages/${selectedChatId}`)
-        .then(res => res.json())
-        .then(data => setMessages(data))
-        .catch(console.error);
-
-      const interval = setInterval(() => {
-        fetch(`${API_BASE_URL}/api/messages/${selectedChatId}`)
-          .then(res => res.json())
-          .then(data => setMessages(data))
-          .catch(console.error);
-      }, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, selectedChatId]);
-
-  // --- AUDIO CONTEXT PERSISTENTE (soluciona el bug de "solo funciona una vez") ---
-  const audioCtxRef = useRef(null);
-  const getAudioCtx = () => {
-    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    return audioCtxRef.current;
-  };
-
-  // --- ALERTA SONORA DE NUEVO MENSAJE ---
-  const playMessageAlert = useRef(null);
-  playMessageAlert.current = () => {
-    try {
-      const ctx = getAudioCtx();
-      const play = () => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(600, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.15);
-      };
-      if (ctx.state === 'suspended') {
-        ctx.resume().then(play);
-      } else {
-        play();
-      }
-    } catch(e) { console.warn('[Audio]', e.message); }
-  };
-
-
-  const fetchLeads = useCallback(() => {
-    fetch(`${API_BASE_URL}/api/leads`)
-      .then(res => res.json())
-      .then(data => {
-        // ── TODA LA DETECCIÓN FUERA DE setLeads ──
-        const prevLeads = leadsRef.current;
-
-        // Debug: mostrar qué datos llegan
-        const snapshot = data.slice(0, 3).map(l => ({
-          id: l.id, nombre: l.nombre?.slice(0,10),
-          lastMsgId: l.lastMessageId, sender: l.lastMessageSender
-        }));
-        setDebugInfo({ time: new Date().toLocaleTimeString(), leads: snapshot, prevCount: prevLeads.length });
-
-        if (prevLeads.length > 0) {
-          // 1. Detectar nuevos handoffs urgentes
-          const prevUrgentIds = new Set(prevLeads.filter(l => l.priority === 'urgent').map(l => l.id));
-          const newUrgent = data.filter(l => l.priority === 'urgent' && !prevUrgentIds.has(l.id));
-          if (newUrgent.length > 0) {
-            playHandoffAlert();
-            setNotification(`🚨 ATENCIÓN: ${newUrgent[0].nombre} requiere intervención`);
-            setTimeout(() => setNotification(null), 6000);
-          }
-
-          // 2. Detectar nuevos mensajes de clientes
-          let incomingCount = 0;
-          let incomingLead = null;
-          data.forEach(newLead => {
-            const prevLead = prevLeads.find(l => l.id === newLead.id);
-            if (
-              prevLead &&
-              newLead.lastMessageId != null &&
-              newLead.lastMessageId !== prevLead.lastMessageId &&
-              newLead.lastMessageSender === 'client'
-            ) {
-              const isViewingThisChat =
-                activeTabRef.current === 'conversaciones' &&
-                selectedChatIdRef.current === newLead.id;
-              if (!isViewingThisChat) {
-                incomingCount++;
-                incomingLead = newLead;
-                console.log(`[NOTIF] 💬 ${newLead.nombre} — ID anterior: ${prevLead.lastMessageId} → nuevo: ${newLead.lastMessageId}`);
-              }
-            }
-          });
-
-          if (incomingCount > 0 && incomingLead) {
-            playMessageAlert.current();
-            unreadCountRef.current += incomingCount;
-            document.title = `(${unreadCountRef.current}) Nuevos mensajes - OneControl`;
-            setNotification(`💬 Nuevo mensaje de ${incomingLead.nombre}`);
-            setTimeout(() => setNotification(null), 5000);
-          }
-        }
-
-        // Actualizar ref y estado
-        leadsRef.current = data;
-        setLeads(data);
-      })
-      .catch(console.error);
-  }, []);
-
-
-  useEffect(() => {
-    fetchLeads();
-    fetch(`${API_BASE_URL}/api/agenda`)
-      .then(res => res.json())
-      .then(data => setAgenda(data))
-      .catch(console.error);
-
-    fetch(`${API_BASE_URL}/api/pedidos`)
-      .then(res => res.json())
-      .then(data => setPedidos(data))
-      .catch(console.error);
-      
-    // Polling for real-time updates
-    const interval = setInterval(() => {
-      fetchLeads();
-      fetch(`${API_BASE_URL}/api/pedidos`).then(r => r.json()).then(setPedidos).catch(console.error);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [fetchLeads]);
-
-  // --- CONFIGURACIÓN DEL AGENTE IA ---
-  const [selectedAgent, setSelectedAgent] = useState("Recepcionista");
-
-  // --- ALERTA SONORA DE HANDOFF (Web Audio API, sin archivos externos) ---
-  const playHandoffAlert = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const playBeep = (freq, start, duration) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-        gain.gain.setValueAtTime(0.3, ctx.currentTime + start);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
-        osc.start(ctx.currentTime + start);
-        osc.stop(ctx.currentTime + start + duration);
-      };
-      playBeep(880, 0, 0.15);
-      playBeep(660, 0.2, 0.15);
-      playBeep(880, 0.4, 0.3);
-    } catch(e) { /* silencioso si el browser bloquea audio */ }
-  };
-
-  // --- FUNCIÓN TOMAR CONTROL (Resolver Handoff) ---
-  const handleTakeControl = async (leadId) => {
-    try {
-      await fetch(`${API_BASE_URL}/api/leads/handoff/resolve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId })
-      });
-      setNotification('✅ Control tomado — Bot desactivado para este cliente');
-      setTimeout(() => setNotification(null), 4000);
-      fetchLeads();
-    } catch(e) {
-      console.error(e);
-    }
-  };
-  const [prompts, setPrompts] = useState({
-    Recepcionista: "",
-    Vendedor: "",
-    Soporte: ""
-  });
-
-  const [handoffTriggers, setHandoffTriggers] = useState([]);
-
-  const fetchHandoffTriggers = useCallback(() => {
-    fetch(`${API_BASE_URL}/api/handoff/triggers`)
-      .then(res => res.json())
-      .then(data => setHandoffTriggers(data))
-      .catch(console.error);
-  }, []);
-
-  const saveHandoffTriggers = async () => {
-    await fetch(`${API_BASE_URL}/api/handoff/triggers`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(handoffTriggers)
-    });
-    setNotification('✅ Palabras de handoff guardadas');
-    setTimeout(() => setNotification(null), 3000);
-  };
-  const [agentConfig, setAgentConfig] = useState({
-    nombre: "Eryum",
-    rol: "asistente de ventas de OneControl",
-    personalidad: "profesional, amable y entusiasta",
-    idioma: "Español",
-    tono: "Casual y amigable",
-    empresa: "OneControl",
-    descripcion: "OneControl es una plataforma de automatización con IA que conecta tu negocio con WhatsApp Business API y Meta Ads.",
-    productos: "- Chatbot de IA integrado con WhatsApp\n- Calificación automática de leads"
-  });
-
-  const fetchSettings = useCallback(() => {
-    const url = `${API_BASE_URL}/api/settings`;
-    console.log(`[FETCH] Cargando configuración desde: ${url}`);
-    
-    fetch(url)
-      .then(res => {
-        console.log(`[FETCH] Respuesta settings: ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        console.log(`[FETCH] Datos recibidos:`, Object.keys(data));
-        setPrompts({
-          Recepcionista: data.prompt_recepcionista || "",
-          Vendedor: data.prompt_ventas || "",
-          Soporte: data.prompt_soporte || ""
-        });
-        // Cargar config del agente si existe
-        if (data.agent_nombre) {
-          setAgentConfig(prev => ({ ...prev,
-            nombre: data.agent_nombre || prev.nombre,
-            rol: data.agent_rol || prev.rol,
-            descripcion: data.agent_descripcion || prev.descripcion,
-            empresa: data.agent_empresa || prev.empresa,
-          }));
-        }
-      })
-      .catch(err => console.error(`[FETCH] Error cargando settings:`, err));
-  }, []);
-
-  const saveSetting = (key, value) => {
-    const url = `${API_BASE_URL}/api/settings`;
-    console.log(`[SAVE] Intentando guardar: ${key}`, { url, valueLength: value?.length });
-    
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value: value || "" })
-    })
-    .then(async res => {
-      console.log(`[SAVE] Respuesta recibida: ${res.status}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Error HTTP ${res.status}`);
-      return data;
-    })
-    .then(() => {
-      console.log(`[SAVE] ¡Éxito! Refrescando...`);
-      setNotification(`✅ Prompt de ${selectedAgent} guardado`);
       setTimeout(() => setNotification(null), 3000);
-      fetchSettings();
-    })
-    .catch(err => {
-      console.error(`[SAVE] Error fatal:`, err);
-      setNotification(`❌ Error: ${err.message}`);
-      setTimeout(() => setNotification(null), 8000);
-    });
+    } catch (err) { console.error(err); }
   };
 
-  useEffect(() => {
-    fetchSettings();
-    fetchDocuments();
-    fetchHandoffTriggers();
-    fetchProducts();
-  }, [fetchSettings, fetchDocuments, fetchHandoffTriggers]);
+  const handleSaveProduct = async () => {
+    if (!newProduct.nombre.trim()) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct)
+      });
+      setNewProduct(emptyProduct);
+      setShowNewProduct(false);
+      fetchRAG();
+      setNotification('✅ Producto añadido al catálogo');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err) { console.error(err); }
+  };
 
-  useEffect(() => {
-    if (subTabIA === 'Aprendizaje') {
-      fetch(`${API_BASE_URL}/api/ai/insights`)
-        .then(res => res.json())
-        .then(setAiInsights)
-        .catch(console.error);
-      
-      fetch(`${API_BASE_URL}/api/ai/knowledge`)
-        .then(res => res.json())
-        .then(setAiKnowledge)
-        .catch(console.error);
-    }
-  }, [subTabIA, API_BASE_URL]);
+  const handleUpdateProduct = async (id) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/products/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingProduct)
+      });
+      setEditingProduct(null);
+      fetchRAG();
+      setNotification('✅ Producto actualizado');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err) { console.error(err); }
+  };
 
-  const approveKnowledge = async (id) => {
-    await fetch(`${API_BASE_URL}/api/ai/knowledge/approve/${id}`, { method: 'POST' });
-    // Refresh
-    fetch(`${API_BASE_URL}/api/ai/knowledge`)
-      .then(res => res.json())
-      .then(setAiKnowledge);
-    setNotification('✅ Conocimiento aprobado');
-    setTimeout(() => setNotification(null), 3000);
+  const handleDeleteDocument = async (id) => {
+    if (!window.confirm('¿Eliminar esta tarjeta de conocimiento?')) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/documents/${id}`, { method: 'DELETE' });
+      fetchRAG();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm('¿Eliminar este producto del catálogo?')) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
+      fetchRAG();
+    } catch (err) { console.error(err); }
   };
 
   const runTestSearch = async () => {
@@ -610,267 +435,199 @@ const App = () => {
     }
   };
 
-  // --- LOGICA DE COMUNICACIÓN CON N8N ---
-  const handleAction = async (action, data = {}) => {
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', file.name);
     setLoading(true);
-    console.log(`[n8n] Ejecutando: ${action}`, { userId: CURRENT_USER_ID, ...data });
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setLoading(false);
-      setNotification(`Sincronizado: ${action}`);
-      setTimeout(() => setNotification(null), 3000);
-    } catch (e) {
-      setLoading(false);
-      setNotification("Error de conexión");
-    }
+      const res = await fetch(`${API_BASE_URL}/api/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        setNotification('✅ Archivo procesado e integrado al conocimiento');
+        fetchRAG();
+      } else {
+        setNotification('❌ Error al procesar archivo');
+      }
+    } catch (err) { setNotification('❌ Error de conexión'); }
+    setLoading(false);
+    setTimeout(() => setNotification(null), 4000);
   };
 
-  const handleSendMessage = async () => {
-    if (!messageText.trim() || !selectedChatId) return;
-    
-    const textToSend = messageText.trim();
-    setMessageText(""); // Optimistic clear
-
-    // Optimistic UI update
-    const optimisticMessage = {
-      id: Date.now(),
-      lead_id: selectedChatId,
-      sender: 'agent',
-      text: textToSend,
-      timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-    };
-    setMessages(prev => [...prev, optimisticMessage]);
-
+  // --- CRM ACTIONS ---
+  const [editingLead, setEditingLead] = useState(null);
+  
+  const handleUpdateLead = async () => {
+    if (!editingLead) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/messages/send`, {
+      await fetch(`${API_BASE_URL}/api/leads/${editingLead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingLead)
+      });
+      setEditingLead(null);
+      fetchLeads();
+      setNotification('✅ Lead actualizado correctamente');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteMessages = async (id) => {
+    if (!window.confirm('¿Eliminar todos los mensajes de esta conversación?')) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/messages/${id}`, { method: 'DELETE' });
+      fetchMessages(id);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleArchiveLead = async (id, currentStatus) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/leads/${id}/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId: selectedChatId, text: textToSend })
+        body: JSON.stringify({ archived: !currentStatus })
       });
-      if (!res.ok) throw new Error("Error enviando mensaje");
-    } catch (error) {
-      console.error(error);
-      setNotification("Error enviando mensaje");
-    }
+      fetchLeads();
+    } catch (err) { console.error(err); }
   };
 
-  const selectedLead = leads.find(l => l.id === selectedChatId) || leads[0] || {
-    id: 0, nombre: 'Cargando...', score: 0, botActive: false, captura: {}
-  };
-
-  // --- COMPONENTES DE UI ---
+  // --- SUB-COMPONENTS ---
   const SidebarItem = ({ icon: Icon, label, id }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all group ${
-        activeTab === id 
-        ? 'bg-emerald-50 text-emerald-600 shadow-sm border border-emerald-100/50' 
-        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-      }`}
+    <button 
+      onClick={() => { setActiveTab(id); setSidebarOpen(false); }}
+      className={`w-full flex items-center space-x-4 px-4 py-3.5 rounded-2xl transition-all duration-300 group ${activeTab === id ? 'bg-slate-900 text-[#FF6B00] shadow-xl shadow-slate-200' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
     >
-      <Icon size={18} className={`${activeTab === id ? 'text-emerald-500' : 'text-slate-400 group-hover:text-slate-600'}`} />
-      <span className="text-sm font-bold tracking-tight">{label}</span>
-      {activeTab === id && <div className="ml-auto w-1.5 h-1.5 bg-emerald-500 rounded-full" />}
+      <Icon size={18} className={activeTab === id ? 'text-[#FF6B00]' : 'group-hover:scale-110 transition-transform'} />
+      <span className="text-[11px] font-black uppercase tracking-widest">{label}</span>
     </button>
   );
 
   const MonthView = () => {
-    const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    const days = [];
-    for (let i = 0; i < 5; i++) days.push(null); 
-    for (let i = 1; i <= 31; i++) days.push(i);
+    const days = Array.from({length: 31}, (_, i) => i + 1);
     return (
-      <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in duration-500">
-        <div className="grid grid-cols-7 border-b border-slate-50 bg-slate-50/30">
-          {daysOfWeek.map(day => (
-            <div key={day} className="py-4 text-center">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{day}</span>
+      <div className="grid grid-cols-7 gap-4 animate-in zoom-in-95 duration-500">
+        {['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'].map(d => (
+          <div key={d} className="text-center py-2 text-[10px] font-black text-slate-300 uppercase tracking-widest">{d}</div>
+        ))}
+        {days.map(d => {
+          const hasCitas = agenda.some(c => new Date(c.fecha).getDate() === d);
+          return (
+            <div key={d} className={`aspect-square bg-white rounded-3xl border border-slate-100 p-3 relative hover:border-[#FF6B00]/30 transition-all cursor-pointer group`}>
+              <span className="text-[10px] font-black text-slate-400 group-hover:text-slate-800">{d}</span>
+              {hasCitas && (
+                <div className="absolute bottom-3 right-3 h-2 w-2 bg-[#FF6B00] rounded-full shadow-lg shadow-orange-100" />
+              )}
             </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-px bg-slate-50">
-          {days.map((day, index) => {
-            const hasCita = agenda.filter(a => a.day === day);
-            const isToday = day === 3;
-            return (
-              <div key={index} className={`min-h-[140px] bg-white p-4 transition-all hover:bg-slate-50/80 group ${!day ? 'bg-slate-50/20' : ''}`}>
-                {day && (
-                  <>
-                    <div className="flex justify-between items-center mb-3">
-                      <span className={`text-xs font-black h-7 w-7 flex items-center justify-center rounded-xl transition-all ${isToday ? 'bg-[#FF6B00] text-white shadow-lg' : 'text-slate-400'}`}>
-                        {day}
-                      </span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {hasCita.map(cita => (
-                        <div key={cita.id} className="p-2 bg-emerald-50 border border-emerald-100 rounded-xl flex flex-col space-y-0.5 cursor-pointer hover:bg-emerald-100 transition-all shadow-sm">
-                          <p className="text-[9px] font-black text-emerald-700 truncate leading-none uppercase">{cita.cliente}</p>
-                          <p className="text-[8px] font-bold text-emerald-500 italic">{cita.hora}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+          );
+        })}
       </div>
     );
   };
 
   const renderClientSidebar = (lead, isOpen, onClose) => {
+    if (!lead || !isOpen) return null;
     return (
-      <div className={`transition-all duration-700 ease-in-out overflow-hidden border-l border-slate-100 bg-white flex-shrink-0 ${isOpen ? 'w-80 opacity-100' : 'w-0 opacity-0 border-none'}`}>
-        <div className="w-80 h-full flex flex-col relative">
-          {!lead ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-              <UserCircle size={40} className="text-slate-100" />
-              <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Selecciona un cliente para ver detalles</p>
-              <button onClick={onClose} className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest hover:underline mt-4">Ocultar Panel</button>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto no-scrollbar p-8 space-y-8 animate-in slide-in-from-right duration-500">
-               <div className="flex items-center justify-between">
-                  <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-2">
-                     <UserCircle size={16} className="text-[#FF6B00]" />
-                     <span>Datos del Cliente</span>
-                  </h3>
-                  <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 transition-colors">
-                    <X size={18} />
-                  </button>
-               </div>
+      <div className="w-80 border-l border-slate-100 bg-white flex flex-col shrink-0 animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar">
+        <div className="p-8 border-b border-slate-50 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10">
+           <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Perfil del Lead</h3>
+           <button onClick={onClose} className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-slate-600 transition-colors"><X size={18} /></button>
+        </div>
+        
+        <div className="p-8 space-y-8">
+           <div className="text-center">
+              <div className="h-24 w-24 rounded-[32px] bg-slate-900 text-[#FF6B00] flex items-center justify-center font-black text-2xl mx-auto mb-4 border-4 border-white shadow-2xl shadow-slate-200">
+                 {lead.nombre?.[0] || '?'}
+              </div>
+              <h4 className="text-lg font-black text-slate-800 leading-none mb-2">{lead.nombre}</h4>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-2">
+                 <span className={`h-2 w-2 rounded-full ${lead.botActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                 <span>{lead.botActive ? 'IA Gestionando' : 'Control Humano'}</span>
+              </p>
+           </div>
 
-               {/* Estado del Lead */}
-               <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Estado del Lead</label>
-                    <ChevronDown size={12} className="text-slate-300" />
-                  </div>
-                  <select 
-                    value={lead.estado || 'Nuevo'} 
-                    onChange={async (e) => {
-                      const newEstado = e.target.value;
-                      setLeads(prev => prev.map(l => l.id === lead.id ? {...l, estado: newEstado} : l));
-                      try {
-                        await fetch(`${API_BASE_URL}/api/leads/update-contact`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ leadId: lead.id, estado: newEstado })
-                        });
-                        setNotification(`✅ Estado: ${newEstado}`);
-                        setTimeout(() => setNotification(null), 2000);
-                      } catch(err) { fetchLeads(); }
-                    }}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-[#FF6B00] appearance-none"
-                  >
-                    {['Nuevo', 'Interesado', 'Cita Agendada', 'Venta', 'Post-Venta', 'Perdido'].map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-               </div>
+           <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                 <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Score IA</p>
+                 <p className="text-xl font-black text-slate-800 italic">{lead.score || 0}%</p>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                 <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Estado</p>
+                 <p className="text-[10px] font-black text-[#FF6B00] uppercase truncate">{lead.estado || 'Nuevo'}</p>
+              </div>
+           </div>
 
-               {/* Puntuación */}
-               <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Puntuación</label>
-                    <span className="text-[10px] font-black text-emerald-500">{(lead.score || 0)}%</span>
-                  </div>
-                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                     <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${lead.score || 0}%` }} />
-                  </div>
-               </div>
+           {/* Datos Capturados */}
+           <div className="space-y-4">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Datos Capturados por IA</label>
+              <div className="space-y-3">
+                 {[
+                   { l: 'Dirección', v: lead.direccion, i: Database },
+                   { l: 'NIT/Factura', v: lead.nit, i: Tag },
+                   { l: 'Email', v: lead.email, i: MessageSquare },
+                   { l: 'Notas', v: lead.notas, i: Pencil }
+                 ].map((d, i) => (
+                   <div key={i} className="flex flex-col space-y-1.5 p-3 rounded-xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100 group">
+                      <div className="flex items-center space-x-2">
+                         <d.i size={12} className="text-slate-300 group-hover:text-[#FF6B00] transition-colors" />
+                         <span className="text-[9px] font-black text-slate-400 uppercase">{d.l}</span>
+                      </div>
+                      <span className="text-[11px] font-black text-slate-800 truncate pl-5">{d.v || '—'}</span>
+                   </div>
+                 ))}
+              </div>
+           </div>
 
-               {/* Progreso del Paso */}
-               <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Progreso del Paso</label>
-                    <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded uppercase font-black tracking-tighter italic">Presentación</span>
-                  </div>
-                  <div className="space-y-3">
-                     {[
-                       { l: 'Opciones presentadas', checked: lead.score > 30 },
-                       { l: 'Interés detectado', checked: lead.score > 60 },
-                       { l: 'Datos capturados', checked: !!(lead.nit || lead.direccion) }
-                     ].map((step, i) => (
-                       <div key={i} className="flex items-center space-x-3 group cursor-pointer">
-                          <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center transition-all ${step.checked ? 'bg-emerald-500 border-emerald-500 shadow-sm' : 'border-slate-200 bg-white'}`}>
-                             {step.checked && <CheckCircle2 size={10} className="text-white" />}
-                          </div>
-                          <span className={`text-[11px] font-bold ${step.checked ? 'text-slate-700' : 'text-slate-400'} group-hover:text-slate-800 transition-colors`}>{step.l}</span>
-                       </div>
-                     ))}
-                  </div>
-               </div>
+           {/* Etiquetas */}
+           <div className="space-y-4">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Etiquetas</label>
+              <div className="flex flex-wrap gap-2">
+                 {(lead.etiquetas || '').split(',').filter(e => e.trim()).map((tag, i) => (
+                   <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-slate-200 hover:bg-[#FF6B00] hover:text-white hover:border-[#FF6B00] transition-all cursor-default">
+                     {tag.trim()}
+                   </span>
+                 ))}
+                 <button 
+                   onClick={() => setEditingLead({...lead})}
+                   className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-emerald-100 hover:bg-emerald-100 transition-all"
+                 >
+                   + Gestionar
+                 </button>
+              </div>
+           </div>
 
-               {/* Datos Capturados */}
-               <div className="space-y-4">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Datos Capturados</label>
-                  <div className="space-y-4">
-                     {[
-                       { l: 'Nombre', v: lead.nombre, i: UserCircle },
-                       { l: 'Email', v: lead.email, i: Mail },
-                       { l: 'Teléfono', v: lead.phone, i: Phone }
-                     ].map((d, i) => (
-                       <div key={i} className="flex flex-col space-y-1">
-                          <div className="flex items-center space-x-2">
-                             <d.i size={12} className="text-slate-300" />
-                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{d.l}</span>
-                          </div>
-                          <span className="text-[11px] font-black text-slate-800 truncate pl-5">{d.v || '—'}</span>
-                       </div>
-                     ))}
-                  </div>
-               </div>
+           {/* Metadata */}
+           <div className="pt-6 border-t border-slate-100 space-y-3">
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">WhatsApp ID</p>
+                <p className="text-11px font-bold text-slate-800 tabular-nums">{lead.whatsapp_id || lead.phone || '—'}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Registrado</p>
+                <p className="text-11px font-bold text-slate-800">{lead.time || lead.timestamp || '—'}</p>
+              </div>
+           </div>
 
-               {/* Etiquetas */}
-               <div className="space-y-4">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Etiquetas</label>
-                  <div className="flex flex-wrap gap-2">
-                     {(lead.etiquetas || '').split(',').filter(e => e.trim()).map((tag, i) => (
-                       <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-slate-200 hover:bg-[#FF6B00] hover:text-white hover:border-[#FF6B00] transition-all cursor-default">
-                         {tag.trim()}
-                       </span>
-                     ))}
-                     <button 
-                       onClick={() => setEditingLead({...lead})}
-                       className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-emerald-100 hover:bg-emerald-100 transition-all"
-                     >
-                       + Gestionar
-                     </button>
-                  </div>
-               </div>
-
-               {/* Metadata */}
-               <div className="pt-6 border-t border-slate-100 space-y-3">
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">WhatsApp ID</p>
-                    <p className="text-[11px] font-bold text-slate-800 tabular-nums">{lead.whatsapp_id || lead.phone || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Registrado</p>
-                    <p className="text-[11px] font-bold text-slate-800">{lead.time || lead.timestamp || '—'}</p>
-                  </div>
-               </div>
-
-               {/* Acciones */}
-               <div className="space-y-3 pt-6 border-t border-slate-100">
-                  <button 
-                    onClick={() => handleArchiveLead(lead.id, lead.archived)}
-                    className="w-full py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95"
-                  >
-                    <Archive size={14} className="text-amber-400" />
-                    <span>{lead.archived ? 'Restaurar Lead' : 'Archivar conversación'}</span>
-                  </button>
-                  <button 
-                    onClick={() => handleDeleteMessages(lead.id)}
-                    className="w-full py-3.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 border border-red-100 hover:bg-red-100 transition-all active:scale-95"
-                  >
-                    <Trash size={14} />
-                    <span>Eliminar conversación</span>
-                  </button>
-               </div>
-            </div>
-          )}
+           {/* Acciones */}
+           <div className="space-y-3 pt-6 border-t border-slate-100">
+              <button 
+                onClick={() => handleArchiveLead(lead.id, lead.archived)}
+                className="w-full py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 hover:bg-black transition-all active:scale-95"
+              >
+                <Archive size={14} className="text-amber-400" />
+                <span>{lead.archived ? 'Restaurar Lead' : 'Archivar conversación'}</span>
+              </button>
+              <button 
+                onClick={() => handleDeleteMessages(lead.id)}
+                className="w-full py-3.5 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 border border-red-100 hover:bg-red-100 transition-all active:scale-95"
+              >
+                <Trash size={14} />
+                <span>Eliminar conversación</span>
+              </button>
+           </div>
         </div>
       </div>
     );
@@ -1285,7 +1042,7 @@ const App = () => {
                                   <td className="px-8 py-5 text-right">
                                      <div className="flex items-center justify-end space-x-1.5">
                                         <button onClick={(e) => { e.stopPropagation(); setEditingLead({...lead}); }} title="Editar" className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-900 hover:text-[#FF6B00] transition-all">
-                                          <Pencil size={12} />
+                                           <Pencil size={12} />
                                         </button>
                                      </div>
                                   </td>
