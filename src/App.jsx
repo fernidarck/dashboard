@@ -45,6 +45,20 @@ const CATEGORY_STYLES = {
   'General':   { badge: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
 };
 
+const AprendizajeLogic = ({ API_BASE_URL, subTabIA }) => {
+  const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    if (subTabIA === 'Aprendizaje') {
+      // Intentar disparar un fetch global o usar un bus de eventos si fuera necesario
+      // Pero aquí lo manejaremos con dispatchers si estuviéramos en Redux. 
+      // Como es simple state, mejor lo hacemos en el componente padre.
+    }
+  }, [subTabIA]);
+
+  return null;
+};
+
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [subTabIA, setSubTabIA] = useState('General');
@@ -106,6 +120,8 @@ const App = () => {
   const emptyCita = { cliente: '', phone: '', fecha: '', hora: '', servicio: '', duracion: '1 hora' };
   const [newCita, setNewCita] = useState(emptyCita);
   const [pedidos, setPedidos] = useState([]);
+  const [aiInsights, setAiInsights] = useState([]);
+  const [aiKnowledge, setAiKnowledge] = useState([]);
 
 
   const fetchDocuments = useCallback(() => {
@@ -552,6 +568,30 @@ const App = () => {
     fetchHandoffTriggers();
     fetchProducts();
   }, [fetchSettings, fetchDocuments, fetchHandoffTriggers]);
+
+  useEffect(() => {
+    if (subTabIA === 'Aprendizaje') {
+      fetch(`${API_BASE_URL}/api/ai/insights`)
+        .then(res => res.json())
+        .then(setAiInsights)
+        .catch(console.error);
+      
+      fetch(`${API_BASE_URL}/api/ai/knowledge`)
+        .then(res => res.json())
+        .then(setAiKnowledge)
+        .catch(console.error);
+    }
+  }, [subTabIA, API_BASE_URL]);
+
+  const approveKnowledge = async (id) => {
+    await fetch(`${API_BASE_URL}/api/ai/knowledge/approve/${id}`, { method: 'POST' });
+    // Refresh
+    fetch(`${API_BASE_URL}/api/ai/knowledge`)
+      .then(res => res.json())
+      .then(setAiKnowledge);
+    setNotification('✅ Conocimiento aprobado');
+    setTimeout(() => setNotification(null), 3000);
+  };
 
   // --- LOGICA DE COMUNICACIÓN CON N8N ---
   const handleAction = async (action, data = {}) => {
@@ -1468,6 +1508,9 @@ const App = () => {
                   </button>
                </div>
 
+               {/* Sincronización Automática al Cambiar Pestaña Aprendizaje */}
+               <AprendizajeLogic API_BASE_URL={API_BASE_URL} subTabIA={subTabIA} />
+
                <div className="flex space-x-8 border-b border-slate-200">
                   {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff', 'Aprendizaje'].map(t => (
                     <button 
@@ -1511,12 +1554,48 @@ const App = () => {
                             className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
                           />
                         </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Personalidad</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.personalidad}
+                            onChange={e => setAgentConfig({...agentConfig, personalidad: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Idioma</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.idioma}
+                            onChange={e => setAgentConfig({...agentConfig, idioma: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Tono de Voz</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.tono}
+                            onChange={e => setAgentConfig({...agentConfig, tono: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
                         <div className="space-y-4 md:col-span-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Descripción del Negocio (Contexto para la IA)</label>
                           <textarea 
                             rows={4}
                             value={agentConfig.descripcion}
                             onChange={e => setAgentConfig({...agentConfig, descripcion: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500 italic"
+                          />
+                        </div>
+                        <div className="space-y-4 md:col-span-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Productos/Servicios Destacados</label>
+                          <textarea 
+                            rows={4}
+                            value={agentConfig.productos}
+                            onChange={e => setAgentConfig({...agentConfig, productos: e.target.value})}
                             className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500 italic"
                           />
                         </div>
@@ -1711,24 +1790,21 @@ const App = () => {
                               <span>Insights de Mercado</span>
                            </h3>
                            <div className="space-y-4">
-                              {[
-                                { t: 'Precio y Cotizaciones', c: '42%', v: 'Alta' },
-                                { t: 'Horarios de Atención', c: '18%', v: 'Media' },
-                                { t: 'Métodos de Pago', c: '15%', v: 'Media' },
-                                { t: 'Garantía de Productos', c: '12%', v: 'Baja' }
-                              ].map((ins, i) => (
+                              {aiInsights.length === 0 ? (
+                                <p className="text-[10px] text-slate-400 italic text-center py-10">Analizando conversaciones...</p>
+                              ) : aiInsights.map((ins, i) => (
                                 <div key={i} className="p-4 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center">
                                   <div>
-                                    <p className="text-[11px] font-black text-slate-700">{ins.t}</p>
-                                    <p className="text-[9px] text-slate-400 uppercase tracking-widest">Frecuencia: {ins.c}</p>
+                                    <p className="text-[11px] font-black text-slate-700">{ins.topic}</p>
+                                    <p className="text-[9px] text-slate-400 uppercase tracking-widest">Menciones: {ins.count}</p>
                                   </div>
-                                  <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase ${ins.v === 'Alta' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>{ins.v}</span>
+                                  <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase ${ins.trend === 'Subiendo' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>{ins.trend}</span>
                                 </div>
                               ))}
                            </div>
                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                               <p className="text-[9px] text-emerald-700 italic leading-relaxed">
-                                💡 "Precio" es el tema más consultado. Considera añadir una sección de precios clara en el catálogo.
+                                💡 {aiInsights[0] ? `"${aiInsights[0].topic}" es el tema más consultado.` : "La IA está aprendiendo de tus clientes."}
                               </p>
                            </div>
                         </div>
@@ -1740,26 +1816,23 @@ const App = () => {
                                  <Brain size={18} className="text-[#FF6B00]" />
                                  <span>Mapa de Conocimiento (Aprendido)</span>
                               </h3>
-                              <button className="bg-slate-100 text-slate-500 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Ver Historial</button>
                            </div>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {[
-                                { q: '¿Tienen tienda física?', a: 'Estamos ubicados en Zona 10, Edificio Sixtino...', s: 'Aprobado' },
-                                { q: '¿Aceptan Visa Cuotas?', a: 'Sí, hasta 12 cuotas sin intereses...', s: 'Aprobado' },
-                                { q: '¿Hacen envíos a Xela?', a: 'Sí, por medio de GuateExpor...', s: 'Pendiente' },
-                                { q: '¿Qué garantía tienen?', a: '1 año por desperfectos de fábrica...', s: 'Pendiente' }
-                              ].map((k, i) => (
-                                <div key={i} className={`p-6 rounded-[32px] border ${k.s === 'Aprobado' ? 'bg-white border-slate-100' : 'bg-orange-50/30 border-orange-100'} space-y-3`}>
+                              {aiKnowledge.length === 0 ? (
+                                <div className="md:col-span-2 py-20 text-center border-2 border-dashed border-slate-50 rounded-[40px]">
+                                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Sin conocimientos nuevos por ahora</p>
+                                </div>
+                              ) : aiKnowledge.map((k, i) => (
+                                <div key={i} className={`p-6 rounded-[32px] border ${k.status === 'approved' ? 'bg-white border-slate-100' : 'bg-orange-50/30 border-orange-100'} space-y-3`}>
                                   <div className="flex justify-between">
-                                    <span className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest italic">Nuevo Conocimiento</span>
-                                    <span className={`text-[8px] font-black uppercase ${k.s === 'Aprobado' ? 'text-emerald-500' : 'text-orange-500 animate-pulse'}`}>{k.s}</span>
+                                    <span className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest italic">{k.topic || 'Nuevo Conocimiento'}</span>
+                                    <span className={`text-[8px] font-black uppercase ${k.status === 'approved' ? 'text-emerald-500' : 'text-orange-500 animate-pulse'}`}>{k.status}</span>
                                   </div>
-                                  <p className="text-[11px] font-black text-slate-800 italic">Q: {k.q}</p>
-                                  <p className="text-[10px] text-slate-400 italic leading-relaxed">A: {k.a}</p>
+                                  <p className="text-[11px] font-black text-slate-800 italic">Capturado: {k.content?.slice(0, 50)}...</p>
                                   <div className="pt-2 flex space-x-2">
-                                    {k.s === 'Pendiente' && (
+                                    {k.status === 'pending' && (
                                       <>
-                                        <button className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Validar</button>
+                                        <button onClick={() => approveKnowledge(k.id)} className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Validar</button>
                                         <button className="flex-1 py-2 bg-slate-200 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest">Ignorar</button>
                                       </>
                                     )}
