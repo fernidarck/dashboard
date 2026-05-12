@@ -1186,16 +1186,19 @@ app.get('*', (req, res) => {
 });
 
 
-setup().then(() => {
-  const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 Backend del Dashboard escuchando en http://0.0.0.0:${port}`);
-  });
+// Iniciar servidor inmediatamente para que EasyPanel vea el servicio activo
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Backend del Dashboard escuchando en http://0.0.0.0:${port}`);
   
-  server.on('error', (err) => {
-    console.error("❌ ERROR AL INICIAR SERVIDOR:", err);
-    process.exit(1);
+  // Inicialización de BD en segundo plano
+  setup().then(() => {
+    console.log("🎊 Sistema de base de datos listo.");
+  }).catch(err => {
+    console.error("❌ ERROR CRÍTICO EN SETUP:", err);
   });
-}).catch(err => {
-  console.error("❌ ERROR CRÍTICO EN SETUP:", err);
+});
+
+server.on('error', (err) => {
+  console.error("❌ ERROR AL INICIAR SERVIDOR:", err);
   process.exit(1);
 });
