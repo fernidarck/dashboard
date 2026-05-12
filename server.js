@@ -1172,17 +1172,17 @@ app.get('/api/rag/query', async (req, res) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.use('/uploads', express.static(join(__dirname, 'public/uploads')));
 app.use(express.static(join(__dirname, 'dist')));
 
-// Manejar todas las demás rutas devolviendo index.html para el router de React
+// Manejador de errores global
+app.use((err, req, res, next) => {
+  console.error("❌ ERROR EN EXPRESS:", err);
+  res.status(500).send(`Error interno: ${err.message}`);
+});
+
+// Todas las demás rutas al index.html
 app.get('*', (req, res) => {
-  const indexPath = join(__dirname, 'dist', 'index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send('Frontend dist/index.html no encontrado. Asegúrate de ejecutar npm run build.');
-  }
+  res.sendFile(join(__dirname, 'dist/index.html'));
 });
 
 

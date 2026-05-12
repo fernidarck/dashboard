@@ -22,7 +22,7 @@ const CURRENT_USER_ID = "user_777_guatemala";
 // Detectar automáticamente si estamos en desarrollo o producción
 const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 // Si estamos en el puerto de Vite (5173) pero no en producción, apuntamos al 3001
-const API_BASE_URL = (isDev && window.location.port === '5173') ? 'http://localhost:3001' : '';
+const API_BASE_URL = (isDev && window.location.port === '5173') ? 'http://localhost:3000' : '';
 
 console.log(`🌐 Host: ${window.location.hostname}:${window.location.port}`);
 console.log(`🌐 API_BASE_URL detectado: "${API_BASE_URL || '(relativo)'}"`);
