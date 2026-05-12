@@ -54,7 +54,7 @@ const AprendizajeLogic = ({ API_BASE_URL, subTabIA }) => {
     if (subTabIA === 'Aprendizaje') {
       const syncLearning = async () => {
         try {
-          await fetch(`${API_BASE_URL}/api/learning/sync`, { method: 'POST' });
+          await fetch(`${API_BASE_URL}/api/ai/analyze`, { method: 'POST' });
         } catch (e) {
           console.error("Error syncing learning data", e);
         }
@@ -219,8 +219,8 @@ const App = () => {
   const fetchLearning = async () => {
     try {
       const [insightsRes, knowledgeRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/learning/insights`),
-        fetch(`${API_BASE_URL}/api/learning/knowledge`)
+        fetch(`${API_BASE_URL}/api/ai/insights`),
+        fetch(`${API_BASE_URL}/api/ai/knowledge`)
       ]);
       setAiInsights(await insightsRes.json());
       setAiKnowledge(await knowledgeRes.json());
@@ -321,10 +321,8 @@ const App = () => {
 
   const approveKnowledge = async (id) => {
     try {
-      await fetch(`${API_BASE_URL}/api/learning/knowledge/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
+      await fetch(`${API_BASE_URL}/api/ai/knowledge/approve/${id}`, {
+        method: 'POST'
       });
       fetchLearning();
       fetchRAG();

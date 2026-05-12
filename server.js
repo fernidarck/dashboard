@@ -530,6 +530,31 @@ app.post('/webhook/n8n', async (req, res) => {
       console.log(`💾 Guardando mensaje (${sndr}) para lead ${lId}: ${cleanTxt.substring(0, 40)}... ${mediaUrl ? '[CON MEDIA]' : ''}`);
       await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)", 
         lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
+
+      // --- MOTOR DE APRENDIZAJE AUTOMÁTICO ---
+      if (sndr === 'client' && cleanTxt) {
+        const learningTopics = [
+          { key: 'precio', label: 'Precios y Cotizaciones' },
+          { key: 'ubicacion', label: 'Ubicación y Direcciones' },
+          { key: 'horario', label: 'Horarios de Atención' },
+          { key: 'envio', label: 'Métodos de Envío' },
+          { key: 'garantia', label: 'Políticas de Garantía' }
+        ];
+        
+        for (const topic of learningTopics) {
+          if (currentNormalized.includes(topic.key)) {
+            const existing = await db.get("SELECT id FROM knowledge_base WHERE topic = ? AND status = 'pending'", topic.label);
+            if (existing) {
+              await db.run("UPDATE knowledge_base SET frequency = frequency + 1, last_updated = CURRENT_TIMESTAMP WHERE id = ?", existing.id);
+            } else {
+              await db.run(
+                "INSERT INTO knowledge_base (topic, content, source_lead_id, frequency, status) VALUES (?, ?, ?, 1, 'pending')",
+                topic.label, cleanTxt, lId
+              );
+            }
+          }
+        }
+      }
     };
 
     const mediaUrl = data.media_url || data.image_url || data.file_url;
@@ -1246,6 +1271,38 @@ app.get('/api/ai/insights', async (req, res) => {
       }));
 
     res.json(topInsights);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/analyze', async (req, res) => {
+  try {
+    // Escaneo forzado de las últimas conversaciones para encontrar conocimiento
+    const recent = await db.all("SELECT lead_id, text FROM messages WHERE sender = 'client' ORDER BY id DESC LIMIT 100");
+    const learningTopics = [
+      { key: 'precio', label: 'Precios y Cotizaciones' },
+      { key: 'ubicacion', label: 'Ubicación y Direcciones' },
+      { key: 'horario', label: 'Horarios de Atención' },
+      { key: 'envio', label: 'Métodos de Envío' },
+      { key: 'garantia', label: 'Políticas de Garantía' }
+    ];
+
+    for (const msg of recent) {
+      const txt = (msg.text || "").toLowerCase();
+      for (const topic of learningTopics) {
+        if (txt.includes(topic.key)) {
+          const existing = await db.get("SELECT id FROM knowledge_base WHERE topic = ? AND status = 'pending'", topic.label);
+          if (!existing) {
+            await db.run(
+              "INSERT INTO knowledge_base (topic, content, source_lead_id, frequency, status) VALUES (?, ?, ?, 1, 'pending')",
+              topic.label, msg.text, msg.lead_id
+            );
+          }
+        }
+      }
+    }
+    res.json({ success: true, message: "Análisis completado" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
