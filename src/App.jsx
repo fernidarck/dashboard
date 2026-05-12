@@ -453,6 +453,30 @@ const App = () => {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const handleProductImageUpload = async (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('image', file);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/upload-image`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (type === 'new') setNewProduct(prev => ({...prev, imagen: data.imageUrl}));
+        else if (type === 'edit') setEditingProduct(prev => ({...prev, imagen: data.imageUrl}));
+        setNotification('✅ Imagen subida');
+      } else {
+        setNotification('❌ Error al subir imagen');
+      }
+    } catch (err) { setNotification('❌ Error de conexión'); }
+    setLoading(false);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   // --- CRM ACTIONS ---
   const [editingLead, setEditingLead] = useState(null);
   
@@ -1927,11 +1951,20 @@ const App = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">URL de Imagen</label>
-                      <div className="flex items-center space-x-3">
-                        <input type="text" placeholder="https://... (pega el link de la imagen)" value={newProduct.imagen} onChange={e => setNewProduct(p => ({...p, imagen: e.target.value}))}
-                          className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic focus:ring-2 focus:ring-slate-900 transition-all" />
-                        {newProduct.imagen && <img src={newProduct.imagen} alt="preview" className="h-12 w-12 rounded-xl object-cover border border-slate-200" onError={e => e.target.style.display='none'} />}
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Imagen del Producto</label>
+                      <div className="flex flex-col space-y-3">
+                        <div className="flex items-center space-x-3">
+                          <input type="text" placeholder="https://... (o sube una)" value={newProduct.imagen} onChange={e => setNewProduct(p => ({...p, imagen: e.target.value}))}
+                            className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic focus:ring-2 focus:ring-slate-900 transition-all" />
+                          {newProduct.imagen && <img src={newProduct.imagen} alt="preview" className="h-12 w-12 rounded-xl object-cover border border-slate-200" onError={e => e.target.style.display='none'} />}
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <label className="flex-1 cursor-pointer bg-slate-100 hover:bg-slate-200 py-3 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center space-x-2 transition-all">
+                            <Plus size={14} className="text-slate-500" />
+                            <span className="text-[10px] font-black uppercase text-slate-500">Subir desde PC/Celular</span>
+                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleProductImageUpload(e, 'new')} />
+                          </label>
+                        </div>
                       </div>
                     </div>
                     <div className="flex justify-end space-x-3 pt-2">
@@ -1969,11 +2002,20 @@ const App = () => {
                     <textarea value={editingProduct.descripcion} onChange={e => setEditingProduct(p => ({...p, descripcion: e.target.value}))}
                       className="w-full h-28 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic resize-none focus:ring-2 focus:ring-[#FF6B00] transition-all leading-relaxed" />
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">URL de Imagen</label>
-                      <div className="flex items-center space-x-3">
-                        <input type="text" placeholder="https://..." value={editingProduct.imagen || ''} onChange={e => setEditingProduct(p => ({...p, imagen: e.target.value}))}
-                          className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic focus:ring-2 focus:ring-[#FF6B00] transition-all" />
-                        {editingProduct.imagen && <img src={editingProduct.imagen} alt="preview" className="h-12 w-12 rounded-xl object-cover border border-slate-200" onError={e => e.target.style.display='none'} />}
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Imagen del Producto</label>
+                      <div className="flex flex-col space-y-3">
+                        <div className="flex items-center space-x-3">
+                          <input type="text" placeholder="https://..." value={editingProduct.imagen || ''} onChange={e => setEditingProduct(p => ({...p, imagen: e.target.value}))}
+                            className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none italic focus:ring-2 focus:ring-[#FF6B00] transition-all" />
+                          {editingProduct.imagen && <img src={editingProduct.imagen} alt="preview" className="h-12 w-12 rounded-xl object-cover border border-slate-200" onError={e => e.target.style.display='none'} />}
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <label className="flex-1 cursor-pointer bg-slate-100 hover:bg-slate-200 py-3 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center space-x-2 transition-all">
+                            <Plus size={14} className="text-slate-500" />
+                            <span className="text-[10px] font-black uppercase text-slate-500">Cambiar Imagen</span>
+                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleProductImageUpload(e, 'edit')} />
+                          </label>
+                        </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">

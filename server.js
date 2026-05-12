@@ -58,12 +58,12 @@ app.get('/', (req, res, next) => {
 
 // --- CONFIGURACIÓN DE ARCHIVOS (RAG) ---
 if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
+  fs.mkdirSync('uploads', { recursive: true });
 }
 const upload = multer({ dest: 'uploads/' });
 const productImagesUpload = multer({ 
   storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, 'public/uploads/'),
+    destination: (req, file, cb) => cb(null, 'uploads/'),
     filename: (req, file, cb) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
       cb(null, uniqueSuffix + '-' + file.originalname.replace(/\s+/g, '_'));
@@ -1103,7 +1103,7 @@ app.get('/api/products/context', async (_req, res) => {
           if (p.stock) context += ` (${p.stock})`;
           context += '\n';
           if (p.descripcion) context += `  ${p.descripcion}\n`;
-          if (p.imagen) context += `  IMAGEN: ${p.imagen}\n`;
+          if (p.imagen) context += `  IMAGEN_PARA_ENVIAR: ${p.imagen}\n`;
           if (p.catalog_link) context += `  CATALOGO_LINK: ${p.catalog_link}\n`;
         }
         context += '\n';
@@ -1329,6 +1329,7 @@ app.get('/api/rag/test-search', async (req, res) => {
   }
 });
 
+app.use('/uploads', express.static(join(__dirname, 'uploads')));
 app.use(express.static(join(__dirname, 'dist')));
 
 // Manejador de errores global
