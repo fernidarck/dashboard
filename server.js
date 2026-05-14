@@ -439,7 +439,7 @@ app.post('/api/handoff/triggers', async (req, res) => {
 });
 // ────────────────────────────────────────────────────────────────────────────
 
-app.post('/webhook/n8n', async (req, res) => {
+app.post('/api/webhook/n8n', async (req, res) => {
   const data = req.body;
   console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
 
@@ -992,6 +992,7 @@ app.get('/api/agent/prompt', async (req, res) => {
       prods.forEach(p => {
         catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'} | Stock: ${p.stock}\n`;
         if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\n`;
+        if (p.imagen) catalogText += `  IMAGEN_PARA_ENVIAR: ${p.imagen}\n`;
       });
     }
 
@@ -1022,7 +1023,8 @@ REGLAS IMPORTANTES:
 - Responde siempre en ${idioma}
 - Nunca digas que eres una IA a menos que te lo pregunten directamente
 - Si no sabes algo, pide más detalles o transfiere al equipo humano
-- Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)`.trim();
+- Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)
+- REGLA DE ORO PARA IMÁGENES: Si el producto tiene una IMAGEN_PARA_ENVIAR, NO pongas el link en el texto. Debes ponerlo AL FINAL del mensaje con este formato exacto: [[MEDIA:URL_DE_LA_IMAGEN]]. Esto es vital para que el sistema envíe la foto correctamente.`.trim();
 
     res.json({ systemPrompt, nombre, rol, empresa, tono, idioma, tipo });
   } catch (err) {
@@ -1308,23 +1310,72 @@ app.post('/api/ai/analyze', async (req, res) => {
   }
 });
 
+// Helper para normalización y búsqueda inteligente (Spanish Stemming básico)
+const smartSearch = (query, items) => {
+  if (!query) return [];
+  
+  const normalize = (txt) => {
+    return String(txt || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Quitar acentos
+      .replace(/[^a-z0-9]/g, " ")     // Alfanumérico solamente
+      .trim();
+  };
+
+  const stem = (word) => {
+    if (word.length <= 3) return word;
+    // Manejo básico de plurales en español
+    if (word.endsWith('es')) return word.slice(0, -2);
+    if (word.endsWith('s')) return word.slice(0, -1);
+    return word;
+  };
+
+  const queryClean = normalize(query);
+  const keywords = queryClean.split(/\s+/).filter(k => k.length >= 2).map(stem);
+
+  if (keywords.length === 0) return items.map(i => ({ ...i, score: 0 }));
+
+  return items.map(item => {
+    const textToSearch = normalize(`${item.titulo} ${item.contenido}`);
+    let score = 0;
+    
+    keywords.forEach(kw => {
+      // Coincidencia exacta de raíz (más puntos)
+      const regexExact = new RegExp(`\\b${kw}\\w*\\b`, 'g');
+      const matches = textToSearch.match(regexExact);
+      if (matches) score += matches.length * 10;
+      
+      // Coincidencia parcial (menos puntos)
+      if (textToSearch.includes(kw)) score += 2;
+    });
+
+    // Bonus si el título contiene la palabra
+    const titleClean = normalize(item.titulo);
+    keywords.forEach(kw => {
+      if (titleClean.includes(kw)) score += 5;
+    });
+
+    return { ...item, score };
+  }).filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+};
+
 app.get('/api/rag/test-search', async (req, res) => {
   const { query } = req.query;
   if (!query) return res.json({ results: [] });
 
   try {
-    const searchTerm = `%${query}%`;
-    const docs = await db.all(
-      "SELECT 'Tarjeta' as tipo, name as titulo, content as contenido FROM documents WHERE name LIKE ? OR content LIKE ? LIMIT 5",
-      [searchTerm, searchTerm]
-    );
-    const prods = await db.all(
-      "SELECT 'Producto' as tipo, nombre as titulo, descripcion as contenido FROM products WHERE nombre LIKE ? OR descripcion LIKE ? LIMIT 5",
-      [searchTerm, searchTerm]
-    );
+    // Obtenemos todo el conocimiento disponible para filtrar en memoria con lógica inteligente
+    const docs = await db.all("SELECT 'Tarjeta' as tipo, name as titulo, content as contenido FROM documents");
+    const prods = await db.all("SELECT 'Producto' as tipo, nombre as titulo, descripcion || COALESCE('\nIMAGEN: ' || imagen, '') as contenido FROM products WHERE activo = 1");
+    
+    const allItems = [...docs, ...prods];
+    const results = smartSearch(query, allItems);
 
-    res.json({ results: [...docs, ...prods] });
+    res.json({ results: results.slice(0, 10) }); // Limitamos a los 10 mejores
   } catch (err) {
+    console.error("❌ Error en test-search inteligente:", err);
     res.status(500).json({ error: err.message });
   }
 });
