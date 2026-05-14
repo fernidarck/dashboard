@@ -98,468 +98,259 @@ async function setup() {
     if (isNew) {
       console.log("   - Base de datos no encontrada. Verificando migración...");
       if (fs.existsSync('./database.sqlite')) {
-        console.log("   🚚 Migrando database.sqlite desde el root...");
+        console.log("   - Copiando base de datos inicial desde el root...");
         fs.copyFileSync('./database.sqlite', dbFile);
-      } else {
-        console.log("   - Iniciando con base de datos limpia.");
       }
     }
 
-    console.log("🔌 Conectando a SQLite...");
     db = await open({
       filename: dbFile,
       driver: sqlite3.Database
     });
-    console.log("✅ Conexión establecida.");
 
-    console.log("🏗️ Asegurando tablas...");
+    console.log("🛠️ Verificando y creando tablas...");
     
-    // Diagnóstico de Frontend
-    const distPath = join(__dirname, 'dist');
-    console.log(`📂 Verificando archivos estáticos en: ${distPath}`);
-    if (fs.existsSync(distPath)) {
-      const files = fs.readdirSync(distPath);
-      console.log(`   ✅ Carpeta dist encontrada. Archivos: ${files.join(', ')}`);
-    } else {
-      console.log(`   ⚠️ ADVERTENCIA: Carpeta dist NO encontrada. El frontend no cargará.`);
-    }
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS leads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT,
+        phone TEXT,
+        email TEXT,
+        motor TEXT,
+        falla TEXT,
+        zona TEXT,
+        direccion TEXT,
+        notas TEXT,
+        nit TEXT,
+        etiquetas TEXT,
+        whatsapp_id TEXT,
+        score INTEGER DEFAULT 0,
+        estado TEXT DEFAULT 'Nuevo',
+        origen TEXT DEFAULT 'WhatsApp',
+        botActive INTEGER DEFAULT 1,
+        priority TEXT DEFAULT 'normal',
+        handoff_reason TEXT,
+        archived INTEGER DEFAULT 0,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS leads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT,
-      phone TEXT,
-      email TEXT,
-      score INTEGER,
-      estado TEXT,
-      origen TEXT,
-      time TEXT,
-      botActive BOOLEAN,
-      motor TEXT,
-      falla TEXT,
-      zona TEXT,
-      priority TEXT DEFAULT 'normal',
-      handoff_reason TEXT,
-      direccion TEXT,
-      notas TEXT,
-      nit TEXT
-    )`);
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lead_id INTEGER,
+        sender TEXT,
+        text TEXT,
+        timestamp TEXT,
+        mediaUrl TEXT,
+        mediaType TEXT,
+        FOREIGN KEY(lead_id) REFERENCES leads(id)
+      );
 
-    // Migración: añadir columnas nuevas si no existen
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN priority TEXT DEFAULT 'normal'`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN handoff_reason TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN direccion TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN notas TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN nit TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN etiquetas TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN whatsapp_id TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE leads ADD COLUMN archived INTEGER DEFAULT 0`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE products ADD COLUMN imagen TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE products ADD COLUMN catalog_link TEXT`); } catch(_) {}
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS knowledge_base (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      topic TEXT,
-      content TEXT,
-      source_lead_id INTEGER,
-      frequency INTEGER DEFAULT 1,
-      last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-      status TEXT DEFAULT 'pending' -- pending, approved, ignored
-    )`);
+      CREATE TABLE IF NOT EXISTS documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        category TEXT,
+        content TEXT,
+        timestamp TEXT
+      );
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL,
-      descripcion TEXT,
-      precio TEXT,
-      categoria TEXT DEFAULT 'General',
-      stock TEXT DEFAULT 'En stock',
-      activo INTEGER DEFAULT 1,
-      timestamp TEXT
-    )`);
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT,
+        descripcion TEXT,
+        precio TEXT,
+        categoria TEXT,
+        stock TEXT DEFAULT 'En stock',
+        activo INTEGER DEFAULT 1,
+        imagen TEXT,
+        catalog_link TEXT,
+        timestamp TEXT
+      );
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS documents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT,
-      category TEXT,
-      content TEXT,
-      timestamp TEXT
-    )`);
+      CREATE TABLE IF NOT EXISTS agenda (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente TEXT,
+        phone TEXT,
+        fecha TEXT,
+        hora TEXT,
+        servicio TEXT,
+        duracion TEXT,
+        estado TEXT DEFAULT 'Pendiente',
+        notas TEXT
+      );
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS agenda (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      fecha TEXT,
-      hora TEXT,
-      cliente TEXT,
-      phone TEXT,
-      servicio TEXT,
-      duracion TEXT,
-      estado TEXT,
-      day INTEGER
-    )`);
+      CREATE TABLE IF NOT EXISTS pedidos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente TEXT,
+        phone TEXT,
+        producto TEXT,
+        cantidad TEXT,
+        precio TEXT,
+        notas TEXT,
+        estado TEXT DEFAULT 'Nuevo',
+        timestamp TEXT
+      );
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id INTEGER,
-      sender TEXT,
-      text TEXT,
-      mediaUrl TEXT,
-      mediaType TEXT,
-      timestamp TEXT
-    )`);
+      CREATE TABLE IF NOT EXISTS handoff_triggers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        keyword TEXT,
+        priority TEXT DEFAULT 'urgent'
+      );
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    )`);
+      CREATE TABLE IF NOT EXISTS knowledge_base (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic TEXT,
+        content TEXT,
+        source_lead_id INTEGER,
+        frequency INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'pending'
+      );
+    `);
 
-    await db.exec(`CREATE TABLE IF NOT EXISTS pedidos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cliente TEXT,
-      phone TEXT,
-      producto TEXT,
-      cantidad TEXT DEFAULT '1',
-      precio TEXT,
-      notas TEXT,
-      estado TEXT DEFAULT 'Nuevo',
-      timestamp TEXT
-    )`);
-    try { await db.exec(`ALTER TABLE pedidos ADD COLUMN precio TEXT`); } catch(_) {}
-    try { await db.exec(`ALTER TABLE pedidos ADD COLUMN notas TEXT`); } catch(_) {}
+    // Migraciones rápidas (Columnas nuevas)
+    try { await db.exec("ALTER TABLE leads ADD COLUMN archived INTEGER DEFAULT 0"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
 
-    // --- MIGRACIONES ---
-    console.log("🛠️ Verificando migraciones de tabla...");
-    const columns = await db.all("PRAGMA table_info(messages)");
-    const hasMediaUrl = columns.some(c => c.name === 'mediaUrl');
-    if (!hasMediaUrl) {
-      console.log("   - Añadiendo columnas de multimedia a la tabla 'messages'...");
-      try {
-        await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT");
-        await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT");
-        console.log("   ✅ Migración completada.");
-      } catch (e) {
-        console.error("   ❌ Error en migración:", e.message);
-      }
-    }
-
-    console.log("⚙️ Configurando valores por defecto...");
-    const defaultPrompts = {
-      'prompt_recepcionista': 'Eres el Agente Recepcionista de OneControl. Tu objetivo es saludar cordialmente, identificar la necesidad del cliente y derivarlo al departamento correcto o agendar una cita básica.',
-      'prompt_ventas': 'Eres el Agente de Ventas de OneControl. Eres experto en portones eléctricos y motores. Tu objetivo es cerrar ventas, dar precios y convencer al cliente con beneficios técnicos. IMPORTANTE: Si el producto tiene una IMAGEN_PARA_ENVIAR, inclúyela al final de tu mensaje usando el formato: [[MEDIA:URL]]',
-      'prompt_soporte': 'Eres el Agente de Soporte Técnico de OneControl. Ayudas a los clientes con fallas en sus motores o dudas de instalación de forma paciente y técnica.',
-      'handoff_triggers': JSON.stringify([
-        { keywords: "agente,asesor,humano,persona real,hablar con alguien,operador,quiero hablar", reason: "Solicitud de agente humano" },
-        { keywords: "molesto,enojado,frustrado,queja,quiero quejarme,mala atención,pésimo", reason: "Frustración / Queja detectada" },
-        { keywords: "urgente,emergencia,para ya,ahora mismo,no funciona,se rompió,accidente", reason: "Urgencia / Emergencia" },
-        { keywords: "no me entiendes,no entiendo,robot,bot inutil", reason: "Confusión con el bot" },
-        { keywords: "cuánto cuesta,precio,presupuesto,cotización,quiero comprar,pagar,listo para", reason: "Intención de compra alta" }
-      ])
-    };
-
-    for (const [key, value] of Object.entries(defaultPrompts)) {
-      const check = await db.get("SELECT value FROM settings WHERE key = ?", key);
-      if (!check) {
-        await db.run("INSERT INTO settings (key, value) VALUES (?, ?)", key, value);
-      }
-    }
-
-    const leadCount = await db.get("SELECT COUNT(*) as count FROM leads");
-    if (leadCount && leadCount.count === 0) {
-      console.log("📝 Insertando datos de ejemplo...");
-      await db.run("INSERT INTO leads (nombre, phone, email, score, estado, origen, time, botActive, motor, falla, zona) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-        'Erik Manuel Taveras', '15613744309', 'eriktaveras@gmail.com', 20, 'Nuevo', 'WhatsApp', '10:30 AM', 1, 'N/A', 'N/A', 'N/A');
-    }
-
-    console.log("✅ Base de datos lista");
+    console.log("✅ Base de datos inicializada correctamente.");
   } catch (err) {
-    console.error("❌ ERROR CRÍTICO EN SETUP():", err);
-    throw err; // Re-lanzar para que lo atrape el catch global
+    console.error("❌ ERROR CRÍTICO EN SETUP DE BD:", err);
+    throw err;
   }
 }
 
-// --- ENDPOINTS API ---
+// Helper para normalizar textos para comparación
+const normalize = (text) => {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+};
 
-app.get('/api/leads', async (_req, res) => {
-  try {
-    const rows = await db.all(`
-      SELECT leads.*,
-             (SELECT text FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessage,
-             (SELECT id FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageId,
-             (SELECT sender FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageSender,
-             (SELECT timestamp FROM messages WHERE lead_id = leads.id ORDER BY id DESC LIMIT 1) as lastMessageTime
-      FROM leads ORDER BY leads.id DESC
-    `);
-    const parsedRows = rows.map(r => ({
-      ...r,
-      botActive: !!r.botActive,
-      captura: { motor: r.motor, falla: r.falla, zona: r.zona }
-    }));
-    res.json(parsedRows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// Detección de Handoff
+async function detectHandoff(text) {
+  if (!text) return null;
+  const t = normalize(text);
+  
+  // Palabras clave críticas fijas
+  const critical = ['humano', 'persona', 'agente', 'asesor', 'atencion al cliente', 'hablar con alguien', 'emergencia', 'urgente', 'queja', 'reclamo', 'comprar ya', 'quiero comprar'];
+  for (const word of critical) {
+    if (t.includes(word)) return `Palabra clave detectada: "${word}"`;
   }
-});
 
-
-app.get('/api/agenda', async (_req, res) => {
+  // Buscar en triggers configurables de la BD
   try {
-    const rows = await db.all("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC");
+    const triggers = await db.all("SELECT keyword FROM handoff_triggers");
+    for (const trig of triggers) {
+      if (t.includes(normalize(trig.keyword))) return `Trigger configurado: "${trig.keyword}"`;
+    }
+  } catch(e) {}
+
+  return null;
+}
+
+// Función inteligente para guardar mensajes y actualizar leads
+async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null, mediaType = null) {
+  // 1. Guardar mensaje
+  await db.run(
+    "INSERT INTO messages (lead_id, sender, text, timestamp, mediaUrl, mediaType) VALUES (?, ?, ?, ?, ?, ?)",
+    leadId, sender, text, timestamp, mediaUrl, mediaType
+  );
+
+  // 2. Si es del cliente, intentar extraer datos (Simulado por ahora, n8n hace el pesado)
+  if (sender === 'client' && text) {
+    const t = normalize(text);
+    
+    // Auto-update de etiquetas según contenido
+    if (t.includes('precio') || t.includes('cuanto cuesta')) {
+      await db.run("UPDATE leads SET etiquetas = COALESCE(etiquetas || ',', '') || 'Interesado' WHERE id = ? AND (etiquetas NOT LIKE '%Interesado%' OR etiquetas IS NULL)", leadId);
+    }
+    
+    // Incrementar score por interacción
+    await db.run("UPDATE leads SET score = MIN(score + 5, 100) WHERE id = ?", leadId);
+  }
+}
+
+// --- ENDPOINTS ---
+
+app.get('/api/leads', async (req, res) => {
+  try {
+    const { archived } = req.query;
+    const isArchived = archived === 'true' ? 1 : 0;
+    const rows = await db.all("SELECT * FROM leads WHERE archived = ? ORDER BY priority DESC, id DESC", isArchived);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/agenda', async (req, res) => {
+app.post('/api/leads', async (req, res) => {
   try {
-    const { fecha, hora, cliente, phone, servicio, duracion } = req.body;
-    if (!fecha || !cliente || !phone) return res.status(400).json({ error: "Faltan datos de la cita" });
+    const { nombre, phone, origen, botActive, email } = req.body;
+    const result = await db.run(
+      "INSERT INTO leads (nombre, phone, origen, botActive, email) VALUES (?, ?, ?, ?, ?)",
+      nombre || 'Cliente Nuevo', phone, origen || 'Manual', botActive ?? 1, email || ''
+    );
+    res.json({ id: result.lastID, success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    const day = parseInt(fecha.split('-')[2]); 
-    await db.run("INSERT INTO agenda (fecha, hora, cliente, phone, servicio, duracion, estado, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-      fecha, hora || "Pendiente", cliente, phone, servicio || "Revisión", duracion || "1 hora", 'Confirmado', day);
-    
+// Actualizar Lead completo
+app.put('/api/leads/:id', async (req, res) => {
+  try {
+    const { nombre, phone, email, motor, falla, zona, direccion, notas, nit, etiquetas, estado, score, priority, botActive } = req.body;
+    await db.run(
+      `UPDATE leads SET 
+        nombre=?, phone=?, email=?, motor=?, falla=?, zona=?, direccion=?, 
+        notas=?, nit=?, etiquetas=?, estado=?, score=?, priority=?, botActive=? 
+      WHERE id=?`,
+      nombre, phone, email, motor, falla, zona, direccion, 
+      notas, nit, etiquetas, estado, score, priority, botActive, req.params.id
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// --- PROXY PARA IMÁGENES (Para saltar bloqueos de seguridad/privacidad) ---
-app.get('/api/proxy-media', async (req, res) => {
+// Endpoint Webhook para n8n (Recibir mensajes de WhatsApp)
+app.post('/api/webhook/whatsapp', async (req, res) => {
   try {
-    const { url } = req.query;
-    if (!url) return res.status(400).send("Falta URL");
+    const data = req.body;
+    const phone = data.phone;
+    const mensajePrincipal = data.message || data.text;
+    const mensajeSecundario = data.bot_response; // Si n8n ya tiene la respuesta de la IA
+    const senderPrincipal = data.sender || 'client';
+    const mediaUrl = data.mediaUrl;
+    const mediaType = data.mediaType;
 
-    console.log(`🖼️ Proxying media: ${url.substring(0, 50)}...`);
-    
-    const response = await fetch(url, {
-      headers: {
-        'X-API-Key': 'a25aaba6428e12e4df6310296f675272' // Usando la key detectada en tu n8n
-      }
-    });
+    if (!phone) return res.status(400).json({ error: "Falta phone" });
 
-    if (!response.ok) throw new Error(`Error YCloud: ${response.status}`);
-
-    const contentType = response.headers.get('content-type');
-    res.setHeader('Content-Type', contentType || 'image/jpeg');
-    
-    const arrayBuffer = await response.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
-  } catch (err) {
-    console.error("❌ Error en proxy-media:", err.message);
-    res.status(500).send("Error cargando medio");
-  }
-});
-
-// ─── MOTOR DE DETECCIÓN DE ESTADO AUTOMÁTICO ───────────────────────────────
-const STATUS_FUNNEL = ['Nuevo', 'Interesado', 'Cita Agendada', 'Venta', 'Post-Venta', 'Perdido', 'Intervención Requerida'];
-const STATUS_SCORES = {
-  'Nuevo': 10,
-  'Interesado': 40,
-  'Cita Agendada': 75,
-  'Venta': 100,
-  'Post-Venta': 100,
-  'Perdido': 0,
-  'Intervención Requerida': 85
-};
-
-function detectStatus(text, currentStatus) {
-  if (!text || typeof text !== 'string') return currentStatus;
-  const t = text.toLowerCase();
-  const getRank = (s) => STATUS_FUNNEL.indexOf(s);
-  
-  let detected = currentStatus;
-
-  // Prioridad: Venta / Pago
-  if (t.includes("pago") || t.includes("comprobante") || t.includes("transferencia") || t.includes("deposito") || t.includes("ya pagué") || t.includes("listo el deposito")) {
-    detected = "Venta";
-  }
-  // Prioridad: Cita / Visita
-  else if (t.includes("agendar") || t.includes("cita") || t.includes("reunión") || t.includes("visita") || t.includes("mañana a las") || t.includes("llegar a") || t.includes("ubicación")) {
-    detected = "Cita Agendada";
-  }
-  // Prioridad: Interés / Precio
-  else if (t.includes("precio") || t.includes("cuánto") || t.includes("costo") || t.includes("presupuesto") || t.includes("cotización") || t.includes("me interesa") || t.includes("información")) {
-    if (getRank(currentStatus) < getRank("Interesado")) detected = "Interesado";
-  }
-  // Prioridad: Post-Venta (solo si ya vendió)
-  else if (t.includes("gracias") || t.includes("instalado") || t.includes("quedó bien") || t.includes("funciona")) {
-    if (getRank(currentStatus) >= getRank("Venta")) detected = "Post-Venta";
-  }
-  // Prioridad: Perdido
-  else if (t.includes("no gracias") || t.includes("muy caro") || t.includes("no me interesa") || t.includes("caro") || t.includes("después")) {
-    detected = "Perdido";
-  }
-
-  // Avanzar en el funnel o marcar como perdido
-  if (getRank(detected) > getRank(currentStatus) || detected === 'Perdido') {
-    return detected;
-  }
-  
-  return currentStatus;
-}
-
-// ─── MOTOR DE DETECCIÓN DE HANDOFF INTELIGENTE (dinámico desde BD) ────────────
-async function detectHandoff(text) {
-  if (!text) return null;
-  try {
-    const row = await db.get("SELECT value FROM settings WHERE key = 'handoff_triggers'");
-    const triggers = row ? JSON.parse(row.value) : [];
-    for (const trigger of triggers) {
-      const keywords = trigger.keywords.split(',').map(k => k.trim()).filter(Boolean);
-      for (const kw of keywords) {
-        if (text.toLowerCase().includes(kw.toLowerCase())) return trigger.reason;
-      }
-    }
-  } catch(_) {}
-  return null;
-}
-
-// GET /api/handoff/triggers — devuelve las reglas actuales
-app.get('/api/handoff/triggers', async (_req, res) => {
-  try {
-    const row = await db.get("SELECT value FROM settings WHERE key = 'handoff_triggers'");
-    res.json(row ? JSON.parse(row.value) : []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/handoff/triggers — guarda las reglas editadas
-app.post('/api/handoff/triggers', async (req, res) => {
-  try {
-    const triggers = req.body;
-    if (!Array.isArray(triggers)) return res.status(400).json({ error: "Se esperaba un array" });
-    await db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      'handoff_triggers', JSON.stringify(triggers));
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-// ────────────────────────────────────────────────────────────────────────────
-
-app.post('/webhook/n8n', async (req, res) => {
-  const data = req.body;
-  console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
-
-  if (!data.phone) {
-    return res.status(400).json({ error: "Falta el campo 'phone'" });
-  }
-
-  const nombre = data.nombre || "Cliente Nuevo";
-  const email = data.email || "N/A";
-  const score = data.score || 50;
-  const estado = data.etiqueta || "Nuevo";
-  const origen = "WhatsApp (n8n)";
-  const now = new Date();
-  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
-  const motor = data.motor || "N/A";
-  const falla = data.falla || "N/A";
-  const zona = data.zona || "N/A";
-
-  try {
-    const cleanPhone = String(data.phone).replace(/\D/g, '');
-    const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
-    const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
-
-    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
-    const existingLead = await db.get("SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
-    
-    let currentEstado = data.etiqueta || (existingLead ? existingLead.estado : "Nuevo");
-    let detectedEstado = detectStatus(mensajePrincipal, currentEstado);
-    detectedEstado = detectStatus(mensajeSecundario, detectedEstado);
-    
-    const finalEstado = detectedEstado;
-    const finalScore = STATUS_SCORES[finalEstado] || data.score || (existingLead ? existingLead.score : 10);
+    // Buscar lead por teléfono (normalizado)
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    let existingLead = await db.get("SELECT id, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
 
     let leadId;
-
-    if (existingLead) {
-      console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id} (nombre: ${existingLead.nombre})`);
-      
-      const updates = ["estado = ?", "score = ?", "time = ?"];
-      const params = [finalEstado, finalScore, time];
-
-      if (data.bot_apagado !== undefined) {
-        updates.push("botActive = ?");
-        params.push(data.bot_apagado ? 0 : 1);
-      }
-
-      // Actualizar campos si vienen en el payload o si el nombre es genérico
-      const genericNames = ['cliente nuevo', 'cliente', 'new client', 'unknown', 'reach'];
-      const isGeneric = (n) => !n || genericNames.includes(String(n).toLowerCase().trim());
-      
-      if (!isGeneric(nombre) && isGeneric(existingLead.nombre)) { updates.push("nombre = ?"); params.push(nombre); }
-      if (data.direccion) { updates.push("direccion = ?"); params.push(data.direccion); }
-      if (data.notas) { updates.push("notas = ?"); params.push(data.notas); }
-      if (data.nit) { updates.push("nit = ?"); params.push(data.nit); }
-      
-      params.push(existingLead.id);
-      await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
-      console.log(`   ✏️ Lead ${existingLead.id} actualizado: Estado=${finalEstado}, Score=${finalScore}`);
-      
-      leadId = existingLead.id;
-    } else {
-      console.log("   🆕 Creando nuevo lead...");
-      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        nombre, data.phone, email, finalScore, finalEstado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null);
+    if (!existingLead) {
+      const result = await db.run(
+        "INSERT INTO leads (nombre, phone, origen, botActive, estado) VALUES (?, ?, 'WhatsApp (n8n)', 1, 'Nuevo')",
+        data.name || 'Cliente WhatsApp', phone
+      );
       leadId = result.lastID;
+    } else {
+      leadId = existingLead.id;
     }
 
-    const normalize = (t) => t ? String(t).replace(/\s+/g, ' ').trim().toLowerCase() : "";
-
-    const saveSmartMessage = async (lId, sndr, txt, tm, mediaUrl = null, mediaType = null) => {
-      const cleanTxt = txt && txt !== "undefined" && txt !== "null" ? String(txt).trim() : "";
-      
-      // Si no hay texto ni media, no guardamos nada
-      if (!cleanTxt && !mediaUrl) return;
-
-      const currentNormalized = normalize(cleanTxt);
-
-      // Evitar duplicados (mismo texto y mismo lead en los últimos 5 mensajes)
-      if (cleanTxt) {
-        const recent = await db.all("SELECT text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5", lId);
-        if (recent.some(m => normalize(m.text) === currentNormalized)) {
-          console.log(`🚫 DUPLICADO BLOQUEADO para lead ${lId}: ${cleanTxt.substring(0, 30)}...`);
-          return;
-        }
-      }
-
-      console.log(`💾 Guardando mensaje (${sndr}) para lead ${lId}: ${cleanTxt.substring(0, 40)}... ${mediaUrl ? '[CON MEDIA]' : ''}`);
-      await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)", 
-        lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
-
-      // --- MOTOR DE APRENDIZAJE AUTOMÁTICO ---
-      if (sndr === 'client' && cleanTxt) {
-        const learningTopics = [
-          { key: 'precio', label: 'Precios y Cotizaciones' },
-          { key: 'ubicacion', label: 'Ubicación y Direcciones' },
-          { key: 'horario', label: 'Horarios de Atención' },
-          { key: 'envio', label: 'Métodos de Envío' },
-          { key: 'garantia', label: 'Políticas de Garantía' }
-        ];
-        
-        for (const topic of learningTopics) {
-          if (currentNormalized.includes(topic.key)) {
-            const existing = await db.get("SELECT id FROM knowledge_base WHERE topic = ? AND status = 'pending'", topic.label);
-            if (existing) {
-              await db.run("UPDATE knowledge_base SET frequency = frequency + 1, last_updated = CURRENT_TIMESTAMP WHERE id = ?", existing.id);
-            } else {
-              await db.run(
-                "INSERT INTO knowledge_base (topic, content, source_lead_id, frequency, status) VALUES (?, ?, ?, 1, 'pending')",
-                topic.label, cleanTxt, lId
-              );
-            }
-          }
-        }
-      }
-    };
-
-    const mediaUrl = data.media_url || data.image_url || data.file_url;
-    const mediaType = data.media_type || (mediaUrl ? 'image' : null);
-    const senderPrincipal = data.sender || 'client';
+    const now = new Date();
+    const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+    const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
 
     console.log(`📩 Procesando Webhook - Lead ID: ${leadId}`);
 
@@ -1308,23 +1099,72 @@ app.post('/api/ai/analyze', async (req, res) => {
   }
 });
 
+// Helper para normalización y búsqueda inteligente (Spanish Stemming básico)
+const smartSearch = (query, items) => {
+  if (!query) return [];
+  
+  const normalize = (txt) => {
+    return String(txt || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Quitar acentos
+      .replace(/[^a-z0-9]/g, " ")     // Alfanumérico solamente
+      .trim();
+  };
+
+  const stem = (word) => {
+    if (word.length <= 3) return word;
+    // Manejo básico de plurales en español
+    if (word.endsWith('es')) return word.slice(0, -2);
+    if (word.endsWith('s')) return word.slice(0, -1);
+    return word;
+  };
+
+  const queryClean = normalize(query);
+  const keywords = queryClean.split(/\s+/).filter(k => k.length >= 2).map(stem);
+
+  if (keywords.length === 0) return items.map(i => ({ ...i, score: 0 }));
+
+  return items.map(item => {
+    const textToSearch = normalize(`${item.titulo} ${item.contenido}`);
+    let score = 0;
+    
+    keywords.forEach(kw => {
+      // Coincidencia exacta de raíz (más puntos)
+      const regexExact = new RegExp(`\\b${kw}\\w*\\b`, 'g');
+      const matches = textToSearch.match(regexExact);
+      if (matches) score += matches.length * 10;
+      
+      // Coincidencia parcial (menos puntos)
+      if (textToSearch.includes(kw)) score += 2;
+    });
+
+    // Bonus si el título contiene la palabra
+    const titleClean = normalize(item.titulo);
+    keywords.forEach(kw => {
+      if (titleClean.includes(kw)) score += 5;
+    });
+
+    return { ...item, score };
+  }).filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+};
+
 app.get('/api/rag/test-search', async (req, res) => {
   const { query } = req.query;
   if (!query) return res.json({ results: [] });
 
   try {
-    const searchTerm = `%${query}%`;
-    const docs = await db.all(
-      "SELECT 'Tarjeta' as tipo, name as titulo, content as contenido FROM documents WHERE name LIKE ? OR content LIKE ? LIMIT 5",
-      [searchTerm, searchTerm]
-    );
-    const prods = await db.all(
-      "SELECT 'Producto' as tipo, nombre as titulo, descripcion as contenido FROM products WHERE nombre LIKE ? OR descripcion LIKE ? LIMIT 5",
-      [searchTerm, searchTerm]
-    );
+    // Obtenemos todo el conocimiento disponible para filtrar en memoria con lógica inteligente
+    const docs = await db.all("SELECT 'Tarjeta' as tipo, name as titulo, content as contenido FROM documents");
+    const prods = await db.all("SELECT 'Producto' as tipo, nombre as titulo, descripcion as contenido FROM products WHERE activo = 1");
+    
+    const allItems = [...docs, ...prods];
+    const results = smartSearch(query, allItems);
 
-    res.json({ results: [...docs, ...prods] });
+    res.json({ results: results.slice(0, 10) }); // Limitamos a los 10 mejores
   } catch (err) {
+    console.error("❌ Error en test-search inteligente:", err);
     res.status(500).json({ error: err.message });
   }
 });
