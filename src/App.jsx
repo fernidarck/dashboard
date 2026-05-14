@@ -577,10 +577,26 @@ const App = () => {
                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Score IA</p>
                  <p className="text-xl font-black text-slate-800 italic">{lead.score || 0}%</p>
               </div>
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                 <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Estado</p>
-                 <p className="text-[10px] font-black text-[#FF6B00] uppercase truncate">{lead.estado || 'Nuevo'}</p>
-              </div>
+              <button 
+                onClick={async () => {
+                  const newStatus = lead.botActive ? 0 : 1;
+                  try {
+                    await fetch(`${API_BASE_URL}/api/leads/${lead.id}/bot-toggle`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ botActive: !!newStatus })
+                    });
+                    fetchLeads();
+                  } catch (e) { console.error(e); }
+                }}
+                className={`p-4 rounded-2xl border flex flex-col items-center justify-center transition-all ${lead.botActive ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-red-50 border-red-100 text-red-600'}`}
+              >
+                 <p className="text-[9px] font-black uppercase mb-1">Estado Bot</p>
+                 <div className="flex items-center space-x-1">
+                    <Power size={12} />
+                    <p className="text-[10px] font-black uppercase">{lead.botActive ? 'ENCENDIDO' : 'APAGADO'}</p>
+                 </div>
+              </button>
            </div>
 
            {/* Datos Capturados */}
@@ -936,12 +952,21 @@ const App = () => {
                             <div>
                                <h3 className="text-sm font-black text-slate-800 uppercase italic leading-none mb-1">{leads.find(l => l.id === selectedChatId)?.nombre}</h3>
                                <div className="flex items-center space-x-2">
-                                  <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{botEnabled ? 'IA Activa' : 'Chat Manual'}</span>
-                               </div>
+                                   <span className={`h-1.5 w-1.5 rounded-full ${leads.find(l => l.id === selectedChatId)?.botActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                      {leads.find(l => l.id === selectedChatId)?.botActive ? 'IA Gestionando' : 'Control Humano / Bot Apagado'}
+                                   </span>
+                                </div>
                             </div>
                          </div>
                          <div className="flex space-x-3">
+                            <button onClick={() => {
+                                const lead = leads.find(l => l.id === selectedChatId);
+                                if (lead) {
+                                   const updatedLeads = leads.map(l => l.id === selectedChatId ? {...l, botActive: l.botActive ? 0 : 1} : l);
+                                   setLeads(updatedLeads);
+                                }
+                            }} className={`p-3 rounded-2xl transition-colors ${leads.find(l => l.id === selectedChatId)?.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}><Bot size={18} /></button>
                             <button onClick={() => setShowClientSidebarCRM(true)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800 transition-colors"><Database size={18} /></button>
                             <button className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800 transition-colors"><MoreVertical size={18} /></button>
                          </div>
