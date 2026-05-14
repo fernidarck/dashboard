@@ -730,11 +730,40 @@ const App = () => {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC]">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 md:px-10 shrink-0 sticky top-0 z-20">
-          <div className="flex items-center space-x-4 md:space-x-6">
+          <div className="flex items-center space-x-4 md:space-x-6 flex-1">
              <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 bg-slate-100 rounded-xl text-slate-600">
                 <MoreVertical size={20} />
              </button>
-             <div className="hidden md:flex bg-slate-100 p-2.5 rounded-xl text-slate-400"><Search size={18} /></div>
+             
+             {activeTab === 'rag' ? (
+               <div className="flex-1 max-w-xl relative group animate-in slide-in-from-left-4 duration-500">
+                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#FF6B00] transition-colors">
+                   <Search size={16} />
+                 </div>
+                 <input 
+                   type="text" 
+                   value={testQuery}
+                   onChange={e => {
+                     setTestQuery(e.target.value);
+                     if (!e.target.value.trim()) setTestResults([]);
+                   }}
+                   onKeyDown={e => e.key === 'Enter' && runTestSearch()}
+                   placeholder="Buscador de Inteligencia RAG..."
+                   className="w-full pl-12 pr-32 py-3 bg-slate-100 border-transparent rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] transition-all italic"
+                 />
+                 <button 
+                   onClick={runTestSearch}
+                   disabled={isSearching}
+                   className="absolute right-2 top-1.5 bottom-1.5 bg-slate-900 text-white px-4 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-[#FF6B00] transition-all disabled:opacity-50 flex items-center space-x-2 shadow-sm"
+                 >
+                   {isSearching ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} className="text-[#FF6B00]" />}
+                   <span>{isSearching ? '...' : 'Probar'}</span>
+                 </button>
+               </div>
+             ) : (
+               <div className="hidden md:flex bg-slate-100 p-2.5 rounded-xl text-slate-400"><Search size={18} /></div>
+             )}
+
              <div className="flex items-center space-x-2">
                 <Globe size={14} className="text-slate-400" />
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none italic text-slate-400">Guatemala</span>
@@ -1075,7 +1104,7 @@ const App = () => {
                        </table>
                     </div>
                      {renderClientSidebar(leads.find(l => l.id === sidebarLeadId), showClientSidebarCRM, () => setShowClientSidebarCRM(false))}
-                 </div>
+                  </div>
               </div>
            )}
 
@@ -1710,12 +1739,43 @@ const App = () => {
                 </div>
               </div>
 
+              {/* Resultados de Búsqueda */}
+              {testResults.length > 0 && (
+                <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6 animate-in zoom-in-95 duration-500">
+                  <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+                     <div className="flex items-center space-x-2">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resultados de Inteligencia</span>
+                        <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded text-[8px] font-black uppercase">{testResults.length} Encontrados</span>
+                     </div>
+                     <button onClick={() => { setTestResults([]); setTestQuery(''); }} className="text-[9px] font-black text-slate-400 uppercase hover:text-red-500 transition-colors flex items-center space-x-1">
+                        <X size={12} /><span>Limpiar</span>
+                     </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {testResults.map((res, i) => (
+                      <div key={i} className="bg-slate-50 border border-slate-100 rounded-[28px] p-6 space-y-3 hover:border-[#FF6B00]/30 transition-all group relative overflow-hidden">
+                         <div className="flex justify-between items-center relative z-10">
+                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${res.tipo === 'Tarjeta' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                              {res.tipo}
+                            </span>
+                            <div className="h-1.5 w-1.5 bg-emerald-400 rounded-full group-hover:animate-ping" />
+                         </div>
+                         <h4 className="text-xs font-black text-slate-800 uppercase italic relative z-10">{res.titulo}</h4>
+                         <p className="text-[10px] text-slate-400 leading-relaxed line-clamp-4 italic relative z-10">{res.contenido}</p>
+                         <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            {res.tipo === 'Tarjeta' ? <BookOpen size={40} /> : <Tag size={40} />}
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Tabs */}
               <div className="flex space-x-1 bg-slate-100 p-1 rounded-2xl w-fit">
                 {[
                   ['conocimiento', 'Conocimiento', BookOpen], 
-                  ['catalogo', 'Catálogo', Tag],
-                  ['tester', 'Probador', Search]
+                  ['catalogo', 'Catálogo', Tag]
                 ].map(([id, label, Icon]) => (
                   <button key={id} onClick={() => setRagSubTab(id)} className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                     <Icon size={13} /><span>{label}</span>
@@ -1848,66 +1908,7 @@ const App = () => {
                 </div>
               )}
 
-              {/* ── PROBADOR DE BÚSQUEDA ── */}
-              {ragSubTab === 'tester' && (
-                <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8">
-                  <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
-                    <div className="max-w-2xl mx-auto text-center space-y-4">
-                      <h3 className="text-xl font-black text-slate-800 italic uppercase">Probador de Inteligencia</h3>
-                      <p className="text-[11px] text-slate-400 font-medium leading-relaxed px-10">
-                        Escribe una pregunta como la haría un cliente. El sistema buscará en tus tarjetas y catálogo para mostrarte qué información encontrará la IA.
-                      </p>
-                      
-                      <div className="relative mt-8">
-                        <input 
-                          type="text" 
-                          value={testQuery}
-                          onChange={e => setTestQuery(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && runTestSearch()}
-                          placeholder="¿Qué precios tienen los motores?"
-                          className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[30px] text-sm font-bold outline-none focus:ring-2 focus:ring-[#FF6B00] pr-32 transition-all italic shadow-inner"
-                        />
-                        <button 
-                          onClick={runTestSearch}
-                          disabled={isSearching}
-                          className="absolute right-3 top-3 bottom-3 bg-[#FF6B00] text-white px-8 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all disabled:opacity-50"
-                        >
-                          {isSearching ? 'Buscando...' : 'Probar'}
-                        </button>
-                      </div>
-                    </div>
 
-                    <div className="space-y-6">
-                      <div className="flex items-center space-x-3 border-b border-slate-50 pb-4">
-                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resultados Encontrados</span>
-                         <span className="h-px flex-1 bg-slate-50" />
-                      </div>
-
-                      {testResults.length === 0 ? (
-                        <div className="py-20 text-center border-2 border-dashed border-slate-50 rounded-[40px]">
-                           <Search size={40} className="mx-auto text-slate-100 mb-4" />
-                           <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No hay resultados para mostrar</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {testResults.map((res, i) => (
-                            <div key={i} className="bg-slate-50 border border-slate-100 rounded-[32px] p-6 space-y-3 hover:border-[#FF6B00]/30 transition-all group">
-                               <div className="flex justify-between items-center">
-                                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${res.tipo === 'Tarjeta' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                    {res.tipo}
-                                  </span>
-                                  <div className="h-1.5 w-1.5 bg-emerald-400 rounded-full group-hover:animate-ping" />
-                               </div>
-                               <h4 className="text-xs font-black text-slate-800 uppercase italic">{res.titulo}</h4>
-                               <p className="text-[10px] text-slate-400 leading-relaxed line-clamp-4 italic">{res.contenido}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* ── CATÁLOGO DE PRODUCTOS ── */}
               {ragSubTab === 'catalogo' && (<>
