@@ -386,6 +386,89 @@ app.post('/api/webhook/whatsapp', async (req, res) => {
   }
 });
 
+app.post('/api/webhook/n8n', async (req, res) => {
+  const data = req.body;
+  console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
+
+  if (!data.phone) {
+    return res.status(400).json({ error: "Falta el campo 'phone'" });
+  }
+
+  const nombre = data.nombre || "Cliente Nuevo";
+  const email = data.email || "N/A";
+  const score = data.score || 50;
+  const estado = data.etiqueta || "Nuevo";
+  const origen = "WhatsApp (n8n)";
+  const now = new Date();
+  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
+  const motor = data.motor || "N/A";
+  const falla = data.falla || "N/A";
+  const zona = data.zona || "N/A";
+
+  try {
+    const cleanPhone = String(data.phone).replace(/\D/g, '');
+    const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
+    const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
+
+    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
+    const existingLead = await db.get("SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+    
+    let currentEstado = data.etiqueta || (existingLead ? existingLead.estado : "Nuevo");
+    const STATUS_SCORES = { 'Nuevo': 10, 'Interesado': 40, 'Cita Agendada': 75, 'Venta': 100, 'Post-Venta': 100, 'Perdido': 0, 'Intervención Requerida': 85 };
+    
+    let detectedEstado = detectStatus(mensajePrincipal, currentEstado);
+    detectedEstado = detectStatus(mensajeSecundario, detectedEstado);
+    
+    const finalEstado = detectedEstado;
+    const finalScore = STATUS_SCORES[finalEstado] || data.score || (existingLead ? existingLead.score : 10);
+
+    let leadId;
+
+    if (existingLead) {
+      console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id}`);
+      const updates = ["estado = ?", "score = ?", "time = ?"];
+      const params = [finalEstado, finalScore, time];
+
+      if (data.bot_apagado !== undefined) {
+        updates.push("botActive = ?");
+        params.push(data.bot_apagado ? 0 : 1);
+      }
+      
+      params.push(existingLead.id);
+      await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
+      leadId = existingLead.id;
+    } else {
+      console.log("   🆕 Creando nuevo lead...");
+      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        nombre, data.phone, email, finalScore, finalEstado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null);
+      leadId = result.lastID;
+    }
+
+    const saveSmartMessage = async (lId, sndr, txt, tm, mediaUrl = null, mediaType = null) => {
+      const cleanTxt = txt && txt !== "undefined" && txt !== "null" ? String(txt).trim() : "";
+      if (!cleanTxt && !mediaUrl) return;
+      await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)", 
+        lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
+    };
+
+    const mediaUrl = data.media_url || data.image_url || data.file_url;
+    const mediaType = data.media_type || (mediaUrl ? 'image' : null);
+    
+    if (mensajePrincipal || mediaUrl) {
+      await saveSmartMessage(leadId, data.sender || 'client', mensajePrincipal, time, mediaUrl, mediaType);
+    }
+    if (mensajeSecundario) {
+      await saveSmartMessage(leadId, 'bot', mensajeSecundario, time);
+    }
+
+    res.json({ success: true, action: existingLead ? "updated" : "created" });
+  } catch (err) {
+    console.error("❌ Error webhook n8n:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Endpoint dedicado para activar Handoff (n8n puede llamar esto directamente)
 app.post('/api/leads/handoff', async (req, res) => {
   try {
