@@ -783,6 +783,7 @@ app.get('/api/agent/prompt', async (req, res) => {
       prods.forEach(p => {
         catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'} | Stock: ${p.stock}\n`;
         if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\n`;
+        if (p.imagen) catalogText += `  IMAGEN_PARA_ENVIAR: ${p.imagen}\n`;
       });
     }
 
@@ -813,7 +814,8 @@ REGLAS IMPORTANTES:
 - Responde siempre en ${idioma}
 - Nunca digas que eres una IA a menos que te lo pregunten directamente
 - Si no sabes algo, pide más detalles o transfiere al equipo humano
-- Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)`.trim();
+- Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)
+- SI EL PRODUCTO TIENE UNA IMAGEN_PARA_ENVIAR: Incluye el texto "ENVIAR_IMAGEN: [URL_DE_LA_IMAGEN]" al final de tu mensaje para que el sistema la envíe automáticamente.`.trim();
 
     res.json({ systemPrompt, nombre, rol, empresa, tono, idioma, tipo });
   } catch (err) {
@@ -1034,7 +1036,7 @@ app.post('/api/ai/knowledge/approve/:id', async (req, res) => {
 app.get('/api/ai/insights', async (req, res) => {
   try {
     // Análisis simplificado: Buscar palabras clave frecuentes en mensajes de clientes
-    const recentMessages = await db.all("SELECT text FROM messages WHERE sender = 'client' ORDER BY id DESC LIMIT 200");
+    const recent messages = await db.all("SELECT text FROM messages WHERE sender = 'client' ORDER BY id DESC LIMIT 200");
     
     const keywords = {
       'precio': 0, 'cuánto cuesta': 0, 'valor': 0,
@@ -1157,7 +1159,7 @@ app.get('/api/rag/test-search', async (req, res) => {
   try {
     // Obtenemos todo el conocimiento disponible para filtrar en memoria con lógica inteligente
     const docs = await db.all("SELECT 'Tarjeta' as tipo, name as titulo, content as contenido FROM documents");
-    const prods = await db.all("SELECT 'Producto' as tipo, nombre as titulo, descripcion as contenido FROM products WHERE activo = 1");
+    const prods = await db.all("SELECT 'Producto' as tipo, nombre as titulo, descripcion || COALESCE('\nIMAGEN: ' || imagen, '') as contenido FROM products WHERE activo = 1");
     
     const allItems = [...docs, ...prods];
     const results = smartSearch(query, allItems);
