@@ -528,6 +528,18 @@ app.post('/api/leads/handoff', async (req, res) => {
   }
 });
 
+// Endpoint para toggle de bot por lead
+app.post('/api/leads/:id/bot-toggle', async (req, res) => {
+  try {
+    const { botActive } = req.body;
+    await db.run("UPDATE leads SET botActive = ? WHERE id = ?", botActive ? 1 : 0, req.params.id);
+    console.log(`🤖 Bot ${botActive ? 'ACTIVADO' : 'DESACTIVADO'} para lead ${req.params.id}`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Endpoint para resolver/cerrar un handoff cuando el agente tomó control
 app.post('/api/leads/handoff/resolve', async (req, res) => {
   try {
