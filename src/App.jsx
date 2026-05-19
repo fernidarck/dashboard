@@ -78,6 +78,7 @@ const App = () => {
   const [pedidos, setPedidos] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [products, setProducts] = useState([]);
+  const [stats, setStats] = useState({ botMessages: 0 });
   
   // Selection States
   const [selectedChatId, setSelectedChatId] = useState(null);
@@ -231,6 +232,14 @@ const App = () => {
     } catch (err) { console.error(err); }
   };
 
+  const fetchStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/stats`);
+      const data = await res.json();
+      setStats(data);
+    } catch (err) { console.error(err); }
+  };
+
   useEffect(() => {
     fetchLeads();
     fetchSettings();
@@ -239,9 +248,11 @@ const App = () => {
     fetchPedidos();
     fetchHandoff();
     fetchLearning();
+    fetchStats();
     
     const interval = setInterval(() => {
       fetchLeads();
+      fetchStats();
       if (activeTab === 'conversaciones') fetchMessages(selectedChatId);
       if (activeTab === 'pedidos') fetchPedidos();
     }, 5000);
@@ -579,15 +590,19 @@ const App = () => {
               </div>
               <button 
                 onClick={async () => {
-                  const newStatus = lead.botActive ? 0 : 1;
+                  const newState = !lead.botActive;
+                  const leadId = lead.id;
+                  if (!leadId) return;
+                  setLeads(prev => prev.map(l => l.id === leadId ? {...l, botActive: newState} : l));
                   try {
-                    await fetch(`${API_BASE_URL}/api/leads/${lead.id}/bot-toggle`, {
+                    await fetch(`${API_BASE_URL}/api/bot/toggle`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ botActive: !!newStatus })
+                      body: JSON.stringify({ leadId, enabled: newState })
                     });
-                    fetchLeads();
-                  } catch (e) { console.error(e); }
+                    setNotification(newState ? `✅ Bot activado` : `🔴 Bot desactivado`);
+                    setTimeout(() => setNotification(null), 3000);
+                  } catch(err) { fetchLeads(); }
                 }}
                 className={`p-4 rounded-2xl border flex flex-col items-center justify-center transition-all ${lead.botActive ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-red-50 border-red-100 text-red-600'}`}
               >
@@ -808,286 +823,364 @@ const App = () => {
           
           {/* VIEW: DASHBOARD (RESUMEN) */}
           {activeTab === 'dashboard' && (() => {
-            // ── MÉTRICAS REALES ──────────────────────────────────────
+            // --- MÉTRICAS REALES ---
             const totalLeads = leads.length;
             const urgentLeads = leads.filter(l => l.priority === 'urgent').length;
             const avgScore = totalLeads > 0 
               ? Math.round(leads.reduce((sum, l) => sum + (l.score || 0), 0) / totalLeads) 
               : 0;
+            
+            // Impacto IA (Métricas Reales)
+            const botMessages = stats.botMessages || 0; 
+            const horasAhorradas = Math.max(1, Math.round((botMessages * 5) / 60)); // 5 minutos por mensaje
 
             return (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                   <div>
-                      <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Resumen Operativo</h2>
-                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-2">Monitoreo en tiempo real de tu ecosistema SaaS</p>
-                   </div>
-                   <div className="bg-white px-6 py-3 rounded-2xl border border-slate-100 flex items-center space-x-4 shadow-sm">
-                      <div className="flex -space-x-2">
-                        {[1,2,3].map(i => <div key={i} className="h-7 w-7 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-black italic">OC</div>)}
-                      </div>
-                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Team OneControl Activo</div>
-                   </div>
+              <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic">Resumen Elite</h2>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Gestión de impacto y conversiones</p>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   {[
-                    { label: 'Leads Totales', val: totalLeads, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', trend: '+12%' },
-                    { label: 'Urgentes', val: urgentLeads, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', trend: '-5%' },
-                    { label: 'Engagement Promedio', val: `${avgScore}%`, icon: Zap, color: 'text-amber-600', bg: 'bg-amber-50', trend: '+8%' },
-                    { label: 'Agenda Semanal', val: agenda.length, icon: Calendar, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: '+2' }
-                  ].map((m, i) => (
-                    <div key={i} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-100 transition-all duration-500 group">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className={`${m.bg} ${m.color} p-4 rounded-2xl group-hover:scale-110 transition-transform`}>
-                          <m.icon size={20} />
-                        </div>
-                        <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-2 py-1 rounded-lg">{m.trend}</span>
+                    { l: 'Tus Leads', v: totalLeads, i: Target, c: 'text-blue-600', bg: 'bg-blue-50' },
+                    { l: 'Citas Activas', v: agenda.length, i: Calendar, c: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { l: 'Score Promedio', v: `${avgScore}%`, i: TrendingUp, c: 'text-indigo-600', bg: 'bg-indigo-50' },
+                    { l: urgentLeads > 0 ? '🚨 Intervenciones' : 'Estado del Bot', v: urgentLeads > 0 ? urgentLeads : '✅ OK', i: urgentLeads > 0 ? AlertTriangle : Zap, c: urgentLeads > 0 ? 'text-red-500' : 'text-[#FF6B00]', bg: urgentLeads > 0 ? 'bg-red-50' : 'bg-orange-50' },
+                  ].map((s, i) => (
+                    <div key={i} className="bg-white p-7 rounded-[32px] border border-slate-200 shadow-sm relative overflow-hidden group hover:border-[#FF6B00]/30 transition-all">
+                      <div className="flex justify-between items-start mb-4 relative z-10">
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{s.l}</p>
+                         <div className={`${s.bg} p-2 rounded-xl`}><s.i size={16} className={s.c} /></div>
                       </div>
-                      <h3 className="text-3xl font-black text-slate-800 tracking-tighter mb-1">{m.val}</h3>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{m.label}</p>
+                      <h3 className={`text-3xl font-black tracking-tighter ${s.c} relative z-10`}>{s.v}</h3>
                     </div>
                   ))}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  <div className="lg:col-span-2 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
-                    <div className="flex items-center justify-between border-b border-slate-50 pb-6">
-                       <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Actividad de Leads</h3>
-                       <div className="flex space-x-2">
-                          <button className="text-[10px] font-black px-4 py-2 bg-slate-900 text-white rounded-xl uppercase tracking-widest">Día</button>
-                          <button className="text-[10px] font-black px-4 py-2 text-slate-400 hover:text-slate-800 rounded-xl uppercase tracking-widest transition-colors">Semana</button>
-                       </div>
-                    </div>
-                    <div className="h-64 flex items-end justify-between px-4 pb-4">
-                      {[40, 70, 45, 90, 65, 80, 50, 95, 60, 75, 40, 85].map((h, i) => (
-                        <div key={i} className="w-4 bg-slate-50 rounded-full relative group cursor-pointer" style={{ height: '100%' }}>
-                           <div className="absolute bottom-0 w-full bg-slate-900 rounded-full group-hover:bg-[#FF6B00] transition-all duration-700" style={{ height: `${h}%` }}>
-                              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl">
-                                 {h} Interacciones
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                   <div className="md:col-span-2 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                      <div className="flex items-center justify-between">
+                         <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Actividad Reciente</h3>
+                         <span className="text-[10px] font-black text-emerald-500 uppercase">En Vivo</span>
+                      </div>
+                      <div className="space-y-4">
+                         {leads.slice(0, 5).map(lead => (
+                           <div key={lead.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-3xl border border-slate-100 hover:border-[#FF6B00]/20 transition-all group">
+                              <div className="flex items-center space-x-4">
+                                 <div className="h-10 w-10 rounded-xl bg-slate-900 text-[#FF6B00] flex items-center justify-center font-black text-xs italic">{lead.nombre?.[0] || '?'}</div>
+                                 <div>
+                                    <p className="text-xs font-black text-slate-800">{lead.nombre}</p>
+                                    <p className="text-[10px] font-bold text-slate-400">{lead.lastMessage || 'Nuevo Lead'}</p>
+                                 </div>
+                              </div>
+                              <div className="text-right">
+                                 <p className="text-[10px] font-black text-[#FF6B00]">{lead.time || 'Ahora'}</p>
+                                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{lead.estado}</p>
                               </div>
                            </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                         ))}
+                      </div>
+                   </div>
 
-                  <div className="bg-slate-900 p-8 rounded-[40px] shadow-2xl shadow-slate-300 relative overflow-hidden group">
-                     <div className="absolute top-0 right-0 p-8 opacity-10 text-[#FF6B00] group-hover:rotate-12 transition-transform duration-700">
-                        <Sparkles size={120} />
-                     </div>
-                     <div className="relative z-10 space-y-6">
-                        <div className="bg-[#FF6B00]/10 p-4 rounded-3xl w-fit">
-                           <Bot size={32} className="text-[#FF6B00]" />
-                        </div>
-                        <div>
-                           <h3 className="text-xl font-black text-white tracking-tighter uppercase italic mb-2">IA Status: Óptimo</h3>
-                           <p className="text-[11px] text-slate-400 leading-relaxed italic">Tu asistente virtual está procesando el 85% de las consultas de forma autónoma. El equipo humano solo interviene en casos críticos.</p>
-                        </div>
-                        <div className="pt-6 space-y-4">
-                           <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                              <span className="text-slate-400">Eficiencia RAG</span>
-                              <span className="text-[#FF6B00]">94%</span>
-                           </div>
-                           <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                              <div className="h-full bg-[#FF6B00] w-[94%] rounded-full shadow-lg shadow-orange-500/20" />
-                           </div>
-                        </div>
-                        <button onClick={() => setActiveTab('cerebro')} className="w-full py-4 bg-white text-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#FF6B00] hover:text-white transition-all active:scale-95">Optimizar Agente</button>
-                     </div>
-                  </div>
+                   <div className="bg-slate-900 p-10 rounded-[40px] shadow-2xl relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-10 opacity-10 text-white group-hover:rotate-12 transition-transform duration-700">
+                         <Brain size={120} />
+                      </div>
+                      <div className="relative z-10 space-y-8">
+                         <h3 className="text-sm font-black text-[#FF6B00] uppercase tracking-[0.2em] italic">Impacto IA</h3>
+                         <div className="space-y-6">
+                            <div>
+                               <p className="text-4xl font-black text-white italic tabular-nums">{horasAhorradas}h</p>
+                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Tiempo de atención ahorrado</p>
+                            </div>
+                            <div className="h-px bg-white/10 w-full" />
+                            <div>
+                               <p className="text-4xl font-black text-white italic tabular-nums">{botMessages}</p>
+                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Interacciones automáticas</p>
+                            </div>
+                         </div>
+                         <button onClick={() => setActiveTab('cerebro')} className="w-full py-4 bg-[#FF6B00] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-orange-900/20 hover:bg-white hover:text-slate-900 transition-all">Configurar Agente</button>
+                      </div>
+                   </div>
                 </div>
               </div>
             );
           })()}
 
-          {/* VIEW: CONVERSACIONES (CRM) */}
+                {/* VIEW: CONVERSACIONES */}
           {activeTab === 'conversaciones' && (
-            <div className="h-full flex space-x-8 animate-in fade-in slide-in-from-right-4 duration-700">
-               {/* Chat List */}
-               <div className="w-96 flex flex-col space-y-6">
-                  <div className="relative group">
-                     <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#FF6B00] transition-colors" />
-                     <input type="text" placeholder="Buscar cliente o mensaje..." className="w-full pl-12 pr-6 py-4 bg-white border border-slate-100 rounded-[24px] text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all italic shadow-sm" />
+            <div className="flex h-full animate-in fade-in duration-500 bg-white border-t border-slate-100">
+               <div className="w-80 border-r border-slate-100 flex flex-col shrink-0">
+                  <div className="p-6 border-b border-slate-50">
+                     <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 italic">Bandeja de entrada</h3>
+                     <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input type="text" placeholder="Buscar chat..." className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-[#FF6B00] transition-all" />
+                     </div>
                   </div>
-                  
-                  <div className="flex-1 space-y-3 overflow-y-auto pr-2 no-scrollbar">
+                  <div className="flex-1 overflow-y-auto no-scrollbar divide-y divide-slate-50">
                      {leads.map(lead => (
-                       <button 
-                        key={lead.id}
-                        onClick={() => setSelectedChatId(lead.id)}
-                        className={`w-full p-6 rounded-[32px] border transition-all duration-500 flex items-center space-x-4 relative overflow-hidden group ${selectedChatId === lead.id ? 'bg-white border-[#FF6B00] shadow-xl shadow-slate-100' : 'bg-white border-slate-100 hover:border-slate-300'}`}
-                       >
-                          {lead.priority === 'urgent' && (
-                            <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-red-500 animate-pulse" />
-                          )}
-                          <div className={`h-12 w-12 rounded-2xl flex items-center justify-center font-black text-sm relative shrink-0 ${selectedChatId === lead.id ? 'bg-slate-900 text-[#FF6B00]' : 'bg-slate-50 text-slate-400'}`}>
-                             {lead.nombre?.[0] || '?'}
-                             {lead.botActive === 0 && <div className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white" />}
-                          </div>
-                          <div className="flex-1 text-left min-w-0">
-                             <div className="flex justify-between items-center mb-1">
-                                <h4 className="text-xs font-black text-slate-800 uppercase italic truncate">{lead.nombre}</h4>
-                                <span className="text-[8px] font-bold text-slate-400 uppercase tabular-nums">{lead.time || 'Ahora'}</span>
-                             </div>
-                             <p className="text-[10px] text-slate-400 truncate italic">{lead.estado || 'En línea'}</p>
-                          </div>
-                          {lead.priority === 'urgent' && (
-                            <AlertTriangle size={14} className="text-red-500 animate-bounce" />
-                          )}
-                       </button>
+                        <button key={lead.id} onClick={() => setSelectedChatId(lead.id)} className={`w-full p-6 text-left hover:bg-slate-50 transition-all relative ${selectedChatId === lead.id ? 'bg-emerald-50/20' : ''} ${lead.priority === 'urgent' ? 'bg-red-50/60 border-l-4 border-red-500' : ''}`}>
+                           <div className="flex items-center space-x-3 mb-2">
+                              <div className="relative">
+                                <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-[10px] shadow-sm ${
+                                  lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
+                                  lead.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : lead.botActive ? <Bot size={14} /> : lead.nombre[0]}
+                                </div>
+                                {lead.priority === 'urgent' && (
+                                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-ping" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                 <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
+                               <div className="flex justify-between items-center">
+                                  <p className={`text-[9px] font-black uppercase tracking-tighter ${
+                                    lead.priority === 'urgent' ? 'text-red-500' :
+                                    lead.botActive ? 'text-emerald-500' : 'text-slate-400'
+                                  }`}>
+                                     {lead.priority === 'urgent' ? '⚠️ INTERVENCIÓN' : lead.botActive ? `Score: ${lead.score}%` : 'Control Manual'}
+                                  </p>
+                                  {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums">{lead.lastMessageTime}</span>}
+                               </div>
+                              </div>
+                           </div>
+                           {lead.handoff_reason && (
+                             <p className="text-[9px] text-red-500 font-bold italic truncate mt-1 leading-none">
+                                ⚠️ {lead.handoff_reason}
+                             </p>
+                           )}
+                           {!lead.handoff_reason && (
+                             <p className="text-[11px] text-slate-500 truncate mt-1 font-medium italic leading-none">
+                                {lead.lastMessage ? `"${lead.lastMessage}"` : "Sin mensajes recientes"}
+                             </p>
+                           )}
+                        </button>
                      ))}
                   </div>
                </div>
 
-               {/* Chat Window */}
-               <div className="flex-1 bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-100 flex flex-col relative overflow-hidden">
-                  {selectedChatId ? (
-                    <>
-                      <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-md z-10">
-                         <div className="flex items-center space-x-4">
-                            <div className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center font-black text-[#FF6B00] italic">
-                               {leads.find(l => l.id === selectedChatId)?.nombre?.[0] || '?'}
-                            </div>
-                            <div>
-                               <h3 className="text-sm font-black text-slate-800 uppercase italic leading-none mb-1">{leads.find(l => l.id === selectedChatId)?.nombre}</h3>
-                               <div className="flex items-center space-x-2">
-                                   <span className={`h-1.5 w-1.5 rounded-full ${leads.find(l => l.id === selectedChatId)?.botActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                      {leads.find(l => l.id === selectedChatId)?.botActive ? 'IA Gestionando' : 'Control Humano / Bot Apagado'}
-                                   </span>
-                                </div>
-                            </div>
-                         </div>
-                         <div className="flex space-x-3">
-                            <button onClick={() => {
-                                const lead = leads.find(l => l.id === selectedChatId);
-                                if (lead) {
-                                   const updatedLeads = leads.map(l => l.id === selectedChatId ? {...l, botActive: l.botActive ? 0 : 1} : l);
-                                   setLeads(updatedLeads);
-                                }
-                            }} className={`p-3 rounded-2xl transition-colors ${leads.find(l => l.id === selectedChatId)?.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}><Bot size={18} /></button>
-                            <button onClick={() => setShowClientSidebarCRM(true)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800 transition-colors"><Database size={18} /></button>
-                            <button className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800 transition-colors"><MoreVertical size={18} /></button>
-                         </div>
-                      </div>
-
-                      <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar bg-[#FDFEFF]">
-                         {messages.map((msg, i) => (
-                           <div key={i} className={`flex ${msg.sender === 'client' ? 'justify-start' : 'justify-end'} animate-in slide-in-from-bottom-2 duration-500`}>
-                              <div className={`max-w-[80%] p-6 rounded-[28px] relative group ${msg.sender === 'client' ? 'bg-slate-100 text-slate-800 rounded-bl-none' : 'bg-slate-900 text-white rounded-br-none shadow-xl shadow-slate-200'}`}>
-                                 <p className="text-11px font-medium leading-relaxed italic">{msg.text}</p>
-                                 <span className={`text-[8px] font-bold uppercase mt-3 block ${msg.sender === 'client' ? 'text-slate-400' : 'text-slate-500'}`}>{msg.timestamp}</span>
-                              </div>
+               <div className="flex-1 flex flex-col bg-[#FDFDFD]">
+                  <div className="h-20 border-b border-slate-100 px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
+                     <div className="flex items-center space-x-4">
+                        <div className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00]">OC</div>
+                        <div>
+                           <p className="text-sm font-black text-slate-800">{selectedLead.nombre}</p>
+                           <div className="flex items-center space-x-2">
+                             <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedLead.botActive ? 'text-emerald-500' : 'text-red-500'}`}>
+                               {selectedLead.botActive ? 'IA Gestionando' : 'Modo Manual'}
+                             </p>
+                             <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                               selectedLead.estado === 'Venta' ? 'bg-emerald-500 text-white' :
+                               selectedLead.estado === 'Frío' ? 'bg-blue-500 text-white' :
+                               'bg-amber-500 text-white'
+                             }`}>{selectedLead.estado}</span>
                            </div>
-                         ))}
-                         <div ref={messagesEndRef} />
-                      </div>
+                        </div>
+                     </div>
+                     <div className="flex items-center space-x-3">
+                        <button 
+                          onClick={() => handleToggleBot(selectedLead.id)} 
+                          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                            selectedLead.botActive 
+                            ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                            : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                          }`}
+                        >
+                          <Power size={14} />
+                          <span>{selectedLead.botActive ? 'Desactivar Bot' : 'Activar Bot'}</span>
+                        </button>
+                        <button onClick={() => setShowClientSidebarChat(!showClientSidebarChat)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"><Database size={18} /></button>
+                        <button className="p-2.5 bg-slate-50 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"><MoreVertical size={18} /></button>
+                     </div>
+                  </div>
 
-                      <div className="p-8 bg-white border-t border-slate-50">
-                         <div className="bg-slate-50 rounded-[28px] p-2 flex items-center space-x-2 border border-slate-100 focus-within:ring-4 focus-within:ring-orange-50 focus-within:border-[#FF6B00] transition-all">
-                            <input 
-                              type="text" 
-                              value={messageText}
-                              onChange={e => setMessageText(e.target.value)}
-                              onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                              placeholder="Escribe un mensaje para el cliente..." 
-                              className="flex-1 bg-transparent px-6 py-3 text-xs font-bold outline-none italic" 
-                            />
-                            <button 
-                              onClick={handleSendMessage}
-                              className="bg-slate-900 text-white h-12 w-12 rounded-2xl flex items-center justify-center hover:bg-[#FF6B00] transition-all shadow-lg active:scale-95 shrink-0"
-                            >
-                               <SendHorizontal size={20} />
-                            </button>
-                         </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center space-y-6 text-slate-300">
-                       <div className="bg-slate-50 p-10 rounded-[48px] animate-pulse">
-                          <MessageSquare size={64} />
-                       </div>
-                       <p className="text-xs font-black uppercase tracking-[0.3em] italic">Selecciona una conversación</p>
+                  <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
+                     {messages.map((m, i) => (
+                        <div key={i} className={`flex ${m.sender === 'client' ? 'justify-start' : 'justify-end'}`}>
+                           <div className={`max-w-[70%] p-4 rounded-2xl text-[11px] font-medium shadow-sm ${
+                              m.sender === 'client' ? 'bg-white border border-slate-100 text-slate-800 rounded-tl-none' : 'bg-slate-900 text-white rounded-tr-none'
+                           }`}>
+                              {m.text}
+                              <p className={`text-[8px] mt-2 font-bold uppercase tracking-widest ${m.sender === 'client' ? 'text-slate-300' : 'text-slate-500'}`}>
+                                 {m.timestamp || 'Ahora'}
+                              </p>
+                           </div>
+                        </div>
+                     ))}
+                     <div ref={messagesEndRef} />
+                  </div>
+
+                  <div className="p-6 bg-white border-t border-slate-100">
+                     <div className="flex items-center space-x-4 bg-slate-50 p-2 rounded-2xl border border-slate-200 focus-within:ring-2 focus-within:ring-[#FF6B00]/20 transition-all">
+                        <input 
+                           type="text" 
+                           value={messageText}
+                           onChange={e => setMessageText(e.target.value)}
+                           onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+                           placeholder="Escribe un mensaje..." 
+                           className="flex-1 bg-transparent px-4 py-2 text-xs outline-none" 
+                        />
+                        <button onClick={handleSendMessage} className="p-3 bg-slate-900 text-[#FF6B00] rounded-xl hover:bg-[#FF6B00] hover:text-white transition-all"><SendHorizontal size={18} /></button>
+                     </div>
+                  </div>
+               </div>
+
+               {showClientSidebarChat && (
+                  <div className="w-80 border-l border-slate-100 p-6 space-y-8 animate-in slide-in-from-right-4 duration-500 bg-white">
+                     <div className="flex justify-between items-center">
+                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Perfil del Lead</h3>
+                        <button onClick={() => setShowClientSidebarChat(false)} className="text-slate-400 hover:text-slate-800"><X size={16} /></button>
+                     </div>
+                     
+                     <div className="space-y-6">
+                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                           <div className="h-16 w-16 bg-slate-900 text-[#FF6B00] rounded-2xl flex items-center justify-center font-black text-xl italic mb-4 mx-auto border-2 border-white shadow-xl">{selectedLead.nombre?.[0]}</div>
+                           <h4 className="text-center font-black text-slate-800 uppercase italic">{selectedLead.nombre}</h4>
+                           <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{selectedLead.phone}</p>
+                        </div>
+
+                        <div className="space-y-4">
+                           {[
+                             { l: 'Estado', v: selectedLead.estado, i: Tag, c: 'text-emerald-500' },
+                             { l: 'Score', v: `${selectedLead.score}%`, i: Zap, c: 'text-amber-500' },
+                             { l: 'Prioridad', v: selectedLead.priority, i: AlertTriangle, c: selectedLead.priority === 'urgent' ? 'text-red-500' : 'text-slate-400' }
+                           ].map((item, i) => (
+                             <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="flex items-center space-x-3">
+                                   <item.i size={14} className={item.c} />
+                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.l}</span>
+                                </div>
+                                <span className="text-[10px] font-black text-slate-800 uppercase">{item.v}</span>
+                             </div>
+                           ))}
+                        </div>
+
+                        <div className="space-y-4 pt-4 border-t border-slate-100">
+                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Captura de Datos</h4>
+                           <div className="space-y-3">
+                              {['Nit', 'Direccion', 'Email', 'Vehiculo'].map(field => (
+                                 <div key={field} className="space-y-1">
+                                    <p className="text-[8px] font-black text-slate-300 uppercase ml-2">{field}</p>
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-600 truncate italic">
+                                       {selectedLead[field.toLowerCase()] || `Esperando ${field}...`}
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               )}
+            </div>
+          )}
+
+          {/* VIEW: CLIENTES (CRM EVOLUCIONADO) */}
+           {activeTab === 'crm' && (
+              <div className="max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                 <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Base de Clientes</h2>
+                      <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Control total de datos, estados y seguimiento</p>
                     </div>
-                  )}
-               </div>
+                    <div className="flex space-x-4">
+                       <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                          <input type="text" placeholder="Buscar cliente..." className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none w-64 shadow-sm italic" />
+                       </div>
+                       {sidebarLeadId && (
+                           <button 
+                             onClick={() => setShowClientSidebarCRM(!showClientSidebarCRM)}
+                             title="Detalles del Cliente"
+                             className={`p-2.5 rounded-xl border transition-all ${showClientSidebarCRM ? 'bg-[#FF6B00] text-white border-[#FF6B00] shadow-lg shadow-orange-100' : 'bg-white text-slate-400 border-slate-200 shadow-sm'}`}
+                           >
+                             <UserCircle size={18} />
+                           </button>
+                        )}
+                    </div>
+                 </div>
 
-               {renderClientSidebar(leads.find(l => l.id === selectedChatId), showClientSidebarCRM, () => setShowClientSidebarCRM(false))}
-            </div>
-          )}
-
-          {/* VIEW: CRM (BASE DE CLIENTES) */}
-          {activeTab === 'crm' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-               <div className="flex justify-between items-end">
-                  <div>
-                    <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Base de Clientes</h2>
-                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-2">Gestión centralizada de contactos y prospectos</p>
-                  </div>
-                  <div className="flex space-x-3">
-                    <button onClick={() => fetchLeads()} className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-slate-800 shadow-sm"><RefreshCw size={18} /></button>
-                    <button className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-black transition-all flex items-center space-x-2">
-                       <Plus size={16} />
-                       <span>Nuevo Lead</span>
-                    </button>
-                  </div>
-               </div>
-
-               <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
-                  <table className="w-full text-left">
-                     <thead>
-                        <tr className="bg-slate-50/50 border-b border-slate-50">
-                           <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
-                           <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
-                           <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Score IA</th>
-                           <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Origen</th>
-                           <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Acciones</th>
-                        </tr>
-                     </thead>
-                     <tbody className="divide-y divide-slate-50">
-                        {leads.map(lead => (
-                          <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors group">
-                             <td className="px-8 py-6">
-                                <div className="flex items-center space-x-4">
-                                   <div className="h-10 w-10 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-400 text-xs italic group-hover:bg-slate-900 group-hover:text-[#FF6B00] transition-all">
-                                      {lead.nombre?.[0] || '?'}
-                                   </div>
-                                   <div>
-                                      <p className="text-xs font-black text-slate-800 uppercase italic leading-none mb-1">{lead.nombre}</p>
-                                      <p className="text-[10px] font-bold text-slate-400 tabular-nums">{lead.phone}</p>
-                                   </div>
-                                </div>
-                             </td>
-                             <td className="px-8 py-6">
-                                <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-emerald-100">
-                                   {lead.estado || 'Activo'}
-                                </span>
-                             </td>
-                             <td className="px-8 py-6">
-                                <div className="flex items-center space-x-2">
-                                   <div className="flex-1 h-1.5 w-16 bg-slate-100 rounded-full overflow-hidden">
-                                      <div className="h-full bg-[#FF6B00] rounded-full" style={{ width: `${lead.score || 0}%` }} />
-                                   </div>
-                                   <span className="text-[10px] font-black text-slate-800 italic">{lead.score || 0}%</span>
-                                </div>
-                             </td>
-                             <td className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase italic">{lead.origen || 'WhatsApp'}</td>
-                             <td className="px-8 py-6">
-                                <button 
-                                  onClick={() => { setSelectedChatId(lead.id); setActiveTab('conversaciones'); setShowClientSidebarCRM(true); }}
-                                  className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-900 hover:text-white transition-all"
-                                >
-                                   <UserCircle size={18} />
-                                </button>
-                             </td>
-                          </tr>
-                        ))}
-                     </tbody>
-                  </table>
-               </div>
-            </div>
-          )}
+                 <div className="flex space-x-6 items-start">
+                    <div className="flex-1 bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
+                       <table className="w-full text-left min-w-[1000px]">
+                          <thead className="bg-slate-50 border-b border-slate-100">
+                             <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <th className="px-8 py-6">CLIENTE</th>
+                                <th className="px-6 py-6">CONTACTO</th>
+                                <th className="px-6 py-6">ESTADO / SCORE</th>
+                                <th className="px-6 py-6">PROGRESO</th>
+                                <th className="px-8 py-6 text-right">ACCIONES</th>
+                             </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                             {leads.filter(l => !l.archived).map(lead => (
+                               <tr 
+                                 key={lead.id} 
+                                 onClick={() => { setSidebarLeadId(lead.id); setShowClientSidebarCRM(true); }}
+                                 className={`hover:bg-slate-50/80 transition-colors group cursor-pointer ${sidebarLeadId === lead.id && showClientSidebarCRM ? 'bg-emerald-50/30' : ''}`}
+                               >
+                                  <td className="px-8 py-5">
+                                     <div className="flex items-center space-x-3">
+                                        <div className={`h-12 w-12 rounded-[18px] flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${lead.priority === 'urgent' ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-900 text-[#FF6B00]'}`}>
+                                           {lead.priority === 'urgent' ? '!' : (lead.nombre?.[0] || '?')}
+                                        </div>
+                                        <div>
+                                           <p className="text-sm font-black text-slate-800 leading-none group-hover:text-[#FF6B00] transition-colors">{lead.nombre}</p>
+                                           <p className="text-[9px] font-bold text-slate-400 mt-1.5 uppercase tracking-tighter">ID WA: {lead.whatsapp_id || lead.phone || '—'}</p>
+                                        </div>
+                                     </div>
+                                  </td>
+                                  <td className="px-6 py-5">
+                                     <div className="flex items-center space-x-2 text-[11px] font-black text-slate-700">
+                                        <Phone size={10} className="text-slate-300" />
+                                        <span>{lead.phone || '—'}</span>
+                                     </div>
+                                  </td>
+                                  <td className="px-6 py-5">
+                                     <div className="flex flex-col space-y-2">
+                                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest w-fit shadow-sm border ${
+                                           lead.priority === 'urgent' ? 'bg-red-500 text-white border-red-500' :
+                                           lead.estado === 'Venta' ? 'bg-emerald-500 text-white border-emerald-500' :
+                                           lead.estado === 'Cita Agendada' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                           lead.estado === 'Interesado' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                           lead.estado === 'Post-Venta' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                                           lead.estado === 'Perdido' ? 'bg-slate-50 text-slate-400 border-slate-100' :
+                                           'bg-slate-100 text-slate-500 border-slate-200'
+                                         }`}>{lead.estado || 'Nuevo'}</span>
+                                        <div className="flex items-center space-x-1">
+                                           {[1,2,3,4,5].map(s => (
+                                             <div key={s} className={`h-1.5 w-1.5 rounded-full ${s <= (lead.score || 0)/20 ? 'bg-amber-400' : 'bg-slate-200'}`} />
+                                           ))}
+                                        </div>
+                                     </div>
+                                  </td>
+                                  <td className="px-6 py-5">
+                                     <div className="w-24 space-y-1.5">
+                                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                           <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${lead.score || 0}%` }} />
+                                        </div>
+                                     </div>
+                                  </td>
+                                  <td className="px-8 py-5 text-right">
+                                     <div className="flex items-center justify-end space-x-1.5">
+                                        <button onClick={(e) => { e.stopPropagation(); setEditingLead({...lead}); }} title="Editar" className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-900 hover:text-[#FF6B00] transition-all">
+                                           <Pencil size={12} />
+                                        </button>
+                                     </div>
+                                  </td>
+                               </tr>
+                             ))}
+                          </tbody>
+                       </table>
+                    </div>
+                     {renderClientSidebar(leads.find(l => l.id === sidebarLeadId), showClientSidebarCRM, () => setShowClientSidebarCRM(false))}
+                 </div>
+              </div>
+           )}
 
           {/* VIEW: AGENDA IA */}
           {activeTab === 'agenda' && (
@@ -1147,153 +1240,485 @@ const App = () => {
             </div>
           )}
 
-          {/* VIEW: AGENTE IA (CEREBRO) */}
-          {activeTab === 'cerebro' && (
-            <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-               <div>
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none text-center">Configuración de Inteligencia</h2>
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-2 text-center">Define el ADN de tu asistente virtual</p>
+          {/* VIEW: PEDIDOS (Tablero Kanban) */}
+          {activeTab === 'pedidos' && (
+            <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+               <div className="flex justify-between items-end">
+                 <div>
+                   <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Gestión de Pedidos</h2>
+                   <p className="text-sm font-medium text-slate-400 mt-2 italic">Control de ventas y coordinación de entregas</p>
+                 </div>
+                 <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center space-x-2">
+                   <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
+                   <span>Pedidos en tiempo real</span>
+                 </div>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {['General', 'Prompts', 'Aprendizaje'].map(t => (
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                 {['Nuevo', 'En Proceso', 'Completado'].map(col => (
+                   <div key={col} className="bg-slate-50/50 rounded-[40px] p-6 border border-slate-100 min-h-[70vh] flex flex-col space-y-4">
+                     <div className="flex items-center justify-between px-4 mb-2">
+                       <h3 className={`text-[11px] font-black uppercase tracking-widest ${col === 'Nuevo' ? 'text-orange-600' : col === 'En Proceso' ? 'text-blue-600' : 'text-emerald-600'}`}>{col}</h3>
+                       <span className="bg-white px-3 py-1 rounded-full text-[10px] font-black text-slate-400 border border-slate-100">{pedidos.filter(p => p.estado === col).length}</span>
+                     </div>
+
+                     <div className="space-y-4 overflow-y-auto max-h-[65vh] pr-2 custom-scrollbar">
+                       {pedidos.filter(p => p.estado === col).map(pedido => (
+                         <div key={pedido.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                           <div className="flex justify-between items-start mb-4">
+                             <span className="text-[9px] font-black text-slate-300 uppercase tracking-tighter">#{pedido.id}</span>
+                             <span className="text-[9px] font-bold text-slate-400 italic">{pedido.timestamp}</span>
+                           </div>
+                           <h4 className="text-sm font-black text-slate-900 mb-1">{pedido.producto}</h4>
+                           <div className="flex items-center space-x-2 text-[11px] font-bold text-slate-500 mb-4">
+                             <Users size={12} className="text-slate-300" />
+                             <span>{pedido.cliente}</span>
+                           </div>
+
+                           {pedido.notas && (
+                             <p className="text-[10px] text-slate-400 italic leading-relaxed mb-4 line-clamp-2">{pedido.notas}</p>
+                           )}
+
+                           <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                             <div className="flex -space-x-1">
+                               {col !== 'Nuevo' && (
+                                 <button onClick={() => updatePedidoEstado(pedido.id, 'Nuevo')} className="h-8 w-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-orange-50 hover:text-orange-500 transition-colors border border-white"><ChevronLeft size={14} /></button>
+                               )}
+                               {col !== 'Completado' && (
+                                 <button onClick={() => updatePedidoEstado(pedido.id, col === 'Nuevo' ? 'En Proceso' : 'Completado')} className="h-8 w-16 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest flex items-center justify-center hover:bg-[#FF6B00] transition-all border border-white shadow-sm">
+                                   Siguiente <ChevronRight size={12} className="ml-1" />
+                                 </button>
+                               )}
+                             </div>
+                             {col === 'Completado' && (
+                               <div className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center border border-emerald-100"><CheckCircle2 size={14} /></div>
+                             )}
+                           </div>
+                         </div>
+                       ))}
+                       {pedidos.filter(p => p.estado === col).length === 0 && (
+                         <div className="py-10 text-center">
+                           <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Sin pedidos</p>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          )}
+
+          {/* VIEW: AGENTE IA (CEREBRO) */}
+          {activeTab === 'cerebro' && (
+            <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+               <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Cerebro de la IA</h2>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Configuración de identidad y comportamiento</p>
+                  </div>
+                  <button 
+                     onClick={async () => {
+                       setLoading(true);
+                       try {
+                         const saves = [
+                           { key: 'agent_nombre', value: agentConfig.nombre },
+                           { key: 'agent_rol', value: agentConfig.rol },
+                           { key: 'agent_descripcion', value: agentConfig.descripcion },
+                           { key: 'agent_empresa', value: agentConfig.empresa },
+                           { key: 'agent_personalidad', value: agentConfig.personalidad },
+                           { key: 'agent_idioma', value: agentConfig.idioma },
+                           { key: 'agent_tono', value: agentConfig.tono },
+                           { key: 'agent_productos', value: agentConfig.productos }
+                         ];
+                         await Promise.all(saves.map(s => fetch(`${API_BASE_URL}/api/settings`, {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify(s)
+                         })));
+                         setNotification('✅ Cerebro sincronizado — n8n ya usa la nueva configuración');
+                         setTimeout(() => setNotification(null), 4000);
+                       } catch(e) {
+                         setNotification('❌ Error sincronizando');
+                       } finally { setLoading(false); }
+                     }}
+                     className="bg-emerald-500 text-white px-8 py-3 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-emerald-200 flex items-center space-x-2 transition-all active:scale-95"
+                  >
+                     <Save size={16} />
+                     <span>Sincronizar Cerebro</span>
+                  </button>
+               </div>
+
+               <AprendizajeLogic API_BASE_URL={API_BASE_URL} subTabIA={subTabIA} />
+
+               <div className="flex space-x-8 border-b border-slate-200">
+                  {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff', 'Aprendizaje'].map(t => (
                     <button 
                       key={t}
                       onClick={() => setSubTabIA(t)}
-                      className={`p-6 rounded-[32px] border transition-all duration-500 text-left relative overflow-hidden group ${subTabIA === t ? 'bg-slate-900 border-transparent shadow-2xl shadow-slate-300' : 'bg-white border-slate-100 hover:border-slate-300'}`}
+                      className={`pb-4 text-xs font-bold uppercase tracking-widest border-b-2 transition-all ${subTabIA === t ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                     >
-                       <div className={`text-[10px] font-black uppercase tracking-widest mb-2 ${subTabIA === t ? 'text-[#FF6B00]' : 'text-slate-400'}`}>{t}</div>
-                       <div className={`text-sm font-black uppercase italic ${subTabIA === t ? 'text-white' : 'text-slate-800'}`}>Configurar {t}</div>
-                       <div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:rotate-12 transition-transform ${subTabIA === t ? 'text-white' : 'text-slate-900'}`}>
-                          {t === 'General' ? <Bot size={40} /> : t === 'Prompts' ? <Zap size={40} /> : <Brain size={40} />}
-                       </div>
+                      {t}
                     </button>
                   ))}
                </div>
 
-               <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-sm space-y-10">
-                  {subTabIA === 'General' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <div className="space-y-6">
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre del Agente</label>
-                             <input type="text" value={agentConfig.nombre} onChange={e => setAgentConfig({...agentConfig, nombre: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" />
-                          </div>
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Rol en la Empresa</label>
-                             <input type="text" value={agentConfig.rol} onChange={e => setAgentConfig({...agentConfig, rol: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" />
-                          </div>
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tono de Voz</label>
-                             <select value={agentConfig.tono} onChange={e => setAgentConfig({...agentConfig, tono: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
-                                <option>Amigable</option>
-                                <option>Profesional</option>
-                                <option>Directo</option>
-                                <option>Vendedor</option>
-                             </select>
-                          </div>
-                       </div>
-                       <div className="space-y-6">
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Descripción de la Empresa</label>
-                             <textarea rows={8} value={agentConfig.descripcion} onChange={e => setAgentConfig({...agentConfig, descripcion: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-3xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all resize-none italic" placeholder="Explica qué hace OneControl para que la IA entienda el negocio..."></textarea>
-                          </div>
-                       </div>
-                    </div>
-                  )}
-
-                  {subTabIA === 'Prompts' && (
-                    <div className="space-y-8">
-                       <div className="flex space-x-2 bg-slate-50 p-1 rounded-2xl w-fit">
-                          {['Recepcionista', 'Vendedor', 'Soporte'].map(a => (
-                            <button key={a} onClick={() => setSelectedAgent(a)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedAgent === a ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>{a}</button>
-                          ))}
-                       </div>
-                       <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                             <h4 className="text-xs font-black text-slate-800 uppercase italic">Instrucciones de Comportamiento</h4>
-                             <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg">MODO EXPERTO ACTIVO</span>
-                          </div>
+                {subTabIA === 'General' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Nombre del Asistente</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.nombre}
+                            onChange={e => setAgentConfig({...agentConfig, nombre: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Rol / Puesto</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.rol}
+                            onChange={e => setAgentConfig({...agentConfig, rol: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Empresa</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.empresa}
+                            onChange={e => setAgentConfig({...agentConfig, empresa: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Personalidad</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.personalidad}
+                            onChange={e => setAgentConfig({...agentConfig, personalidad: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Idioma</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.idioma}
+                            onChange={e => setAgentConfig({...agentConfig, idioma: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Tono de Voz</label>
+                          <input 
+                            type="text" 
+                            value={agentConfig.tono}
+                            onChange={e => setAgentConfig({...agentConfig, tono: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-4 md:col-span-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Descripción del Negocio (Contexto para la IA)</label>
                           <textarea 
-                            rows={12} 
-                            value={prompts[selectedAgent]} 
-                            onChange={e => setPrompts({...prompts, [selectedAgent]: e.target.value})}
-                            className="w-full px-8 py-8 bg-slate-900 text-white border-transparent rounded-[40px] text-xs font-medium leading-relaxed outline-none focus:ring-8 focus:ring-[#FF6B00]/10 transition-all resize-none italic shadow-inner" 
-                            placeholder={`Define cómo debe actuar el agente de ${selectedAgent.toLowerCase()}...`}>
-                          </textarea>
-                       </div>
+                            rows={4}
+                            value={agentConfig.descripcion}
+                            onChange={e => setAgentConfig({...agentConfig, descripcion: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500 italic"
+                          />
+                        </div>
+                        <div className="space-y-4 md:col-span-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Productos/Servicios Destacados</label>
+                          <textarea 
+                            rows={4}
+                            value={agentConfig.productos}
+                            onChange={e => setAgentConfig({...agentConfig, productos: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500 italic"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {subTabIA === 'Aprendizaje' && (
-                    <div className="space-y-10">
-                       <AprendizajeLogic API_BASE_URL={API_BASE_URL} subTabIA={subTabIA} />
+                {subTabIA === 'Mensajes' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm">
+                      <div className="flex items-center space-x-4 mb-8">
+                        <div className="h-12 w-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center">
+                          <MessageSquare size={24} />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Flujo de Conversación</h3>
+                          <p className="text-[10px] text-slate-400 italic">Configura cómo inicia la charla el bot</p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-6">
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Saludo Inicial</span>
+                            <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
+                          </div>
+                          <p className="text-xs text-slate-600 italic">"Hola, soy {agentConfig.nombre} de {agentConfig.empresa}. ¿En qué puedo ayudarte hoy?"</p>
+                        </div>
+                        <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                           <p className="text-[9px] text-blue-700 italic leading-relaxed text-center">
+                             💡 Estos mensajes se generan dinámicamente usando el cerebro de la IA. No necesitas configurarlos manualmente.
+                           </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {subTabIA === 'Captura de Datos' && (
+                  <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                       <div className="flex items-center justify-between border-b border-slate-50 pb-6">
+                          <div>
+                             <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                                <Database size={18} className="text-[#FF6B00]" />
+                                <span>Configuración de Captura de Datos</span>
+                             </h3>
+                             <p className="text-[10px] text-slate-400 italic mt-1">Cómo la IA debe recolectar la información del cliente</p>
+                          </div>
+                          <div className="flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase">
+                             <Sparkles size={14} />
+                             <span>Automatización Activa</span>
+                          </div>
+                       </div>
+
                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           <div className="space-y-6">
-                             <h4 className="text-xs font-black text-slate-800 uppercase italic flex items-center space-x-2">
-                                <TrendingUp size={16} className="text-[#FF6B00]" />
-                                <span>Tópicos más consultados</span>
-                             </h4>
-                             <div className="space-y-3">
-                                {aiInsights.length > 0 ? aiInsights.map((insight, i) => (
-                                  <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-[#FF6B00]/30 transition-all">
-                                     <span className="text-[11px] font-black text-slate-800 uppercase italic">{insight.topic}</span>
-                                     <div className="flex items-center space-x-3">
-                                        <span className="text-[9px] font-black text-slate-400 tabular-nums">{insight.count} Hits</span>
-                                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${insight.trend === 'Subiendo' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>{insight.trend}</span>
-                                     </div>
-                                  </div>
-                                )) : <div className="text-slate-300 italic text-[10px]">Analizando tendencias en tiempo real...</div>}
+                             <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                <h4 className="text-xs font-black text-slate-700 uppercase mb-4 flex items-center space-x-2">
+                                   <div className="h-2 w-2 bg-emerald-500 rounded-full" />
+                                   <span>Campos que la IA detecta</span>
+                                </h4>
+                                <ul className="space-y-3">
+                                   {[
+                                      { l: 'Nombre Completo', d: 'Se guarda automáticamente al inicio' },
+                                      { l: 'Dirección de Entrega', d: 'Detectado por frases como "estoy en..." o "vivo en..."' },
+                                      { l: 'NIT / Facturación', d: 'Detectado por números de 6-9 dígitos o mención de NIT' },
+                                      { l: 'Notas Especiales', d: 'Cualquier detalle relevante de la conversación' }
+                                   ].map((f, i) => (
+                                      <li key={i} className="flex flex-col">
+                                         <span className="text-[11px] font-black text-slate-800">{f.l}</span>
+                                         <span className="text-[9px] text-slate-400 italic">{f.d}</span>
+                                      </li>
+                                   ))}
+                                </ul>
+                             </div>
+                             
+                             <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100">
+                                <h4 className="text-xs font-black text-orange-700 uppercase mb-2">Instrucciones para el Prompt</h4>
+                                <p className="text-[10px] text-orange-600 leading-relaxed italic">
+                                   Para que esto funcione, asegúrate de que tu <b>Prompt</b> (pestaña Prompt) incluya una instrucción como:
+                                   <br/><br/>
+                                   <code className="bg-white/50 p-2 rounded block text-[9px] border border-orange-200">
+                                      "Si el cliente muestra interés, solicita amablemente su nombre, dirección para la entrega y su NIT para la factura."
+                                   </code>
+                                </p>
                              </div>
                           </div>
-                          <div className="space-y-6">
-                             <h4 className="text-xs font-black text-slate-800 uppercase italic flex items-center space-x-2">
-                                <ShieldCheck size={16} className="text-emerald-500" />
-                                <span>Validación de Conocimiento</span>
-                             </h4>
-                             <div className="space-y-4">
-                                {aiKnowledge.filter(k => k.status === 'pending').length > 0 ? aiKnowledge.filter(k => k.status === 'pending').map((k, i) => (
-                                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 relative group">
-                                     <div className="flex justify-between items-start">
-                                        <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg text-[9px] font-black uppercase">{k.topic}</span>
-                                        <span className="text-[8px] font-black text-slate-300">Frec: {k.frequency}x</span>
-                                     </div>
-                                     <p className="text-[10px] text-slate-500 leading-relaxed italic line-clamp-3">"{k.content}"</p>
-                                     <div className="flex space-x-2 pt-2">
-                                        <button onClick={() => approveKnowledge(k.id)} className="flex-1 py-2.5 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all">Aprobar e Integrar</button>
-                                        <button className="px-4 py-2.5 bg-slate-100 text-slate-400 rounded-xl text-[9px] font-black uppercase hover:bg-slate-200 transition-all">Ignorar</button>
-                                     </div>
-                                  </div>
-                                )) : (
-                                  <div className="p-8 border-2 border-dashed border-slate-100 rounded-[40px] text-center space-y-4">
-                                     <div className="bg-slate-50 h-12 w-12 rounded-2xl flex items-center justify-center mx-auto text-slate-300">
-                                        <Target size={24} />
-                                     </div>
-                                     <p className="text-[10px] text-slate-400 font-medium italic">No hay nuevos datos para validar. La IA está operando bajo los parámetros establecidos.</p>
-                                  </div>
-                                )}
+
+                          <div className="bg-slate-900 p-8 rounded-[32px] text-white">
+                             <h4 className="text-xs font-black text-[#FF6B00] uppercase mb-4 tracking-widest italic">Guía técnica para n8n</h4>
+                             <p className="text-[11px] text-slate-400 mb-6 leading-relaxed">
+                                Tu flujo de n8n debe enviar un <b>POST</b> a <code className="text-emerald-400">/webhook/n8n</code> con estos campos en el JSON:
+                             </p>
+                             <div className="space-y-3 font-mono text-[10px]">
+                                <div className="flex justify-between border-b border-white/5 pb-2">
+                                   <span className="text-blue-400">"direccion"</span>
+                                   <span className="text-slate-500">// Texto de la ubicación</span>
+                                </div>
+                                <div className="flex justify-between border-b border-white/5 pb-2">
+                                   <span className="text-blue-400">"nit"</span>
+                                   <span className="text-slate-500">// NIT del cliente</span>
+                                </div>
+                                <div className="flex justify-between border-b border-white/5 pb-2">
+                                   <span className="text-blue-400">"notas"</span>
+                                   <span className="text-slate-500">// Detalles adicionales</span>
+                                </div>
+                             </div>
+                             <div className="mt-8 p-4 bg-white/5 rounded-2xl border border-white/10">
+                                <p className="text-[9px] text-slate-400 italic">
+                                   💡 La IA calificará el lead con mayor score a medida que proporcione estos datos.
+                                </p>
                              </div>
                           </div>
                        </div>
                     </div>
-                  )}
-
-                  <div className="pt-10 border-t border-slate-50 flex justify-end">
-                     <button 
-                      onClick={() => {
-                        if (subTabIA === 'General') {
-                          Object.entries(agentConfig).forEach(([key, val]) => saveSetting(`agent_${key}`, val));
-                        } else if (subTabIA === 'Prompts') {
-                          saveSetting(`prompt_${selectedAgent.toLowerCase() === 'vendedor' ? 'ventas' : selectedAgent.toLowerCase()}`, prompts[selectedAgent]);
-                        }
-                      }}
-                      className="bg-slate-900 text-[#FF6B00] px-12 py-4 rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-2xl shadow-slate-200 hover:bg-black transition-all flex items-center space-x-3 active:scale-95"
-                     >
-                        <Save size={18} />
-                        <span>Guardar Cambios</span>
-                     </button>
                   </div>
-               </div>
+                )}
+
+               {subTabIA === 'Handoff' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                        <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+                           <div>
+                              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                                 <AlertTriangle size={18} className="text-[#FF6B00]" />
+                                 <span>Palabras que activan Handoff</span>
+                              </h3>
+                              <p className="text-[10px] text-slate-400 italic mt-1">Cuando el cliente escribe estas palabras, el bot se apaga y se alerta al agente</p>
+                           </div>
+                           <div className="flex space-x-3">
+                              <button
+                                 onClick={() => setHandoffTriggers(prev => [...prev, { keywords: '', reason: 'Nueva categoría' }])}
+                                 className="bg-slate-100 text-slate-600 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center space-x-2"
+                              >
+                                 <Plus size={14} />
+                                 <span>Agregar</span>
+                              </button>
+                              <button
+                                 onClick={saveHandoffTriggers}
+                                 className="bg-[#FF6B00] text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all flex items-center space-x-2"
+                              >
+                                 <Save size={14} />
+                                 <span>Guardar</span>
+                              </button>
+                           </div>
+                        </div>
+                        <div className="space-y-4">
+                           {handoffTriggers.map((trigger, idx) => (
+                              <div key={idx} className="bg-slate-50 border border-slate-100 rounded-[24px] p-6 space-y-4">
+                                 <div className="flex items-center justify-between">
+                                    <input
+                                       type="text"
+                                       value={trigger.reason}
+                                       onChange={e => setHandoffTriggers(prev => prev.map((t, i) => i === idx ? {...t, reason: e.target.value} : t))}
+                                       className="text-xs font-black text-slate-700 uppercase tracking-widest bg-transparent outline-none border-b border-slate-200 pb-1 w-64"
+                                       placeholder="Nombre de categoría"
+                                    />
+                                    <button
+                                       onClick={() => setHandoffTriggers(prev => prev.filter((_, i) => i !== idx))}
+                                       className="text-red-400 hover:text-red-600 transition-colors"
+                                    >
+                                       <Trash2 size={14} />
+                                    </button>
+                                 </div>
+                                 <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Palabras clave (separadas por coma)</label>
+                                    <input
+                                       type="text"
+                                       value={trigger.keywords}
+                                       onChange={e => setHandoffTriggers(prev => prev.map((t, i) => i === idx ? {...t, keywords: e.target.value} : t))}
+                                       className="w-full mt-2 p-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none italic focus:ring-1 focus:ring-[#FF6B00]"
+                                       placeholder="precio, presupuesto, cuánto cuesta"
+                                    />
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+               )}
+
+               {subTabIA === 'Aprendizaje' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8">
+                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Panel de Insights */}
+                        <div className="lg:col-span-1 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
+                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                              <LineChart size={18} className="text-emerald-500" />
+                              <span>Insights de Mercado</span>
+                           </h3>
+                           <div className="space-y-4">
+                              {aiInsights.length === 0 ? (
+                                <p className="text-[10px] text-slate-400 italic text-center py-10">Analizando conversaciones...</p>
+                              ) : aiInsights.map((ins, i) => (
+                                <div key={i} className="p-4 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center">
+                                  <div>
+                                    <p className="text-[11px] font-black text-slate-700">{ins.topic}</p>
+                                    <p className="text-[9px] text-slate-400 uppercase tracking-widest">Menciones: {ins.count}</p>
+                                  </div>
+                                  <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase ${ins.trend === 'Subiendo' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>{ins.trend}</span>
+                                </div>
+                              ))}
+                           </div>
+                           <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                              <p className="text-[9px] text-emerald-700 italic leading-relaxed">
+                                💡 {aiInsights[0] ? `"${aiInsights[0].topic}" es el tema más consultado.` : "La IA está aprendiendo de tus clientes."}
+                              </p>
+                           </div>
+                        </div>
+
+                        {/* Mapa de Conocimiento */}
+                        <div className="lg:col-span-2 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                           <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+                              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                                 <Brain size={18} className="text-[#FF6B00]" />
+                                 <span>Mapa de Conocimiento (Aprendido)</span>
+                              </h3>
+                           </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {aiKnowledge.length === 0 ? (
+                                <div className="md:col-span-2 py-20 text-center border-2 border-dashed border-slate-50 rounded-[40px]">
+                                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Sin conocimientos nuevos por ahora</p>
+                                </div>
+                              ) : aiKnowledge.map((k, i) => (
+                                <div key={i} className={`p-6 rounded-[32px] border ${k.status === 'approved' ? 'bg-white border-slate-100' : 'bg-orange-50/30 border-orange-100'} space-y-3`}>
+                                  <div className="flex justify-between">
+                                    <span className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest italic">{k.topic || 'Nuevo Conocimiento'}</span>
+                                    <span className={`text-[8px] font-black uppercase ${k.status === 'approved' ? 'text-emerald-500' : 'text-orange-500 animate-pulse'}`}>{k.status}</span>
+                                  </div>
+                                  <p className="text-[11px] font-black text-slate-800 italic">Capturado: {k.content?.slice(0, 50)}...</p>
+                                  <div className="pt-2 flex space-x-2">
+                                    {k.status === 'pending' && (
+                                      <>
+                                        <button onClick={() => approveKnowledge(k.id)} className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Validar</button>
+                                        <button className="flex-1 py-2 bg-slate-200 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest">Ignorar</button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               )}
+
+               {subTabIA === 'Prompt' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+                     <div className="flex space-x-3">
+                        {['Recepcionista', 'Vendedor', 'Soporte'].map(agent => (
+                           <button 
+                             key={agent} 
+                             onClick={() => setSelectedAgent(agent)}
+                             className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedAgent === agent ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'}`}
+                           >
+                              {agent}
+                           </button>
+                        ))}
+                     </div>
+
+                     <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                        <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+                           <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                              <span>📜 Prompt del {selectedAgent}</span>
+                           </h3>
+                           <button 
+                             onClick={() => saveSetting(selectedAgent === 'Vendedor' ? 'prompt_ventas' : `prompt_${selectedAgent.toLowerCase().replace(' ', '_')}`, prompts[selectedAgent])}
+                             className="bg-[#FF6B00] text-white px-8 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"
+                           >
+                             Guardar Cambios
+                           </button>
+                        </div>
+                        <textarea 
+                          value={prompts?.[selectedAgent] || ""} 
+                          onChange={(e) => setPrompts(prev => ({...prev, [selectedAgent]: e.target.value}))} 
+                          className="w-full h-[500px] p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed"
+                          placeholder={`Escribe aquí las instrucciones maestras para el ${selectedAgent}...`}
+                        />
+                     </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1442,70 +1867,6 @@ const App = () => {
             </div>
           )}
 
-          {/* VIEW: PEDIDOS IA */}
-          {activeTab === 'pedidos' && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-               <div className="flex justify-between items-end">
-                  <div>
-                    <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Gestión de Pedidos IA</h2>
-                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-2">Seguimiento de órdenes capturadas por el asistente</p>
-                  </div>
-                  <button onClick={() => fetchPedidos()} className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-slate-800 shadow-sm"><RefreshCw size={18} /></button>
-               </div>
-
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {pedidos.map(pedido => (
-                    <div key={pedido.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-100 transition-all duration-500 group relative">
-                       <div className="absolute top-0 right-0 p-8 opacity-5 text-slate-900 group-hover:rotate-12 transition-transform">
-                          <ShoppingBag size={64} />
-                       </div>
-                       <div className="relative z-10 space-y-6">
-                          <div className="flex justify-between items-start">
-                             <div className="bg-slate-900 text-white px-4 py-2 rounded-2xl">
-                                <p className="text-[10px] font-black uppercase italic leading-none">Orden</p>
-                                <p className="text-sm font-black italic">#{pedido.id}</p>
-                             </div>
-                             <select 
-                              value={pedido.estado} 
-                              onChange={(e) => updatePedidoEstado(pedido.id, e.target.value)}
-                              className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter border outline-none cursor-pointer ${pedido.estado === 'Completado' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : pedido.estado === 'Cancelado' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}
-                             >
-                                {['Nuevo', 'En Proceso', 'Completado', 'Cancelado'].map(s => <option key={s}>{s}</option>)}
-                             </select>
-                          </div>
-                          
-                          <div>
-                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Producto solicitado</p>
-                             <h4 className="text-lg font-black text-slate-800 uppercase italic leading-tight">{pedido.producto}</h4>
-                             <p className="text-[11px] font-bold text-[#FF6B00] mt-1 italic">Cant: {pedido.cantidad} — Q{pedido.precio}</p>
-                          </div>
-
-                          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                             <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Cliente</p>
-                             <div className="flex justify-between items-center">
-                                <span className="text-[11px] font-black text-slate-800 uppercase italic">{pedido.cliente}</span>
-                                <span className="text-[10px] font-bold text-slate-400 tabular-nums">{pedido.phone}</span>
-                             </div>
-                          </div>
-
-                          {pedido.notas && (
-                            <div className="p-4 bg-amber-50/30 rounded-2xl border border-amber-100/50">
-                               <p className="text-[9px] font-black text-amber-600 uppercase mb-1">Notas de IA</p>
-                               <p className="text-[10px] text-slate-500 italic leading-relaxed">"{pedido.notas}"</p>
-                            </div>
-                          )}
-
-                          <div className="pt-4 border-t border-slate-50 flex items-center justify-between text-[8px] font-black text-slate-300 uppercase tracking-widest italic">
-                             <span>Recibido</span>
-                             <span className="tabular-nums">{pedido.timestamp}</span>
-                          </div>
-                       </div>
-                    </div>
-                  ))}
-               </div>
-            </div>
-          )}
-
         </div>
       </main>
 
@@ -1609,30 +1970,31 @@ const App = () => {
                                 {STOCK_OPTIONS.map(o => <option key={o}>{o}</option>)}
                              </select>
                           </div>
-                       </div>
-                    </div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría</label>
-                       <select value={newProduct.categoria} onChange={e => setNewProduct({...newProduct, categoria: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
-                          {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                       </select>
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Link del Catálogo (opcional)</label>
-                       <input type="text" value={newProduct.catalog_link || ''} onChange={e => setNewProduct({...newProduct, catalog_link: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" placeholder="https://..." />
-                    </div>
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Descripción Detallada</label>
-                    <textarea rows={4} value={newProduct.descripcion} onChange={e => setNewProduct({...newProduct, descripcion: e.target.value})} className="w-full px-8 py-6 bg-slate-50 border border-slate-100 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all resize-none italic" placeholder="Características técnicas, garantía, etc..."></textarea>
-                 </div>
-                 <button onClick={handleSaveProduct} className="w-full py-5 bg-slate-900 text-white rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all active:scale-95">Publicar en Catálogo</button>
-              </div>
-           </div>
-        </div>
+                        </div>
+                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría</label>
+                        <select value={newProduct.categoria} onChange={e => setNewProduct({...newProduct, categoria: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
+                           {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                        </select>
+                     </div>
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Link del Catálogo (opcional)</label>
+                        <input type="text" value={newProduct.catalog_link || ''} onChange={e => setNewProduct({...newProduct, catalog_link: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" placeholder="https://..." />
+                     </div>
+                  </div>
+                  <div className="space-y-2">
+                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Descripción Detallada</label>
+                     <textarea rows={4} value={newProduct.descripcion} onChange={e => setNewProduct({...newProduct, descripcion: e.target.value})} className="w-full px-8 py-6 bg-slate-50 border border-slate-100 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all resize-none italic" placeholder="Características técnicas, garantía, etc..."></textarea>
+                  </div>
+                  <button onClick={handleSaveProduct} className="w-full py-5 bg-slate-900 text-white rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all active:scale-95">Publicar en Catálogo</button>
+               </div>
+            </div>
+         </div>
       )}
+
 
       {/* MODAL: EDITAR PRODUCTO */}
       {editingProduct && (

@@ -278,6 +278,14 @@ async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null
 
 // --- ENDPOINTS ---
 
+app.get('/api/stats', async (req, res) => {
+  try {
+    const row = await db.get("SELECT COUNT(*) as count FROM messages WHERE sender = 'bot'");
+    res.json({ botMessages: row ? row.count : 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.get('/api/leads', async (req, res) => {
   try {
     const { archived } = req.query;
