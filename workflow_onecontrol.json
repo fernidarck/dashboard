@@ -1,8 +1,9 @@
 {
-  "createdAt": "2026-03-19T04:52:15.796Z",
   "updatedAt": "2026-04-22T04:08:00.000Z",
+  "createdAt": "2026-03-19T04:52:15.796Z",
   "id": "vkOh59nc5ece8pgF",
   "name": "onecontrol",
+  "description": null,
   "active": false,
   "isArchived": false,
   "nodes": [
@@ -5516,65 +5517,28 @@
     ]
   },
   "versionId": "837fb290-7a9e-4440-898b-7fe2c0ca6836",
+  "activeVersionId": null,
+  "versionCounter": 1,
   "triggerCount": 0,
   "shared": [
     {
-      "createdAt": "2026-03-19T04:52:15.801Z",
       "updatedAt": "2026-03-19T04:52:15.801Z",
+      "createdAt": "2026-03-19T04:52:15.801Z",
       "role": "workflow:owner",
       "workflowId": "vkOh59nc5ece8pgF",
       "projectId": "n1upLnwbcGFYe5md",
       "project": {
-        "createdAt": "2026-03-09T07:18:36.467Z",
         "updatedAt": "2026-03-09T07:22:41.568Z",
+        "createdAt": "2026-03-09T07:18:36.467Z",
         "id": "n1upLnwbcGFYe5md",
         "name": "ferni padilla  <fernidarck@gmail.com>",
         "type": "personal",
         "icon": null,
         "description": null,
-        "projectRelations": [
-          {
-            "createdAt": "2026-03-09T07:18:36.467Z",
-            "updatedAt": "2026-03-09T07:18:36.467Z",
-            "role": "project:personalOwner",
-            "userId": "caf1c75e-58c7-4567-8f88-e5caac8ad151",
-            "projectId": "n1upLnwbcGFYe5md",
-            "user": {
-              "createdAt": "2026-03-09T07:18:36.151Z",
-              "updatedAt": "2026-05-03T19:27:28.000Z",
-              "id": "caf1c75e-58c7-4567-8f88-e5caac8ad151",
-              "email": "fernidarck@gmail.com",
-              "firstName": "ferni",
-              "lastName": "padilla ",
-              "personalizationAnswers": {
-                "version": "v4",
-                "personalization_survey_submitted_at": "2026-03-09T07:23:12.102Z",
-                "personalization_survey_n8n_version": "1.103.2",
-                "companySize": "<20",
-                "companyType": "ecommerce",
-                "role": "customer-support",
-                "reportedSource": "google"
-              },
-              "settings": {
-                "userActivated": true,
-                "firstSuccessfulWorkflowId": "oQtWGnOi6icw3ytC",
-                "userActivatedAt": 1773100765233,
-                "easyAIWorkflowOnboarded": true,
-                "npsSurvey": {
-                  "responded": true,
-                  "lastShownAt": 1773997542858
-                }
-              },
-              "role": "global:owner",
-              "disabled": false,
-              "mfaEnabled": false,
-              "lastActiveAt": "2026-05-03",
-              "isPending": false
-            }
-          }
-        ]
+        "creatorId": "caf1c75e-58c7-4567-8f88-e5caac8ad151"
       }
     }
   ],
-  "tags": []
+  "tags": [],
+  "activeVersion": null
 }

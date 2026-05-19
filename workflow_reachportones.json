@@ -1,8 +1,9 @@
 {
-  "createdAt": "2026-03-18T19:36:16.276Z",
   "updatedAt": "2026-04-07T00:52:51.000Z",
+  "createdAt": "2026-03-18T19:36:16.276Z",
   "id": "6ynuaCSGhQp76IqO",
   "name": "reachportones",
+  "description": null,
   "active": true,
   "isArchived": false,
   "nodes": [
@@ -278,65 +279,218 @@
     ]
   },
   "versionId": "c7ef8c9b-ca15-4770-9364-f83db8e12562",
+  "activeVersionId": "c7ef8c9b-ca15-4770-9364-f83db8e12562",
+  "versionCounter": 11,
   "triggerCount": 3,
   "shared": [
     {
-      "createdAt": "2026-03-18T19:36:16.280Z",
       "updatedAt": "2026-03-18T19:36:16.280Z",
+      "createdAt": "2026-03-18T19:36:16.280Z",
       "role": "workflow:owner",
       "workflowId": "6ynuaCSGhQp76IqO",
       "projectId": "n1upLnwbcGFYe5md",
       "project": {
-        "createdAt": "2026-03-09T07:18:36.467Z",
         "updatedAt": "2026-03-09T07:22:41.568Z",
+        "createdAt": "2026-03-09T07:18:36.467Z",
         "id": "n1upLnwbcGFYe5md",
         "name": "ferni padilla  <fernidarck@gmail.com>",
         "type": "personal",
         "icon": null,
         "description": null,
-        "projectRelations": [
-          {
-            "createdAt": "2026-03-09T07:18:36.467Z",
-            "updatedAt": "2026-03-09T07:18:36.467Z",
-            "role": "project:personalOwner",
-            "userId": "caf1c75e-58c7-4567-8f88-e5caac8ad151",
-            "projectId": "n1upLnwbcGFYe5md",
-            "user": {
-              "createdAt": "2026-03-09T07:18:36.151Z",
-              "updatedAt": "2026-05-03T19:27:28.000Z",
-              "id": "caf1c75e-58c7-4567-8f88-e5caac8ad151",
-              "email": "fernidarck@gmail.com",
-              "firstName": "ferni",
-              "lastName": "padilla ",
-              "personalizationAnswers": {
-                "version": "v4",
-                "personalization_survey_submitted_at": "2026-03-09T07:23:12.102Z",
-                "personalization_survey_n8n_version": "1.103.2",
-                "companySize": "<20",
-                "companyType": "ecommerce",
-                "role": "customer-support",
-                "reportedSource": "google"
-              },
-              "settings": {
-                "userActivated": true,
-                "firstSuccessfulWorkflowId": "oQtWGnOi6icw3ytC",
-                "userActivatedAt": 1773100765233,
-                "easyAIWorkflowOnboarded": true,
-                "npsSurvey": {
-                  "responded": true,
-                  "lastShownAt": 1773997542858
-                }
-              },
-              "role": "global:owner",
-              "disabled": false,
-              "mfaEnabled": false,
-              "lastActiveAt": "2026-05-03",
-              "isPending": false
-            }
-          }
-        ]
+        "creatorId": "caf1c75e-58c7-4567-8f88-e5caac8ad151"
       }
     }
   ],
-  "tags": []
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-05-07T00:13:56.857Z",
+    "createdAt": "2026-05-07T00:13:56.857Z",
+    "versionId": "c7ef8c9b-ca15-4770-9364-f83db8e12562",
+    "workflowId": "6ynuaCSGhQp76IqO",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "23e11fb1-e953-43ae-93f0-7fcbfbe6f87c",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -512,
+          64
+        ],
+        "id": "dbc97938-839e-43fa-8854-93d443a86ffe",
+        "name": "Reach Portones - Agendamiento",
+        "webhookId": "23e11fb1-e953-43ae-93f0-7fcbfbe6f87c"
+      },
+      {
+        "parameters": {
+          "jsCode": "// 1. Detectamos el horario de ejecución\nconst horaActual = $now.hour;\nconst esReporteNocturno = horaActual >= 18; \n\n// 2. Extraemos los datos de entrada\nconst citas = $input.all();\n\n// 3. Definimos encabezados según el momento\nlet tituloAgenda = esReporteNocturno ? \"MAÑANA\" : \"HOY\";\nlet subtitulo = esReporteNocturno \n  ? \"_Revisa tus servicios programados para el siguiente día._\" \n  : \"_Estos son tus servicios confirmados para la jornada actual._\";\n\nlet mensaje = `📝 *AGENDA PARA ${tituloAgenda}* 🗓️\\n${subtitulo}\\n\\n`;\n\n// 4. Construcción del listado\nif (citas.length === 0) {\n  mensaje += \"✅ *Sin pendientes:* No hay citas registradas para este periodo.\";\n} else {\n  citas.forEach((cita, index) => {\n    const json = cita.json;\n    const hora = json.time || 'Hora por confirmar';\n    const titulo = (json.title || 'Servicio Técnico').toUpperCase();\n    const lugar = json.location || 'Consultar ubicación';\n    const desc = json.description ? `\\n📝 *Detalles:* ${json.description}` : '';\n\n    mensaje += `*${index + 1}. ⏰ ${hora}* - *${titulo}*\\n`;\n    mensaje += `📍 *Lugar:* ${lugar}${desc}\\n`;\n    mensaje += `--------------------------\\n`;\n  });\n  \n  mensaje += \"\\n💪 _¡Buen camino, OneControl te desea un gran día!_\";\n}\n\nreturn { texto_final: mensaje };"
+        },
+        "id": "a9b97d39-6371-4299-8b9a-bdc93aa0557d",
+        "name": "Agrupar Tareas",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [
+          464,
+          32
+        ]
+      },
+      {
+        "parameters": {
+          "resource": "messages-api",
+          "instanceName": "reach",
+          "remoteJid": "50255572346@s.whatsapp.net",
+          "messageText": "={{ $json.texto_final }}",
+          "options_message": {}
+        },
+        "id": "4fa589b7-12a2-4d01-9781-e04ef369a448",
+        "name": "Enviar WhatsApp Luis",
+        "type": "n8n-nodes-evolution-api.evolutionApi",
+        "typeVersion": 1,
+        "position": [
+          560,
+          320
+        ],
+        "credentials": {
+          "evolutionApi": {
+            "id": "Cfz6Pr9CGUkPSBKu",
+            "name": "Evolution account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "get",
+          "tableId": "appointments",
+          "filters": {
+            "conditions": [
+              {
+                "keyName": "date",
+                "keyValue": "=={{ $now.hour >= 18 ? $now.plus({ days: 1 }).toISODate() : $now.toISODate() }}"
+              }
+            ]
+          }
+        },
+        "id": "fff1c3a2-caee-4882-a535-27f91d00b73d",
+        "name": "Leer Supabase1",
+        "type": "n8n-nodes-base.supabase",
+        "typeVersion": 1,
+        "position": [
+          224,
+          32
+        ],
+        "credentials": {
+          "supabaseApi": {
+            "id": "x5wNByLaAWswMpGU",
+            "name": "Supabase account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "triggerAtHour": 23
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -32,
+          -32
+        ],
+        "id": "99fec1cc-b88d-4c36-a332-b0793dcc678e",
+        "name": "Schedule Trigger"
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "triggerAtHour": 8
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -48,
+          176
+        ],
+        "id": "b01f76f7-99c2-42d5-a080-e71011176c61",
+        "name": "Schedule Trigger1"
+      }
+    ],
+    "connections": {
+      "Reach Portones - Agendamiento": {
+        "main": [
+          []
+        ]
+      },
+      "Agrupar Tareas": {
+        "main": [
+          [
+            {
+              "node": "Enviar WhatsApp Luis",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Leer Supabase1": {
+        "main": [
+          [
+            {
+              "node": "Agrupar Tareas",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Leer Supabase1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Schedule Trigger1": {
+        "main": [
+          [
+            {
+              "node": "Leer Supabase1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "system migration",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-04-07T00:52:51.000Z",
+        "id": 1,
+        "workflowId": "6ynuaCSGhQp76IqO",
+        "versionId": "c7ef8c9b-ca15-4770-9364-f83db8e12562",
+        "event": "activated",
+        "userId": null
+      }
+    ]
+  }
 }

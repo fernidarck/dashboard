@@ -442,8 +442,8 @@ app.post('/api/webhook/n8n', async (req, res) => {
 
     if (existingLead) {
       console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id}`);
-      const updates = ["estado = ?", "score = ?", "time = ?"];
-      const params = [finalEstado, finalScore, time];
+      const updates = ["estado = ?", "score = ?"];
+      const params = [finalEstado, finalScore];
 
       if (data.bot_apagado !== undefined) {
         updates.push("botActive = ?");
