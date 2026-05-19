@@ -1720,7 +1720,6 @@ const App = () => {
                   </div>
                 )}
               </div>
-            </div>
           )}
 
           {/* VIEW: BASE RAG (CONOCIMIENTO) */}
