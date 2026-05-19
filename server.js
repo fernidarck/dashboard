@@ -1282,7 +1282,7 @@ app.get('/api/rag/test-search', async (req, res) => {
 });
 
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
-app.use(express.static(join(__dirname, 'dist')));
+app.use(express.static(join(__dirname, 'dist'), { setHeaders: (res, path) => { if (path.endsWith('.html')) { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } } }));
 
 // Manejador de errores global
 app.use((err, req, res, next) => {
@@ -1312,3 +1312,4 @@ server.on('error', (err) => {
   console.error("❌ ERROR AL INICIAR SERVIDOR:", err);
   process.exit(1);
 });
+
