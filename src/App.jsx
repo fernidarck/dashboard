@@ -289,15 +289,25 @@ const App = () => {
     if (!messageText.trim() || !selectedChatId) return;
     const text = messageText;
     setMessageText('');
+    setNotification('💬 Enviando...');
     try {
-      await fetch(`${API_BASE_URL}/api/messages/send`, {
+      const response = await fetch(`${API_BASE_URL}/api/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadId: selectedChatId, text, sender: 'agent' })
       });
+      if (!response.ok) {
+         setNotification('❌ Error al enviar: ' + response.status);
+         return;
+      }
       await fetchMessages(selectedChatId);
       await fetchLeads(); // Actualiza el sidebar con el último mensaje
-    } catch (err) { console.error(err); }
+      setNotification('✅ Mensaje enviado');
+      setTimeout(() => setNotification(null), 2000);
+    } catch (err) { 
+      console.error(err); 
+      setNotification('❌ Error de red');
+    }
   };
 
   const saveSetting = async (key, value) => {
