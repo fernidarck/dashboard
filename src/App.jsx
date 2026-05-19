@@ -169,7 +169,11 @@ const App = () => {
       const config = { ...agentConfig };
       const loadedPrompts = { ...prompts };
       
-      data.forEach(s => {
+      const settingsArray = Array.isArray(data)
+        ? data
+        : Object.entries(data).map(([key, value]) => ({ key, value }));
+
+      settingsArray.forEach(s => {
         if (s.key === 'agent_nombre') config.nombre = s.value;
         if (s.key === 'agent_rol') config.rol = s.value;
         if (s.key === 'agent_empresa') config.empresa = s.value;
@@ -307,6 +311,55 @@ const App = () => {
     } catch (err) { 
       console.error(err); 
       setNotification('❌ Error de red');
+    }
+  };
+
+  const handleToggleBot = async (leadId) => {
+    if (!leadId) return;
+    const lead = leads.find(l => l.id === leadId) || selectedLead;
+    const newState = !lead.botActive;
+    
+    // Optimistic Update
+    setLeads(prev => prev.map(l => {
+      if (l.id === leadId) {
+        return {
+          ...l,
+          botActive: newState ? 1 : 0,
+          priority: newState ? 'normal' : l.priority,
+          handoff_reason: newState ? null : l.handoff_reason,
+          estado: newState ? 'Activo' : l.estado
+        };
+      }
+      return l;
+    }));
+    
+    if (selectedLead && selectedLead.id === leadId) {
+      setSelectedLead(prev => ({
+        ...prev,
+        botActive: newState ? 1 : 0,
+        priority: newState ? 'normal' : prev.priority,
+        handoff_reason: newState ? null : prev.handoff_reason,
+        estado: newState ? 'Activo' : prev.estado
+      }));
+    }
+    
+    setNotification(newState ? `✅ Bot activado` : `🔴 Bot desactivado`);
+    setTimeout(() => setNotification(null), 3000);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/bot/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId, enabled: newState })
+      });
+      if (!response.ok) {
+        throw new Error('Server error');
+      }
+    } catch (err) {
+      console.error("❌ Error toggling bot:", err);
+      setNotification(`❌ Error al cambiar estado del bot`);
+      setTimeout(() => setNotification(null), 3000);
+      fetchLeads(); // Rollback
     }
   };
 

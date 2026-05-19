@@ -26,7 +26,7 @@ const __dirname = dirname(__filename);
 
 console.log("🚀 SERVER VERSION: 1.0.4 (FIXED SYNTAX) - Iniciando servidor del Dashboard...");
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3002;
 const N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
 
 console.log(`📌 Puerto detectado: ${port}`);
@@ -372,10 +372,10 @@ app.post('/api/webhook/whatsapp', async (req, res) => {
     // ── DETECCIÓN AUTOMÁTICA DE HANDOFF ────────────────────────────────────
     const handoffReason = data.handoff_reason || await detectHandoff(mensajePrincipal);
     if (handoffReason) {
-      // No re-disparar si el agente ya activó el bot manualmente
+      // No re-disparar si el bot ya está inactivo
       const leadState = await db.get("SELECT botActive FROM leads WHERE id = ?", leadId);
-      if (leadState && leadState.botActive === 1) {
-        console.log(`ℹ️ Lead ${leadId}: handoff detectado pero bot está activo — ignorado`);
+      if (leadState && leadState.botActive === 0) {
+        console.log(`ℹ️ Lead ${leadId}: handoff detectado pero bot ya está inactivo — ignorado`);
       } else {
         console.log(`🚨 HANDOFF DETECTADO para lead ${leadId}: "${handoffReason}"`);
         await db.run(
@@ -506,9 +506,9 @@ app.post('/api/leads/handoff', async (req, res) => {
       }
     }
 
-    // Bug 2 fix: si el agente ya tomó control o reactivó el bot, no re-disparar handoff
+    // Bug 2 fix: si el bot ya está inactivo o el lead ya está en gestión, no re-disparar handoff
     const currentLead = await db.get("SELECT estado, botActive FROM leads WHERE id = ?", id);
-    if (currentLead && (currentLead.estado === 'En Gestión' || currentLead.botActive === 1)) {
+    if (currentLead && (currentLead.estado === 'En Gestión' || currentLead.botActive === 0)) {
       // Solo guardar el mensaje del cliente si viene, pero no re-marcar como urgente
       if (mensaje && mensaje.trim()) {
         const now = new Date();
@@ -516,7 +516,7 @@ app.post('/api/leads/handoff', async (req, res) => {
   const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
         await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
       }
-      const skipReason = currentLead.botActive === 1 ? 'Bot activo — handoff ignorado' : 'Lead ya en gestión manual';
+      const skipReason = currentLead.botActive === 0 ? 'Bot ya inactivo — handoff ignorado' : 'Lead ya en gestión manual';
       console.log(`ℹ️ Lead ${id}: ${skipReason}`);
       return res.json({ success: true, skipped: true, reason: skipReason });
     }
@@ -767,7 +767,7 @@ app.post('/api/messages/send', async (req, res) => {
     const result = await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", leadId, msgSender, text, time);
     const savedMessage = { id: result.lastID, lead_id: leadId, sender: msgSender, text, timestamp: time };
 
-    if (!sender && msgSender === 'agent' && N8N_OUTBOUND_WEBHOOK) {
+    if (msgSender === 'agent' && N8N_OUTBOUND_WEBHOOK) {
       const lead = await db.get("SELECT phone FROM leads WHERE id = ?", leadId);
       const targetPhone = phone || lead?.phone;
       if (targetPhone) {
