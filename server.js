@@ -213,6 +213,13 @@ async function setup() {
 
     // Migraciones rápidas (Columnas nuevas)
     try { await db.exec("ALTER TABLE leads ADD COLUMN archived INTEGER DEFAULT 0"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN direccion TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN notas TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN nit TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN etiquetas TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN whatsapp_id TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"); } catch(e){}
+    try { await db.exec("ALTER TABLE agenda ADD COLUMN notas TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
 
@@ -231,6 +238,23 @@ const normalize = (text) => {
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 };
+
+// Helper para detectar estado según palabras clave
+function detectStatus(text, currentStatus) {
+  if (!text) return currentStatus;
+  const t = normalize(text);
+  if (t.includes('precio') || t.includes('cotizar') || t.includes('cuanto') || t.includes('costo') || t.includes('valor')) {
+    return 'Interesado';
+  }
+  if (t.includes('agendar') || t.includes('cita') || t.includes('servicio') || t.includes('reunion') || t.includes('programar')) {
+    return 'Cita Agendada';
+  }
+  if (t.includes('comprado') || t.includes('pago') || t.includes('transferencia') || t.includes('comprobante') || t.includes('deposito')) {
+    return 'Venta';
+  }
+  return currentStatus;
+}
+
 
 // Detección de Handoff
 async function detectHandoff(text) {

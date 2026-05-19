@@ -1839,6 +1839,42 @@
         -5168,
         -992
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ycloud-dashboard.83aqlq.easypanel.host/api/webhook/n8n",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Webhook').item.json.body.whatsappMessage.to }}"
+            },
+            {
+              "name": "sender",
+              "value": "agent"
+            },
+            {
+              "name": "mensaje",
+              "value": "={{ $('Webhook').item.json.body.whatsappMessage.text?.body || $('Webhook').item.json.body.whatsappMessage.image?.caption || 'Mensaje enviado por el agente' }}"
+            },
+            {
+              "name": "nombre",
+              "value": "Agente"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -8500,
+        -112
+      ],
+      "id": "01c9a101-1e9a-4c22-921c-a99f36f9a765",
+      "name": "Guardar Mensaje Agente"
     }
   ],
   "connections": {
@@ -2484,6 +2520,17 @@
           },
           {
             "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "desactivar_bot2": {
+      "main": [
+        [
+          {
+            "node": "Guardar Mensaje Agente",
             "type": "main",
             "index": 0
           }
