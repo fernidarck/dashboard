@@ -144,7 +144,7 @@ const App = () => {
   // --- DATA FETCHING ---
   const fetchLeads = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/leads`);
+      const res = await fetch(`${API_BASE_URL}/api/leads?t=${Date.now()}`);
       const data = await res.json();
       setLeads(data);
       if (data.length > 0 && !selectedChatId) {
@@ -156,7 +156,7 @@ const App = () => {
   const fetchMessages = async (id) => {
     if (!id) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/messages/${id}`);
+      const res = await fetch(`${API_BASE_URL}/api/messages/${id}?t=${Date.now()}`);
       const data = await res.json();
       setMessages(data);
     } catch (err) { console.error(err); }
