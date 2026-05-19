@@ -290,7 +290,14 @@ app.get('/api/leads', async (req, res) => {
   try {
     const { archived } = req.query;
     const isArchived = archived === 'true' ? 1 : 0;
-    const rows = await db.all("SELECT * FROM leads WHERE archived = ? ORDER BY priority DESC, id DESC", isArchived);
+    const rows = await db.all(`
+      SELECT l.*, 
+        (SELECT text FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessage,
+        (SELECT timestamp FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageTime
+      FROM leads l 
+      WHERE l.archived = ? 
+      ORDER BY l.priority DESC, l.id DESC
+    `, isArchived);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

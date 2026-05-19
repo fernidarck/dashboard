@@ -295,7 +295,8 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadId: selectedChatId, text, sender: 'agent' })
       });
-      fetchMessages(selectedChatId);
+      await fetchMessages(selectedChatId);
+      await fetchLeads(); // Actualiza el sidebar con el último mensaje
     } catch (err) { console.error(err); }
   };
 
