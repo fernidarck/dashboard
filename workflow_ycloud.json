@@ -730,7 +730,8 @@
     },
     {
       "parameters": {
-        "amount": 7
+        "amount": 7,
+        "unit": "seconds"
       },
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -1829,7 +1830,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nlet textoIA = item.output || \"\";\n\nlet etiqueta = \"FLUJO_NORMAL\";\nif (textoIA.includes(\"#VENTA_ESPECIALIZADA\") || textoIA.includes(\"#VENTA\")) etiqueta = \"VENTA_ESPECIALIZADA\";\nelse if (textoIA.includes(\"#BODEGA\")) etiqueta = \"BODEGA\";\nelse if (textoIA.includes(\"#SOPORTE\")) etiqueta = \"SOPORTE\";\nelse if (textoIA.includes(\"#FLUJO_NORMAL\")) etiqueta = \"FLUJO_NORMAL\";\n\nconst mediaRegex = /\\[\\[MEDIA:(https?:\\/\\/[^\\]]+)\\]\\]/;\nconst match = textoIA.match(mediaRegex);\nlet hasMedia = !!match;\nlet mediaUrl = match ? match[1] : null;\n\nlet respuestaLimpia = textoIA\n    .replace(mediaRegex, \"\")\n    .replace(/#PRODUCTO:.*$/gi, \"\")\n    .replace(/#VENTA_ESPECIALIZADA|#VENTA|#BODEGA|#SOPORTE|#FLUJO_NORMAL/gi, \"\")\n    .replace(/https:\\/\\/drive\\.google\\.com\\/[^\\s\\n]+/gi, \"\")\n    .replace(/\\s+\\[\\[MEDIA:.*?\\]\\]/gi, \"\")\n    .trim();\n\nreturn {\n    ...item,\n    texto_limpio: respuestaLimpia,\n    respuesta_cliente: respuestaLimpia,\n    etiqueta_interna: etiqueta,\n    notificar_vip: etiqueta === \"VENTA_ESPECIALIZADA\" || etiqueta === \"SOPORTE\",\n    hasMedia: hasMedia,\n    mediaUrl: mediaUrl\n};"
+        "jsCode": "const item = $input.item.json;\nlet textoIA = item.output || \"\";\n\nlet etiqueta = \"FLUJO_NORMAL\";\nif (textoIA.includes(\"#VENTA_ESPECIALIZADA\") || textoIA.includes(\"#VENTA\")) etiqueta = \"VENTA_ESPECIALIZADA\";\nelse if (textoIA.includes(\"#BODEGA\")) etiqueta = \"BODEGA\";\nelse if (textoIA.includes(\"#SOPORTE\")) etiqueta = \"SOPORTE\";\nelse if (textoIA.includes(\"#FLUJO_NORMAL\")) etiqueta = \"FLUJO_NORMAL\";\n\nconst mediaRegex = /\\[\\[MEDIA:(https?:\\/\\/[^\\]]+)\\]\\]/;\nconst markdownRegex = /\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/;\n\nconst match = textoIA.match(mediaRegex) || textoIA.match(markdownRegex);\nlet hasMedia = !!match;\n\nconst extraerIdDrive = (url) => {\n    const m = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return m ? m[1] : null;\n};\n\nconst getImageUrl = (url) => {\n    if (!url) return null;\n    const driveId = extraerIdDrive(url);\n    let finalUrl = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : url;\n    \n    // Forzar HTTPS para el dashboard de ycloud y otras URLs de imágenes inseguras\n    if (finalUrl.startsWith('http://')) {\n        finalUrl = finalUrl.replace('http://', 'https://');\n    }\n    return finalUrl;\n};\n\nlet mediaUrl = match ? getImageUrl(match[1]) : null;\n\nlet respuestaLimpia = textoIA\n    .replace(mediaRegex, \"\")\n    .replace(markdownRegex, \"\")\n    .replace(/Puedes ver la imagen \\./gi, \"\")\n    .replace(/#PRODUCTO:.*$/gi, \"\")\n    .replace(/#VENTA_ESPECIALIZADA|#VENTA|#BODEGA|#SOPORTE|#FLUJO_NORMAL/gi, \"\")\n    .replace(/https:\\/\\/drive\\.google\\.com\\/[^\\s\\n]+/gi, \"\")\n    .replace(/\\s+\\[\\[MEDIA:.*?\\]\\]/gi, \"\")\n    .trim();\n\nreturn {\n    ...item,\n    texto_limpio: respuestaLimpia,\n    respuesta_cliente: respuestaLimpia,\n    etiqueta_interna: etiqueta,\n    notificar_vip: etiqueta === \"VENTA_ESPECIALIZADA\" || etiqueta === \"SOPORTE\",\n    hasMedia: hasMedia,\n    mediaUrl: mediaUrl\n};"
       },
       "id": "0f499358-3ac0-4c8a-b442-642a2ce192c4",
       "name": "LIMPIEZA Y ESTADOS V2",
@@ -2548,7 +2549,7 @@
     "saveDataErrorExecution": "all",
     "saveDataSuccessExecution": "all",
     "saveExecutionProgress": false,
-    "executionTimeout": 30
+    "executionTimeout": 180
   },
   "staticData": null,
   "meta": {
