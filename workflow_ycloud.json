@@ -2197,7 +2197,7 @@
       "main": [
         [
           {
-            "node": "CHECK BOT STATUS",
+            "node": "Cliente o Agente",
             "type": "main",
             "index": 0
           }
@@ -2230,7 +2230,7 @@
       "main": [
         [
           {
-            "node": "Consultar Etiquetas YCloud1",
+            "node": "CHECK BOT STATUS",
             "type": "main",
             "index": 0
           }
@@ -2429,7 +2429,7 @@
       "main": [
         [
           {
-            "node": "Cliente o Agente",
+            "node": "Consultar Etiquetas YCloud1",
             "type": "main",
             "index": 0
           }
