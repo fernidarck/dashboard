@@ -416,7 +416,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 1. Extraer el texto del Agente\nconst texto = $json.output || $json.text || \"\";\n\n// 2. Buscar links de Drive\nconst matches = texto.match(/https?:\\/\\/drive\\.google\\.com\\/[^\\s)]+/g) || [];\n\nconst extraerIdDrive = (url) => {\n    const match = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return match ? match[1] : null;\n};\n\n// 3. Obtener el número del cliente desde el Webhook de forma segura\nlet remoteJid = null;\ntry {\n    // Esta es la forma correcta de llamar al Webhook en n8n nuevo\n    const datosWebhook = $('Webhook').item.json.body;\n    remoteJid = datosWebhook.whatsappInboundMessage?.from || datosWebhook.from;\n} catch (e) {\n    remoteJid = null;\n}\n\n// Formatear número\nif (remoteJid) {\n    remoteJid = remoteJid.replace(/\\D/g, '');\n    if (remoteJid.length === 8) remoteJid = '502' + remoteJid;\n    if (!remoteJid.startsWith('+')) remoteJid = '+' + remoteJid;\n}\n\nconst id1 = matches[0] ? extraerIdDrive(matches[0]) : null;\nconst id2 = matches[1] ? extraerIdDrive(matches[1]) : null;\n\nreturn {\n    tieneFotos: !!id1,\n    foto1: id1 ? `https://drive.google.com/uc?export=view&id=${id1}` : null,\n    foto2: id2 ? `https://drive.google.com/uc?export=view&id=${id2}` : null,\n    remoteJid_fotos: remoteJid\n};"
+        "jsCode": "// 1. Extraer el texto del Agente\nconst texto = $json.output || $json.text || \"\";\n\n// 2. Buscar CUALQUIER URL de imagen en la respuesta (Drive, YCloud Dashboard, imgur, etc.)\n// Primero intentamos extraer links en formato Markdown: [texto](URL)\nconst markdownLinks = [];\nconst mdRegex = /\\[.*?\\]\\((https?:\\/\\/[^)]+)\\)/g;\nlet mdMatch;\nwhile ((mdMatch = mdRegex.exec(texto)) !== null) {\n    markdownLinks.push(mdMatch[1]);\n}\n\n// Si no hay links Markdown, buscamos URLs directas\nconst directLinks = texto.match(/https?:\\/\\/[^\\s)\\]]+/g) || [];\n\n// Unir ambas fuentes, priorizando los Markdown\nconst allUrls = markdownLinks.length > 0 ? markdownLinks : directLinks;\n\n// Filtrar solo URLs que parezcan imágenes o vengan del dashboard\nconst imageExtensions = /\\.(jpg|jpeg|png|gif|webp)(\\?.*)?$/i;\nconst trustedDomains = /ycloud-dashboard|drive\\.google\\.com|uploads|imgur|cloudinary|storage/i;\n\nconst matches = allUrls.filter(url =>\n    imageExtensions.test(url) || trustedDomains.test(url)\n);\n\n// Si no hay coincidencias filtradas, usar todas las URLs encontradas\nconst finalMatches = matches.length > 0 ? matches : allUrls;\n\n// Helper: si es Google Drive, convertir a enlace de descarga directa\nconst extraerIdDrive = (url) => {\n    const match = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return match ? match[1] : null;\n};\n\nconst getImageUrl = (url) => {\n    if (!url) return null;\n    const driveId = extraerIdDrive(url);\n    let finalUrl = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : url;\n    \n    // Forzar HTTPS para el dashboard de ycloud y otras URLs de imágenes inseguras\n    if (finalUrl.startsWith('http://')) {\n        finalUrl = finalUrl.replace('http://', 'https://');\n    }\n    return finalUrl;\n};\n\n// 3. Obtener número del cliente\nlet remoteJid = null;\ntry {\n    const datosWebhook = $('Webhook').item.json.body;\n    remoteJid = datosWebhook.whatsappInboundMessage?.from || datosWebhook.from;\n} catch (e) {\n    remoteJid = null;\n}\n\nif (remoteJid) {\n    remoteJid = remoteJid.replace(/\\D/g, '');\n    if (remoteJid.length === 8) remoteJid = '502' + remoteJid;\n    if (!remoteJid.startsWith('+')) remoteJid = '+' + remoteJid;\n}\n\nreturn {\n    tieneFotos: finalMatches.length > 0,\n    foto1: finalMatches[0] ? getImageUrl(finalMatches[0]) : null,\n    foto2: finalMatches[1] ? getImageUrl(finalMatches[1]) : null,\n    remoteJid_fotos: remoteJid\n};"
       },
       "id": "9ca8367d-960f-4ee1-bc76-e526fbb9e4a6",
       "name": "Preparar Fotos (Estrategia)1",
@@ -1062,7 +1062,7 @@
           "parameters": [
             {
               "name": "filter",
-              "value": "=phoneNumber=\"{{ $('Webhook').item.json.body.whatsappInboundMessage.from }}\""
+              "value": "phoneNumber={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}"
             }
           ]
         },
@@ -1486,7 +1486,7 @@
         "toolDescription": "Vendedor especializado en SERVICIOS de Reach Portones. USAR ÚNICAMENTE cuando el cliente:\n- Pide cotización de automatización de portón (instalación de motor)\n- Solicita mantenimiento preventivo o correctivo\n- Pregunta por reparación de portón eléctrico o motor existente\n- Manda foto de un portón o motor para que se le cotice el servicio\nNO USAR para productos físicos sueltos (controles, repuestos, accesorios, muebles) — esos los cotiza la recepcionista directamente con sus propias herramientas de catálogo.\nEl vendedor analiza el caso técnico, consulta precios de servicios y arma la propuesta.",
         "text": "=MENSAJE DEL CLIENTE: {{ $fromAI('mensaje_cliente', 'Mensaje íntegro del cliente que pide producto/precio', 'string') }}\n\nPRODUCTO IDENTIFICADO: {{ $fromAI('producto', 'Producto o categoría que detectó la recepcionista (ej: control Genius, zapatera blanca)', 'string') }}",
         "options": {
-          "systemMessage": "=={{ `Eres el agente de ventas de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_ventas || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.` }}\n"
+          "systemMessage": "=={{ `Eres el agente de ventas de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_ventas || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español. IMPORTANTE: Si la base de datos te proporciona un enlace de Imagen, DEBES enviarlo en tu respuesta obligatoriamente usando Markdown: [Ver Imagen](URL_DE_LA_IMAGEN).` }}\n"
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agentTool",
@@ -1654,7 +1654,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "={{ $fromAI('query') }}"
+              "value": "={{ $json.mensaje || $('Webhook').item.json.body.whatsappInboundMessage.text?.body || '' }}"
             },
             {
               "name": "maxChars",
@@ -1680,7 +1680,7 @@
         "promptType": "define",
         "text": "={{ $json.mensaje || $('Webhook').item.json.body.whatsappInboundMessage.text.body || 'Interesado en anuncio' }}",
         "options": {
-          "systemMessage": "={{ `Eres ${$json.agent_nombre || 'el asistente'}, ${$json.agent_rol || 'asistente virtual'} de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.` + ($('Consultar Base RAG1').isExecuted && $('Consultar Base RAG1').item.json.found ? '\\n\\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión:\\n' + $('Consultar Base RAG1').item.json.context : '') }}"
+          "systemMessage": "={{ `Eres ${$json.agent_nombre || 'el asistente'}, ${$json.agent_rol || 'asistente virtual'} de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.\n\n🚫 REGLA CRÍTICA SOBRE IMÁGENES:\n- JAMÁS inventes ni generes URLs de imágenes. NUNCA uses links de imgur, placeholder, ni ninguna URL que no hayas recibido textualmente en la información de referencia (RAG).\n- Si la base de datos RAG te entrega una URL de imagen (ejemplo: https://ycloud-dashboard... o https://drive.google.com/...), DEBES incluirla EXACTAMENTE como aparece usando este formato: [Ver Imagen](URL_EXACTA_DEL_RAG).\n- Si el RAG NO te entrega ninguna URL de imagen, entonces NO incluyas ningún link de imagen en tu respuesta. Simplemente describe el producto sin foto.\n- La URL que uses debe provenir EXCLUSIVAMENTE del texto de la sección 📚 INFORMACIÓN DE REFERENCIA.` + ($('Consultar Base RAG1').isExecuted && $('Consultar Base RAG1').item.json.found ? '\\n\\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión:\\n' + $('Consultar Base RAG1').item.json.context : '') }}"
         }
       },
       "id": "8221b13f-b04d-4e40-9f8d-4a60d39d9d47",
@@ -2150,7 +2150,7 @@
       "main": [
         [
           {
-            "node": "recepcionista",
+            "node": "Consultar Base RAG1",
             "type": "main",
             "index": 0
           }
@@ -2447,7 +2447,7 @@
       "main": [
         [
           {
-            "node": "recepcionista",
+            "node": "Obtener Cerebro Dashboard",
             "type": "main",
             "index": 0
           }
@@ -2994,7 +2994,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// 1. Extraer el texto del Agente\nconst texto = $json.output || $json.text || \"\";\n\n// 2. Buscar links de Drive\nconst matches = texto.match(/https?:\\/\\/drive\\.google\\.com\\/[^\\s)]+/g) || [];\n\nconst extraerIdDrive = (url) => {\n    const match = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return match ? match[1] : null;\n};\n\n// 3. Obtener el número del cliente desde el Webhook de forma segura\nlet remoteJid = null;\ntry {\n    // Esta es la forma correcta de llamar al Webhook en n8n nuevo\n    const datosWebhook = $('Webhook').item.json.body;\n    remoteJid = datosWebhook.whatsappInboundMessage?.from || datosWebhook.from;\n} catch (e) {\n    remoteJid = null;\n}\n\n// Formatear número\nif (remoteJid) {\n    remoteJid = remoteJid.replace(/\\D/g, '');\n    if (remoteJid.length === 8) remoteJid = '502' + remoteJid;\n    if (!remoteJid.startsWith('+')) remoteJid = '+' + remoteJid;\n}\n\nconst id1 = matches[0] ? extraerIdDrive(matches[0]) : null;\nconst id2 = matches[1] ? extraerIdDrive(matches[1]) : null;\n\nreturn {\n    tieneFotos: !!id1,\n    foto1: id1 ? `https://drive.google.com/uc?export=view&id=${id1}` : null,\n    foto2: id2 ? `https://drive.google.com/uc?export=view&id=${id2}` : null,\n    remoteJid_fotos: remoteJid\n};"
+          "jsCode": "// 1. Extraer el texto del Agente\nconst texto = $json.output || $json.text || \"\";\n\n// 2. Buscar CUALQUIER URL de imagen en la respuesta (Drive, YCloud Dashboard, imgur, etc.)\n// Primero intentamos extraer links en formato Markdown: [texto](URL)\nconst markdownLinks = [];\nconst mdRegex = /\\[.*?\\]\\((https?:\\/\\/[^)]+)\\)/g;\nlet mdMatch;\nwhile ((mdMatch = mdRegex.exec(texto)) !== null) {\n    markdownLinks.push(mdMatch[1]);\n}\n\n// Si no hay links Markdown, buscamos URLs directas\nconst directLinks = texto.match(/https?:\\/\\/[^\\s)\\]]+/g) || [];\n\n// Unir ambas fuentes, priorizando los Markdown\nconst allUrls = markdownLinks.length > 0 ? markdownLinks : directLinks;\n\n// Filtrar solo URLs que parezcan imágenes o vengan del dashboard\nconst imageExtensions = /\\.(jpg|jpeg|png|gif|webp)(\\?.*)?$/i;\nconst trustedDomains = /ycloud-dashboard|drive\\.google\\.com|uploads|imgur|cloudinary|storage/i;\n\nconst matches = allUrls.filter(url =>\n    imageExtensions.test(url) || trustedDomains.test(url)\n);\n\n// Si no hay coincidencias filtradas, usar todas las URLs encontradas\nconst finalMatches = matches.length > 0 ? matches : allUrls;\n\n// Helper: si es Google Drive, convertir a enlace de descarga directa\nconst extraerIdDrive = (url) => {\n    const match = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return match ? match[1] : null;\n};\n\nconst getImageUrl = (url) => {\n    if (!url) return null;\n    const driveId = extraerIdDrive(url);\n    let finalUrl = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : url;\n    \n    // Forzar HTTPS para el dashboard de ycloud y otras URLs de imágenes inseguras\n    if (finalUrl.startsWith('http://')) {\n        finalUrl = finalUrl.replace('http://', 'https://');\n    }\n    return finalUrl;\n};\n\n// 3. Obtener número del cliente\nlet remoteJid = null;\ntry {\n    const datosWebhook = $('Webhook').item.json.body;\n    remoteJid = datosWebhook.whatsappInboundMessage?.from || datosWebhook.from;\n} catch (e) {\n    remoteJid = null;\n}\n\nif (remoteJid) {\n    remoteJid = remoteJid.replace(/\\D/g, '');\n    if (remoteJid.length === 8) remoteJid = '502' + remoteJid;\n    if (!remoteJid.startsWith('+')) remoteJid = '+' + remoteJid;\n}\n\nreturn {\n    tieneFotos: finalMatches.length > 0,\n    foto1: finalMatches[0] ? getImageUrl(finalMatches[0]) : null,\n    foto2: finalMatches[1] ? getImageUrl(finalMatches[1]) : null,\n    remoteJid_fotos: remoteJid\n};"
         },
         "id": "9ca8367d-960f-4ee1-bc76-e526fbb9e4a6",
         "name": "Preparar Fotos (Estrategia)1",
@@ -4232,7 +4232,7 @@
             "parameters": [
               {
                 "name": "q",
-                "value": "={{ $fromAI('query') }}"
+                "value": "={{ $json.mensaje || $('Webhook').item.json.body.whatsappInboundMessage.text?.body || '' }}"
               },
               {
                 "name": "maxChars",
@@ -4258,7 +4258,7 @@
           "promptType": "define",
           "text": "={{ $json.mensaje || $('Webhook').item.json.body.whatsappInboundMessage.text.body || 'Interesado en anuncio' }}",
           "options": {
-            "systemMessage": "={{ `Eres ${$json.agent_nombre || 'el asistente'}, ${$json.agent_rol || 'asistente virtual'} de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.` + ($('Consultar Base RAG1').isExecuted && $('Consultar Base RAG1').item.json.found ? '\\n\\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión:\\n' + $('Consultar Base RAG1').item.json.context : '') }}"
+            "systemMessage": "={{ `Eres ${$json.agent_nombre || 'el asistente'}, ${$json.agent_rol || 'asistente virtual'} de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.\n\n🚫 REGLA CRÍTICA SOBRE IMÁGENES:\n- JAMÁS inventes ni generes URLs de imágenes. NUNCA uses links de imgur, placeholder, ni ninguna URL que no hayas recibido textualmente en la información de referencia (RAG).\n- Si la base de datos RAG te entrega una URL de imagen (ejemplo: https://ycloud-dashboard... o https://drive.google.com/...), DEBES incluirla EXACTAMENTE como aparece usando este formato: [Ver Imagen](URL_EXACTA_DEL_RAG).\n- Si el RAG NO te entrega ninguna URL de imagen, entonces NO incluyas ningún link de imagen en tu respuesta. Simplemente describe el producto sin foto.\n- La URL que uses debe provenir EXCLUSIVAMENTE del texto de la sección 📚 INFORMACIÓN DE REFERENCIA.` + ($('Consultar Base RAG1').isExecuted && $('Consultar Base RAG1').item.json.found ? '\\n\\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión:\\n' + $('Consultar Base RAG1').item.json.context : '') }}"
           }
         },
         "id": "8221b13f-b04d-4e40-9f8d-4a60d39d9d47",
@@ -4692,7 +4692,7 @@
         "main": [
           [
             {
-              "node": "recepcionista",
+              "node": "Consultar Base RAG1",
               "type": "main",
               "index": 0
             }
@@ -4989,7 +4989,7 @@
         "main": [
           [
             {
-              "node": "recepcionista",
+              "node": "Obtener Cerebro Dashboard",
               "type": "main",
               "index": 0
             }
