@@ -1009,6 +1009,35 @@ app.post('/api/products/upload-image', productImagesUpload.single('image'), (req
 });
 
 
+// Endpoint para que n8n busque la imagen de un producto por nombre/keyword
+app.get('/api/products/find-image', async (req, res) => {
+  try {
+    const q = req.query.q || req.query.query || '';
+    if (!q) return res.json({ found: false, imagen: null, nombre: null });
+
+    const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
+    const keywords = q.toLowerCase().split(/\s+/).filter(k => k.length > 2).map(normalizeKw);
+
+    const prods = await db.all("SELECT * FROM products WHERE activo = 1 AND imagen IS NOT NULL AND imagen != '' ORDER BY nombre");
+
+    if (prods.length === 0) return res.json({ found: false, imagen: null, nombre: null });
+
+    const scored = prods.map(p => {
+      const lower = ((p.nombre || '') + ' ' + (p.descripcion || '') + ' ' + (p.categoria || '')).toLowerCase();
+      let score = 0;
+      keywords.forEach(kw => { if (lower.includes(kw)) score++; });
+      return { ...p, score };
+    }).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) return res.json({ found: false, imagen: null, nombre: null, message: 'No se encontró imagen para: ' + q });
+
+    const best = scored[0];
+    res.json({ found: true, nombre: best.nombre, imagen: best.imagen, precio: best.precio || '', catalog_link: best.catalog_link || '' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Contexto RAG de productos para n8n
 app.get('/api/products/context', async (_req, res) => {
   try {
