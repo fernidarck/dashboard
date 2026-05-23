@@ -230,6 +230,32 @@ async function setup() {
   }
 }
 
+// Helper: extrae ENVIAR_IMAGEN del texto del bot y devuelve texto limpio + URL
+function parseImageFromText(text) {
+  if (!text) return { cleanText: text, imageUrl: null };
+  const match = text.match(/ENVIAR_IMAGEN:\s*(https?:\/\/[^\s\n]+)/i);
+  if (!match) return { cleanText: text, imageUrl: null };
+  const imageUrl = match[1].trim();
+  const cleanText = text.replace(/\n?ENVIAR_IMAGEN:\s*https?:\/\/[^\s\n]+/gi, '').trim();
+  return { cleanText, imageUrl };
+}
+
+// Helper: envía imagen vía YCloud WhatsApp API
+async function sendImageViaYCloud(toPhone, imageUrl, caption = '') {
+  try {
+    const payload = { from: YCLOUD_FROM, to: toPhone, type: 'image', image: { link: imageUrl } };
+    if (caption) payload.image.caption = caption;
+    await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': YCLOUD_API_KEY },
+      body: JSON.stringify(payload)
+    });
+    console.log(`🖼️ Imagen enviada a ${toPhone}: ${imageUrl}`);
+  } catch(e) {
+    console.error('❌ Error enviando imagen via YCloud:', e.message);
+  }
+}
+
 // Helper para normalizar textos para comparación
 const normalize = (text) => {
   return String(text || "")
@@ -498,7 +524,9 @@ app.post('/api/webhook/n8n', async (req, res) => {
       await saveSmartMessage(leadId, data.sender || 'client', mensajePrincipal, time, mediaUrl, mediaType);
     }
     if (mensajeSecundario) {
-      await saveSmartMessage(leadId, 'bot', mensajeSecundario, time);
+      const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(mensajeSecundario);
+      if (cleanBot) await saveSmartMessage(leadId, 'bot', cleanBot, time);
+      if (botImageUrl) await saveSmartMessage(leadId, 'bot', '', time, botImageUrl, 'image');
     }
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });
@@ -788,18 +816,34 @@ app.post('/api/messages/send', async (req, res) => {
     const msgSender = sender || 'agent';
     const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-    const result = await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", leadId, msgSender, text, time);
-    const savedMessage = { id: result.lastID, lead_id: leadId, sender: msgSender, text, timestamp: time };
+    // Extraer imagen si el texto trae ENVIAR_IMAGEN:
+    const { cleanText, imageUrl } = parseImageFromText(text);
+
+    const result = await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", leadId, msgSender, cleanText, time);
+    const savedMessage = { id: result.lastID, lead_id: leadId, sender: msgSender, text: cleanText, timestamp: time };
+
+    // Guardar imagen como mensaje separado si existe
+    if (imageUrl) {
+      await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+        leadId, msgSender, '', imageUrl, 'image', time);
+    }
 
     if (msgSender === 'agent' && N8N_OUTBOUND_WEBHOOK) {
       const lead = await db.get("SELECT phone FROM leads WHERE id = ?", leadId);
       const targetPhone = phone || lead?.phone;
       if (targetPhone) {
-        fetch(N8N_OUTBOUND_WEBHOOK, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: targetPhone, text })
-        }).catch(err => console.error("❌ Error enviando a n8n:", err.message));
+        // Enviar texto limpio a n8n
+        if (cleanText) {
+          fetch(N8N_OUTBOUND_WEBHOOK, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: targetPhone, text: cleanText })
+          }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
+        }
+        // Enviar imagen directo por YCloud si existe
+        if (imageUrl) {
+          sendImageViaYCloud(targetPhone, imageUrl);
+        }
       }
     }
 

@@ -1066,11 +1066,21 @@ const App = () => {
                   <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
                      {messages.map((m, i) => (
                         <div key={i} className={`flex ${m.sender === 'client' ? 'justify-start' : 'justify-end'}`}>
-                           <div className={`max-w-[70%] p-4 rounded-2xl text-[11px] font-medium shadow-sm ${
+                           <div className={`max-w-[70%] rounded-2xl text-[11px] font-medium shadow-sm overflow-hidden ${
                               m.sender === 'client' ? 'bg-white border border-slate-100 text-slate-800 rounded-tl-none' : 'bg-slate-900 text-white rounded-tr-none'
                            }`}>
-                              {m.text}
-                              <p className={`text-[8px] mt-2 font-bold uppercase tracking-widest ${m.sender === 'client' ? 'text-slate-300' : 'text-slate-500'}`}>
+                              {m.mediaUrl && m.mediaType === 'image' && (
+                                <img
+                                  src={m.mediaUrl}
+                                  alt="imagen"
+                                  className="w-full max-w-xs rounded-t-2xl object-cover cursor-pointer"
+                                  onClick={() => window.open(m.mediaUrl, '_blank')}
+                                />
+                              )}
+                              {m.text && (
+                                <p className="px-4 py-3">{m.text}</p>
+                              )}
+                              <p className={`px-4 pb-2 text-[8px] font-bold uppercase tracking-widest ${m.sender === 'client' ? 'text-slate-300' : 'text-slate-500'}`}>
                                  {m.timestamp || 'Ahora'}
                               </p>
                            </div>
