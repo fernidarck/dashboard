@@ -476,6 +476,7 @@ app.post('/api/webhook/n8n', async (req, res) => {
     const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
     const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
 
+    console.log(`📨 WEBHOOK N8N recibido:`, JSON.stringify({ phone: data.phone, mensaje: mensajePrincipal?.slice?.(0,50), respuesta_bot: mensajeSecundario?.slice?.(0,50), media_url: data.media_url, mediaUrl: data.mediaUrl }));
     console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
     const existingLead = await db.get("SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
     
