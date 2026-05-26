@@ -517,7 +517,7 @@ app.post('/api/webhook/n8n', async (req, res) => {
         lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
     };
 
-    const mediaUrl = data.media_url || data.image_url || data.file_url;
+    const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.file_url;
     const mediaType = data.media_type || (mediaUrl ? 'image' : null);
     
     if (mensajePrincipal || mediaUrl) {
