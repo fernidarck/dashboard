@@ -518,15 +518,17 @@ app.post('/api/webhook/n8n', async (req, res) => {
     };
 
     const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.file_url;
-    const mediaType = data.media_type || (mediaUrl ? 'image' : null);
-    
-    if (mensajePrincipal || mediaUrl) {
-      await saveSmartMessage(leadId, data.sender || 'client', mensajePrincipal, time, mediaUrl, mediaType);
+
+    // Client message — media_url is the bot's image, don't attach it here
+    if (mensajePrincipal) {
+      await saveSmartMessage(leadId, data.sender || 'client', mensajePrincipal, time);
     }
-    if (mensajeSecundario) {
-      const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(mensajeSecundario);
+    // Bot response — attach media_url to bot sender
+    if (mensajeSecundario || mediaUrl) {
+      const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(mensajeSecundario || '');
+      const botImageFinal = mediaUrl || botImageUrl;
       if (cleanBot) await saveSmartMessage(leadId, 'bot', cleanBot, time);
-      if (botImageUrl) await saveSmartMessage(leadId, 'bot', '', time, botImageUrl, 'image');
+      if (botImageFinal) await saveSmartMessage(leadId, 'bot', '', time, botImageFinal, 'image');
     }
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });
