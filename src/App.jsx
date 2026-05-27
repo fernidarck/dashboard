@@ -279,10 +279,16 @@ const App = () => {
     const isNewChat = prevChatIdRef.current !== selectedChatId;
     prevChatIdRef.current = selectedChatId;
     if (isNewChat) {
-      // Abrir chat nuevo: saltar directo al fondo sin animación
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-      }
+      // Abrir chat nuevo: esperar paint completo y saltar sin animación
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const c = messagesContainerRef.current;
+          if (c) {
+            c.style.scrollBehavior = 'auto';
+            c.scrollTop = c.scrollHeight;
+          }
+        });
+      });
     } else {
       // Mensaje nuevo: scroll suave
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
