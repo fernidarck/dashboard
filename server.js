@@ -805,9 +805,12 @@ app.post('/api/settings', async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key) throw new Error("Key is required");
-    console.log(`⚙️ Guardando configuración: ${key} (${value?.length || 0} chars)`);
-    // Usamos REPLACE INTO para máxima compatibilidad con versiones antiguas de SQLite
-    await db.run("REPLACE INTO settings (key, value) VALUES (?, ?)", key, value);
+    // Limpiar IDs de actualización que n8n va acumulando al final del prompt
+    const cleanValue = typeof value === 'string'
+      ? value.replace(/\s*\(ID_ACTUALIZACION:\s*\d+\)/g, '').trimEnd()
+      : value;
+    console.log(`⚙️ Guardando configuración: ${key} (${cleanValue?.length || 0} chars)`);
+    await db.run("REPLACE INTO settings (key, value) VALUES (?, ?)", key, cleanValue);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

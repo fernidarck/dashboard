@@ -1169,13 +1169,21 @@ const App = () => {
                         </div>
 
                         <div className="space-y-4 pt-4 border-t border-slate-100">
-                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Captura de Datos</h4>
+                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Datos Capturados</h4>
                            <div className="space-y-3">
-                              {['Nit', 'Direccion', 'Email', 'Vehiculo'].map(field => (
-                                 <div key={field} className="space-y-1">
-                                    <p className="text-[8px] font-black text-slate-300 uppercase ml-2">{field}</p>
-                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-600 truncate italic">
-                                       {selectedLead[field.toLowerCase()] || `Esperando ${field}...`}
+                              {[
+                                { label: 'Nombre', key: 'nombre' },
+                                { label: 'Dirección', key: 'direccion' },
+                                { label: 'NIT', key: 'nit' },
+                                { label: 'Motor', key: 'motor' },
+                                { label: 'Falla', key: 'falla' },
+                                { label: 'Zona', key: 'zona' },
+                                { label: 'Notas', key: 'notas' },
+                              ].map(({ label, key }) => (
+                                 <div key={key} className="space-y-1">
+                                    <p className="text-[8px] font-black text-slate-300 uppercase ml-2">{label}</p>
+                                    <div className={`p-3 rounded-xl border text-[10px] font-bold truncate italic ${selectedLead[key] ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                                       {selectedLead[key] || '—'}
                                     </div>
                                  </div>
                               ))}
