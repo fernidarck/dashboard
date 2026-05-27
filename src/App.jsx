@@ -133,6 +133,9 @@ const App = () => {
   const [testResults, setTestResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Pedidos edit state
+  const [editingPedido, setEditingPedido] = useState(null);
+
   // Refs
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -456,6 +459,29 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, estado: nuevoEstado })
       });
+      fetchPedidos();
+    } catch (err) { console.error(err); }
+  };
+
+  const savePedido = async () => {
+    if (!editingPedido) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/pedidos/${editingPedido.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingPedido)
+      });
+      setEditingPedido(null);
+      fetchPedidos();
+      setNotification('✅ Pedido actualizado');
+      setTimeout(() => setNotification(null), 2500);
+    } catch (err) { console.error(err); }
+  };
+
+  const deletePedido = async (id) => {
+    if (!window.confirm('¿Eliminar este pedido?')) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/pedidos/${id}`, { method: 'DELETE' });
       fetchPedidos();
     } catch (err) { console.error(err); }
   };
@@ -1395,25 +1421,40 @@ const App = () => {
                          <div key={pedido.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
                            <div className="flex justify-between items-start mb-4">
                              <span className="text-[9px] font-black text-slate-300 uppercase tracking-tighter">#{pedido.id}</span>
-                             <span className="text-[9px] font-bold text-slate-400 italic">{pedido.timestamp}</span>
+                             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                               <button
+                                 onClick={() => setEditingPedido({ ...pedido })}
+                                 className="h-6 w-6 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-blue-50 hover:text-blue-500 transition-colors border border-slate-100"
+                               ><Pencil size={10} /></button>
+                               <button
+                                 onClick={() => deletePedido(pedido.id)}
+                                 className="h-6 w-6 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-colors border border-slate-100"
+                               ><Trash2 size={10} /></button>
+                             </div>
                            </div>
                            <h4 className="text-sm font-black text-slate-900 mb-1">{pedido.producto}</h4>
-                           <div className="flex items-center space-x-2 text-[11px] font-bold text-slate-500 mb-4">
+                           <div className="flex items-center space-x-2 text-[11px] font-bold text-slate-500 mb-1">
                              <Users size={12} className="text-slate-300" />
                              <span>{pedido.cliente}</span>
                            </div>
+                           {pedido.phone && (
+                             <div className="flex items-center space-x-2 text-[10px] text-slate-400 mb-3">
+                               <Phone size={10} className="text-slate-300" />
+                               <span>{pedido.phone}</span>
+                             </div>
+                           )}
 
                            {pedido.notas && (
                              <p className="text-[10px] text-slate-400 italic leading-relaxed mb-4 line-clamp-2">{pedido.notas}</p>
                            )}
 
                            <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-                             <div className="flex -space-x-1">
+                             <div className="flex items-center space-x-2">
                                {col !== 'Nuevo' && (
-                                 <button onClick={() => updatePedidoEstado(pedido.id, 'Nuevo')} className="h-8 w-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-orange-50 hover:text-orange-500 transition-colors border border-white"><ChevronLeft size={14} /></button>
+                                 <button onClick={() => updatePedidoEstado(pedido.id, col === 'Completado' ? 'En Proceso' : 'Nuevo')} className="h-8 w-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-orange-50 hover:text-orange-500 transition-colors border border-slate-100"><ChevronLeft size={14} /></button>
                                )}
                                {col !== 'Completado' && (
-                                 <button onClick={() => updatePedidoEstado(pedido.id, col === 'Nuevo' ? 'En Proceso' : 'Completado')} className="h-8 w-16 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest flex items-center justify-center hover:bg-[#FF6B00] transition-all border border-white shadow-sm">
+                                 <button onClick={() => updatePedidoEstado(pedido.id, col === 'Nuevo' ? 'En Proceso' : 'Completado')} className="h-8 px-4 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest flex items-center justify-center hover:bg-[#FF6B00] transition-all shadow-sm">
                                    Siguiente <ChevronRight size={12} className="ml-1" />
                                  </button>
                                )}
@@ -1421,6 +1462,7 @@ const App = () => {
                              {col === 'Completado' && (
                                <div className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center border border-emerald-100"><CheckCircle2 size={14} /></div>
                              )}
+                             <span className="text-[9px] text-slate-300 italic">{pedido.timestamp?.slice(5,16)}</span>
                            </div>
                          </div>
                        ))}
@@ -1433,6 +1475,60 @@ const App = () => {
                    </div>
                  ))}
                </div>
+
+               {/* Modal editar pedido */}
+               {editingPedido && (
+                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                   <div className="bg-white rounded-[40px] w-full max-w-md p-8 space-y-6 shadow-2xl">
+                     <div className="flex justify-between items-center">
+                       <h3 className="text-lg font-black text-slate-900 uppercase tracking-tighter">Editar Pedido #{editingPedido.id}</h3>
+                       <button onClick={() => setEditingPedido(null)} className="h-8 w-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-slate-200 transition-colors"><X size={14} /></button>
+                     </div>
+                     <div className="space-y-4">
+                       {[
+                         { label: 'Producto', key: 'producto' },
+                         { label: 'Cliente', key: 'cliente' },
+                         { label: 'Teléfono', key: 'phone' },
+                         { label: 'Cantidad', key: 'cantidad' },
+                         { label: 'Precio', key: 'precio' },
+                       ].map(({ label, key }) => (
+                         <div key={key}>
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">{label}</label>
+                           <input
+                             type="text"
+                             value={editingPedido[key] || ''}
+                             onChange={e => setEditingPedido({ ...editingPedido, [key]: e.target.value })}
+                             className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-[#FF6B00]/30"
+                           />
+                         </div>
+                       ))}
+                       <div>
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Notas</label>
+                         <textarea
+                           rows={3}
+                           value={editingPedido.notas || ''}
+                           onChange={e => setEditingPedido({ ...editingPedido, notas: e.target.value })}
+                           className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-[#FF6B00]/30 resize-none"
+                         />
+                       </div>
+                       <div>
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Estado</label>
+                         <select
+                           value={editingPedido.estado || 'Nuevo'}
+                           onChange={e => setEditingPedido({ ...editingPedido, estado: e.target.value })}
+                           className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-[#FF6B00]/30"
+                         >
+                           {['Nuevo', 'En Proceso', 'Completado', 'Cancelado'].map(s => <option key={s}>{s}</option>)}
+                         </select>
+                       </div>
+                     </div>
+                     <div className="flex space-x-3 pt-2">
+                       <button onClick={() => setEditingPedido(null)} className="flex-1 py-3 rounded-2xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-colors">Cancelar</button>
+                       <button onClick={savePedido} className="flex-1 py-3 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#FF6B00] transition-all">Guardar</button>
+                     </div>
+                   </div>
+                 </div>
+               )}
             </div>
           )}
 

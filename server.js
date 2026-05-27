@@ -806,6 +806,36 @@ app.put('/api/pedidos/:id/estado', async (req, res) => {
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
+// Alias POST /api/pedidos/status (compatibilidad frontend)
+app.post('/api/pedidos/status', async (req, res) => {
+  try {
+    const { id, estado } = req.body;
+    const validStates = ['Nuevo', 'En Proceso', 'Completado', 'Cancelado'];
+    if (!id) return res.status(400).json({ error: 'Falta id' });
+    if (!validStates.includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
+    await db.run('UPDATE pedidos SET estado = ? WHERE id = ?', estado, id);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/pedidos/:id', async (req, res) => {
+  try {
+    const { cliente, phone, producto, cantidad, precio, notas, estado } = req.body;
+    await db.run(
+      'UPDATE pedidos SET cliente=?, phone=?, producto=?, cantidad=?, precio=?, notas=?, estado=? WHERE id=?',
+      cliente, phone, producto, cantidad || '1', precio || '', notas || '', estado, req.params.id
+    );
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/pedidos/:id', async (req, res) => {
+  try {
+    await db.run('DELETE FROM pedidos WHERE id = ?', req.params.id);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
 // ──────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/settings', async (_req, res) => {
