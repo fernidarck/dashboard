@@ -69,7 +69,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [notification, setNotification] = useState(null);
+  const [notification, setNotification] = useState(null); // { text, type: 'message'|'success'|'error', lead? }
   
   // Data States
   const [leads, setLeads] = useState([]);
@@ -158,8 +158,8 @@ const App = () => {
         const curr = lead.lastClientMsgId;
         if (!isFirstLoad && curr && curr !== prev) {
           playMessageAlert.current();
-          setNotification(`💬 Nuevo mensaje de ${lead.nombre || lead.phone}`);
-          setTimeout(() => setNotification(null), 4000);
+          setNotification({ text: lead.lastMessage || 'Nuevo mensaje', lead, type: 'message' });
+          setTimeout(() => setNotification(null), 6000);
         }
         known[lead.id] = curr;
       });
@@ -902,12 +902,12 @@ const App = () => {
           
           <div className="flex items-center space-x-4 md:space-x-6">
              {loading && <RefreshCw size={14} className="animate-spin text-emerald-500" />}
-             {notification && <div className={`text-white text-[9px] md:text-[10px] font-black px-3 md:px-4 py-1.5 rounded-lg uppercase shadow-lg animate-bounce ${notification.startsWith('❌') ? 'bg-red-500' : notification.startsWith('💬') ? 'bg-blue-500' : 'bg-emerald-500'}`}>{notification}</div>}
+             {notification && typeof notification === 'string' && <div className={`text-white text-[9px] md:text-[10px] font-black px-3 md:px-4 py-1.5 rounded-lg uppercase shadow-lg ${notification.startsWith('❌') ? 'bg-red-500' : 'bg-emerald-500'}`}>{notification}</div>}
              <button
                onClick={() => {
                  playMessageAlert.current();
-                 setNotification('💬 Prueba: Notificación activa!');
-                 setTimeout(() => setNotification(null), 4000);
+                 setNotification({ text: 'Hola! Soy Fernando 👋 me interesa el control genius', lead: { nombre: 'Fernando Garcia', phone: '+50235154362', estado: 'Interesado' }, type: 'message' });
+                 setTimeout(() => setNotification(null), 6000);
                }}
                className="hidden md:flex items-center space-x-1 bg-blue-50 border border-blue-200 text-blue-600 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"
                title="Probar notificación"
@@ -2257,6 +2257,43 @@ const App = () => {
                  <button onClick={handleUpdateLead} className="w-full py-5 bg-slate-900 text-white rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all active:scale-95">Guardar Perfil de Cliente</button>
               </div>
            </div>
+        </div>
+      )}
+
+      {/* TOAST FLOTANTE — Notificación de mensaje entrante */}
+      {notification && typeof notification === 'object' && notification.type === 'message' && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-slate-900 rounded-3xl shadow-2xl shadow-slate-900/40 border border-slate-700 overflow-hidden w-80">
+            <div className="bg-[#FF6B00] px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="h-2 w-2 rounded-full bg-white animate-ping" />
+                <span className="text-[9px] font-black text-white uppercase tracking-widest">Nuevo Mensaje</span>
+              </div>
+              <button onClick={() => setNotification(null)} className="text-white/70 hover:text-white transition-colors">
+                <X size={12} />
+              </button>
+            </div>
+            <div className="p-4 flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-2xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm shrink-0 border border-slate-700">
+                {notification.lead?.nombre?.[0] || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-white leading-none mb-1">{notification.lead?.nombre || 'Cliente'}</p>
+                <p className="text-[10px] text-slate-400 font-medium leading-tight truncate">{notification.text}</p>
+                <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                  notification.lead?.estado === 'Venta' ? 'bg-emerald-500/20 text-emerald-400' :
+                  notification.lead?.estado === 'Interesado' ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-slate-700 text-slate-400'
+                }`}>{notification.lead?.estado || 'Nuevo'}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => { setActiveTab('conversaciones'); setSelectedChatId(notification.lead?.id); setNotification(null); }}
+              className="w-full py-2.5 bg-slate-800 hover:bg-[#FF6B00] text-slate-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition-all border-t border-slate-700"
+            >
+              Ver conversación →
+            </button>
+          </div>
         </div>
       )}
 
