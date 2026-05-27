@@ -1305,35 +1305,63 @@ app.post('/api/ai/knowledge/approve/:id', async (req, res) => {
 
 app.get('/api/ai/insights', async (req, res) => {
   try {
-    // Análisis simplificado: Buscar palabras clave frecuentes en mensajes de clientes
-    const recentMessages = await db.all("SELECT text FROM messages WHERE sender = 'client' ORDER BY id DESC LIMIT 200");
-    
-    const keywords = {
-      'precio': 0, 'cuánto cuesta': 0, 'valor': 0,
-      'ubicación': 0, 'dónde están': 0, 'dirección': 0,
-      'horario': 0, 'a qué hora': 0, 'abierto': 0,
-      'envío': 0, 'domicilio': 0, 'entrega': 0,
-      'garantía': 0, 'seguro': 0,
-      'pago': 0, 'transferencia': 0, 'tarjeta': 0
-    };
+    const msgs = await db.all("SELECT m.text, m.sender, m.timestamp, l.estado FROM messages m LEFT JOIN leads l ON m.lead_id = l.id ORDER BY m.id DESC LIMIT 500");
+    const clientMsgs = msgs.filter(m => m.sender === 'client');
 
-    recentMessages.forEach(m => {
-      const txt = (m.text || "").toLowerCase();
-      Object.keys(keywords).forEach(k => {
-        if (txt.includes(k)) keywords[k]++;
-      });
+    // Categorías ANTIGRAVITY con sinónimos
+    const categorias = [
+      { label: 'Precio / Cotización',   keys: ['precio','cuanto','cuánto','cuesta','vale','valor','cobran','cobras','presupuesto','cotiza'] },
+      { label: 'Motor',                 keys: ['motor','bull','buffalo','ritar','nice','came','doorhan','phobos','genius','ditec'] },
+      { label: 'Portón / Puerta',       keys: ['portón','porton','puerta','reja','cancel','corredizo','abatible','seccional','levadizo'] },
+      { label: 'Control / Mando',       keys: ['control','mando','remoto','teléfono','celular','app','bluetooth','wifi','programar'] },
+      { label: 'Instalación',           keys: ['instalar','instalación','colocar','poner','instalo','montaje','visita','técnico'] },
+      { label: 'Falla / Reparación',    keys: ['falla','fallo','daño','roto','no abre','no cierra','traba','ruido','lento','bloqueado','repara','arregla'] },
+      { label: 'Garantía',              keys: ['garantía','garantia','garantizado','cubre','daños'] },
+      { label: 'Tiempo / Entrega',      keys: ['cuándo','cuando','tiempo','días','horas','rápido','urgente','hoy','mañana','semana'] },
+      { label: 'Pago / Forma de pago',  keys: ['pago','pagar','transferencia','tarjeta','efectivo','depósito','deposito','cheque','cuotas'] },
+      { label: 'Zona / Dirección',      keys: ['zona','colonia','dirección','direccion','municipio','departamento','villa','mixco','antigua','petén','quetzal'] },
+    ];
+
+    const counts = categorias.map(cat => {
+      const count = clientMsgs.filter(m => {
+        const t = (m.text||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+        return cat.keys.some(k => t.includes(k.normalize('NFD').replace(/[̀-ͯ]/g,'')));
+      }).length;
+      return { topic: cat.label, count };
+    }).filter(c => c.count > 0).sort((a,b) => b.count - a.count);
+
+    // Tasa de conversión
+    const totalLeads = await db.get("SELECT COUNT(*) as c FROM leads");
+    const ventas = await db.get("SELECT COUNT(*) as c FROM leads WHERE estado = 'Venta'");
+    const convRate = totalLeads.c > 0 ? Math.round((ventas.c / totalLeads.c) * 100) : 0;
+
+    // Objeciones detectadas
+    const objKeys = ['caro','no tengo','después','pensarlo','pensar','esperar','luego','no puedo','otro momento'];
+    const objCount = clientMsgs.filter(m => {
+      const t = (m.text||'').toLowerCase();
+      return objKeys.some(k => t.includes(k));
+    }).length;
+
+    // Hora pico (hora UTC-6 con más mensajes)
+    const hourCounts = {};
+    msgs.forEach(m => {
+      if (!m.timestamp) return;
+      const h = new Date(m.timestamp).getHours();
+      hourCounts[h] = (hourCounts[h] || 0) + 1;
     });
+    const peakHour = Object.entries(hourCounts).sort((a,b) => b[1]-a[1])[0];
 
-    const topInsights = Object.entries(keywords)
-      .filter(([_, count]) => count > 0)
-      .sort((a, b) => b[1] - a[1])
-      .map(([keyword, count]) => ({
-        topic: keyword.charAt(0).toUpperCase() + keyword.slice(1),
-        count,
-        trend: count > 5 ? 'Subiendo' : 'Estable'
-      }));
-
-    res.json(topInsights);
+    res.json({
+      topics: counts.slice(0, 8),
+      stats: {
+        totalMensajes: clientMsgs.length,
+        totalLeads: totalLeads.c,
+        ventas: ventas.c,
+        convRate,
+        objeciones: objCount,
+        horasPico: peakHour ? `${peakHour[0]}:00 (${peakHour[1]} msgs)` : 'N/A'
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1341,31 +1369,36 @@ app.get('/api/ai/insights', async (req, res) => {
 
 app.post('/api/ai/analyze', async (req, res) => {
   try {
-    // Escaneo forzado de las últimas conversaciones para encontrar conocimiento
-    const recent = await db.all("SELECT lead_id, text FROM messages WHERE sender = 'client' ORDER BY id DESC LIMIT 100");
-    const learningTopics = [
-      { key: 'precio', label: 'Precios y Cotizaciones' },
-      { key: 'ubicacion', label: 'Ubicación y Direcciones' },
-      { key: 'horario', label: 'Horarios de Atención' },
-      { key: 'envio', label: 'Métodos de Envío' },
-      { key: 'garantia', label: 'Políticas de Garantía' }
+    const recent = await db.all("SELECT m.lead_id, m.text, l.nombre FROM messages m LEFT JOIN leads l ON m.lead_id = l.id WHERE m.sender = 'client' ORDER BY m.id DESC LIMIT 200");
+
+    const topicos = [
+      { keys: ['precio','cuanto','cuesta','valor','presupuesto','cotiza'], label: 'Precios y Cotizaciones', icon: '💰' },
+      { keys: ['motor','bull','buffalo','genius','nice','came'], label: 'Consultas de Motores', icon: '⚙️' },
+      { keys: ['instalar','instalacion','colocar','visita','técnico'], label: 'Solicitudes de Instalación', icon: '🔧' },
+      { keys: ['falla','daño','roto','no abre','no cierra','repara','arregla'], label: 'Fallas y Reparaciones', icon: '🛠️' },
+      { keys: ['control','remoto','programar','app','bluetooth'], label: 'Controles y Mandos', icon: '📱' },
+      { keys: ['garantia','garantía','cubre'], label: 'Consultas de Garantía', icon: '🛡️' },
+      { keys: ['tiempo','cuando','dias','urgente','hoy','mañana'], label: 'Tiempos de Entrega', icon: '⏱️' },
+      { keys: ['pago','transferencia','tarjeta','efectivo','cuotas'], label: 'Formas de Pago', icon: '💳' },
     ];
 
-    for (const msg of recent) {
-      const txt = (msg.text || "").toLowerCase();
-      for (const topic of learningTopics) {
-        if (txt.includes(topic.key)) {
-          const existing = await db.get("SELECT id FROM knowledge_base WHERE topic = ? AND status = 'pending'", topic.label);
-          if (!existing) {
-            await db.run(
-              "INSERT INTO knowledge_base (topic, content, source_lead_id, frequency, status) VALUES (?, ?, ?, 1, 'pending')",
-              topic.label, msg.text, msg.lead_id
-            );
-          }
-        }
+    const norm = t => (t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+
+    for (const topico of topicos) {
+      const matching = recent.filter(m => topico.keys.some(k => norm(m.text).includes(k)));
+      if (matching.length === 0) continue;
+      const existing = await db.get("SELECT id, frequency FROM knowledge_base WHERE topic = ?", topico.label);
+      if (existing) {
+        await db.run("UPDATE knowledge_base SET frequency = ?, status = 'pending' WHERE id = ?", existing.frequency + matching.length, existing.id);
+      } else {
+        const sample = matching[0].text?.slice(0, 300) || '';
+        await db.run(
+          "INSERT INTO knowledge_base (topic, content, source_lead_id, frequency, status) VALUES (?, ?, ?, ?, 'pending')",
+          topico.label, `${topico.icon} Ejemplo: "${sample}"`, matching[0].lead_id, matching.length
+        );
       }
     }
-    res.json({ success: true, message: "Análisis completado" });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

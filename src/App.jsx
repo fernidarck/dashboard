@@ -255,7 +255,13 @@ const App = () => {
         fetch(`${API_BASE_URL}/api/ai/insights`),
         fetch(`${API_BASE_URL}/api/ai/knowledge`)
       ]);
-      setAiInsights(await insightsRes.json());
+      const insightsData = await insightsRes.json();
+      // nuevo formato: { topics, stats } — fallback si viene array (versión vieja)
+      if (Array.isArray(insightsData)) {
+        setAiInsights({ topics: insightsData, stats: {} });
+      } else {
+        setAiInsights(insightsData);
+      }
       setAiKnowledge(await knowledgeRes.json());
     } catch (err) { console.error(err); }
   };
@@ -1844,29 +1850,53 @@ const App = () => {
 
                {subTabIA === 'Aprendizaje' && (
                   <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8">
+
+                     {/* Stats rápidos */}
+                     {aiInsights?.stats && (
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                         {[
+                           { label: 'Mensajes analizados', value: aiInsights.stats.totalMensajes || 0, color: 'text-slate-800' },
+                           { label: 'Tasa de conversión', value: `${aiInsights.stats.convRate || 0}%`, color: 'text-emerald-600' },
+                           { label: 'Objeciones detectadas', value: aiInsights.stats.objeciones || 0, color: 'text-orange-500' },
+                           { label: 'Hora pico', value: aiInsights.stats.horasPico || 'N/A', color: 'text-blue-600' },
+                         ].map((s, i) => (
+                           <div key={i} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">{s.label}</p>
+                             <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                           </div>
+                         ))}
+                       </div>
+                     )}
+
                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        {/* Panel de Insights */}
+                        {/* Panel de Topics */}
                         <div className="lg:col-span-1 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
                               <LineChart size={18} className="text-emerald-500" />
-                              <span>Insights de Mercado</span>
+                              <span>Lo que más preguntan</span>
                            </h3>
-                           <div className="space-y-4">
-                              {aiInsights.length === 0 ? (
+                           <div className="space-y-3">
+                              {(!aiInsights?.topics || aiInsights.topics.length === 0) ? (
                                 <p className="text-[10px] text-slate-400 italic text-center py-10">Analizando conversaciones...</p>
-                              ) : aiInsights.map((ins, i) => (
-                                <div key={i} className="p-4 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center">
-                                  <div>
-                                    <p className="text-[11px] font-black text-slate-700">{ins.topic}</p>
-                                    <p className="text-[9px] text-slate-400 uppercase tracking-widest">Menciones: {ins.count}</p>
+                              ) : aiInsights.topics.map((ins, i) => {
+                                const max = aiInsights.topics[0]?.count || 1;
+                                const pct = Math.round((ins.count / max) * 100);
+                                return (
+                                  <div key={i} className="space-y-1">
+                                    <div className="flex justify-between items-center">
+                                      <p className="text-[11px] font-black text-slate-700">{ins.topic}</p>
+                                      <span className="text-[9px] font-black text-slate-400">{ins.count}</span>
+                                    </div>
+                                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                      <div className="h-full bg-[#FF6B00] rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                    </div>
                                   </div>
-                                  <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase ${ins.trend === 'Subiendo' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>{ins.trend}</span>
-                                </div>
-                              ))}
+                                );
+                              })}
                            </div>
                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                               <p className="text-[9px] text-emerald-700 italic leading-relaxed">
-                                💡 {aiInsights[0] ? `"${aiInsights[0].topic}" es el tema más consultado.` : "La IA está aprendiendo de tus clientes."}
+                                💡 {aiInsights?.topics?.[0] ? `"${aiInsights.topics[0].topic}" es el tema más consultado con ${aiInsights.topics[0].count} menciones.` : "La IA está aprendiendo de tus clientes."}
                               </p>
                            </div>
                         </div>
@@ -1876,7 +1906,7 @@ const App = () => {
                            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
                               <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
                                  <Brain size={18} className="text-[#FF6B00]" />
-                                 <span>Mapa de Conocimiento (Aprendido)</span>
+                                 <span>Temas aprendidos de clientes</span>
                               </h3>
                            </div>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1886,11 +1916,14 @@ const App = () => {
                                 </div>
                               ) : aiKnowledge.map((k, i) => (
                                 <div key={i} className={`p-6 rounded-[32px] border ${k.status === 'approved' ? 'bg-white border-slate-100' : 'bg-orange-50/30 border-orange-100'} space-y-3`}>
-                                  <div className="flex justify-between">
-                                    <span className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest italic">{k.topic || 'Nuevo Conocimiento'}</span>
-                                    <span className={`text-[8px] font-black uppercase ${k.status === 'approved' ? 'text-emerald-500' : 'text-orange-500 animate-pulse'}`}>{k.status}</span>
+                                  <div className="flex justify-between items-start">
+                                    <span className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest italic leading-tight">{k.topic || 'Nuevo Conocimiento'}</span>
+                                    <div className="flex items-center space-x-2 shrink-0">
+                                      <span className="text-[8px] font-black text-slate-400">{k.frequency}x</span>
+                                      <span className={`text-[8px] font-black uppercase ${k.status === 'approved' ? 'text-emerald-500' : 'text-orange-500 animate-pulse'}`}>{k.status}</span>
+                                    </div>
                                   </div>
-                                  <p className="text-[11px] font-black text-slate-800 italic">Capturado: {k.content?.slice(0, 50)}...</p>
+                                  <p className="text-[10px] text-slate-500 italic leading-relaxed line-clamp-2">{k.content?.slice(0, 80)}</p>
                                   <div className="pt-2 flex space-x-2">
                                     {k.status === 'pending' && (
                                       <>
