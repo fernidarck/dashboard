@@ -961,7 +961,7 @@ const App = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-10 no-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-10 no-scrollbar">
           
           {/* VIEW: DASHBOARD (RESUMEN) */}
           {activeTab === 'dashboard' && (() => {
@@ -1010,19 +1010,23 @@ const App = () => {
                       </div>
                       <div className="space-y-4">
                          {leads.slice(0, 5).map(lead => (
-                           <div key={lead.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-3xl border border-slate-100 hover:border-[#FF6B00]/20 transition-all group">
-                              <div className="flex items-center space-x-4">
-                                 <div className="h-10 w-10 rounded-xl bg-slate-900 text-[#FF6B00] flex items-center justify-center font-black text-xs italic">{lead.nombre?.[0] || '?'}</div>
-                                 <div>
-                                    <p className="text-xs font-black text-slate-800">{lead.nombre}</p>
-                                    <p className="text-[10px] font-bold text-slate-400">{lead.lastMessage || 'Nuevo Lead'}</p>
+                           <button
+                             key={lead.id}
+                             onClick={() => { setActiveTab('conversaciones'); setSelectedChatId(lead.id); }}
+                             className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-3xl border border-slate-100 hover:border-[#FF6B00]/40 hover:bg-orange-50/30 transition-all group text-left"
+                           >
+                              <div className="flex items-center space-x-4 min-w-0">
+                                 <div className="h-10 w-10 rounded-xl bg-slate-900 text-[#FF6B00] flex items-center justify-center font-black text-xs italic shrink-0">{lead.nombre?.[0] || '?'}</div>
+                                 <div className="min-w-0">
+                                    <p className="text-xs font-black text-slate-800 truncate">{lead.nombre}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 truncate">{lead.lastMessage || 'Nuevo Lead'}</p>
                                  </div>
                               </div>
-                              <div className="text-right">
+                              <div className="text-right shrink-0 ml-3">
                                  <p className="text-[10px] font-black text-[#FF6B00]">{lead.time || 'Ahora'}</p>
                                  <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{lead.estado}</p>
                               </div>
-                           </div>
+                           </button>
                          ))}
                       </div>
                    </div>
