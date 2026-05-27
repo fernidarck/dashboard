@@ -551,6 +551,9 @@ app.post('/api/webhook/n8n', async (req, res) => {
         lead?.nombre || nombre, lead?.phone || data.phone, producto, '1', mensajeSecundario?.slice(0, 200) || '', timestamp
       );
       console.log(`🛒 Pedido auto-creado #${pedidoResult.lastID} para lead ${leadId}: ${producto}`);
+      await notificarDueno(
+        `🛒 *NUEVO PEDIDO #${pedidoResult.lastID}*\n👤 ${lead?.nombre || nombre}\n📦 ${producto}\n📱 ${lead?.phone || data.phone}\n\nRevisa el dashboard para gestionar el pedido.`
+      );
     }
 
     res.json({ success: true, action: existingLead ? "updated" : "created" });

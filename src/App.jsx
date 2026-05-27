@@ -143,6 +143,8 @@ const App = () => {
   });
   // Detectar mensajes entrantes: clave = leadId, valor = lastClientMsgId conocido
   const knownLastClientMsgId = useRef({});
+  // Detectar pedidos nuevos
+  const knownPedidoCount = useRef(null);
 
   // --- DATA FETCHING ---
   const fetchLeads = async () => {
@@ -231,7 +233,16 @@ const App = () => {
   const fetchPedidos = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/pedidos`);
-      setPedidos(await res.json());
+      const data = await res.json();
+      setPedidos(data);
+      const count = data.length;
+      if (knownPedidoCount.current !== null && count > knownPedidoCount.current) {
+        const newest = data[0];
+        playMessageAlert.current();
+        setNotification({ text: `${newest?.producto || 'Nuevo pedido'} — ${newest?.cliente || ''}`, type: 'pedido', pedido: newest });
+        setTimeout(() => setNotification(null), 8000);
+      }
+      knownPedidoCount.current = count;
     } catch (err) { console.error(err); }
   };
 
@@ -274,8 +285,8 @@ const App = () => {
     const interval = setInterval(() => {
       fetchLeads();
       fetchStats();
+      fetchPedidos();
       if (activeTab === 'conversaciones') fetchMessages(selectedChatId);
-      if (activeTab === 'pedidos') fetchPedidos();
     }, 5000);
     
     return () => clearInterval(interval);
@@ -2292,6 +2303,39 @@ const App = () => {
               className="w-full py-2.5 bg-slate-800 hover:bg-[#FF6B00] text-slate-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition-all border-t border-slate-700"
             >
               Ver conversación →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TOAST FLOTANTE — Notificación de pedido nuevo */}
+      {notification && typeof notification === 'object' && notification.type === 'pedido' && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-slate-900 rounded-3xl shadow-2xl shadow-slate-900/40 border border-slate-700 overflow-hidden w-80">
+            <div className="bg-emerald-500 px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="h-2 w-2 rounded-full bg-white animate-ping" />
+                <span className="text-[9px] font-black text-white uppercase tracking-widest">Nuevo Pedido</span>
+              </div>
+              <button onClick={() => setNotification(null)} className="text-white/70 hover:text-white transition-colors">
+                <X size={12} />
+              </button>
+            </div>
+            <div className="p-4 flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-2xl bg-slate-800 text-emerald-400 flex items-center justify-center font-black text-lg shrink-0 border border-slate-700">
+                🛒
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-white leading-none mb-1">{notification.pedido?.cliente || 'Cliente'}</p>
+                <p className="text-[10px] text-slate-400 font-medium leading-tight truncate">{notification.text}</p>
+                <span className="inline-block mt-2 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400">Nuevo</span>
+              </div>
+            </div>
+            <button
+              onClick={() => { setActiveTab('pedidos'); setNotification(null); }}
+              className="w-full py-2.5 bg-slate-800 hover:bg-emerald-500 text-slate-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition-all border-t border-slate-700"
+            >
+              Ver pedidos →
             </button>
           </div>
         </div>
