@@ -1338,6 +1338,15 @@ app.post('/api/ai/knowledge/approve/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/ai/knowledge/:id', async (req, res) => {
+  try {
+    await db.run("DELETE FROM knowledge_base WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/ai/insights', async (req, res) => {
   try {
     const msgs = await db.all("SELECT m.text, m.sender, m.timestamp, l.estado FROM messages m LEFT JOIN leads l ON m.lead_id = l.id ORDER BY m.id DESC LIMIT 500");

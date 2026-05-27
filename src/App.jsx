@@ -490,6 +490,13 @@ const App = () => {
     } catch (err) { console.error(err); }
   };
 
+  const ignoreKnowledge = async (id) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/ai/knowledge/${id}`, { method: 'DELETE' });
+      fetchLearning();
+    } catch (err) { console.error(err); }
+  };
+
   const updatePedidoEstado = async (id, nuevoEstado) => {
     try {
       await fetch(`${API_BASE_URL}/api/pedidos/status`, {
@@ -2084,7 +2091,7 @@ const App = () => {
                                     {k.status === 'pending' && (
                                       <>
                                         <button onClick={() => approveKnowledge(k.id)} className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Validar</button>
-                                        <button className="flex-1 py-2 bg-slate-200 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest">Ignorar</button>
+                                        <button onClick={() => ignoreKnowledge(k.id)} className="flex-1 py-2 bg-slate-200 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest">Ignorar</button>
                                       </>
                                     )}
                                   </div>
