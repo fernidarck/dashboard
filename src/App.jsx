@@ -135,6 +135,7 @@ const App = () => {
 
   // Refs
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const playMessageAlert = useRef(() => {
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
@@ -272,8 +273,20 @@ const App = () => {
     }
   }, [selectedChatId, leads]);
 
+  const prevChatIdRef = useRef(null);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!messages.length) return;
+    const isNewChat = prevChatIdRef.current !== selectedChatId;
+    prevChatIdRef.current = selectedChatId;
+    if (isNewChat) {
+      // Abrir chat nuevo: saltar directo al fondo sin animación
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+    } else {
+      // Mensaje nuevo: scroll suave
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   // --- ACTIONS ---
@@ -1063,7 +1076,7 @@ const App = () => {
                      </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
+                  <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
                      {messages.map((m, i) => (
                         <div key={i} className={`flex ${m.sender === 'client' ? 'justify-start' : 'justify-end'}`}>
                            <div className={`max-w-[70%] rounded-2xl text-[11px] font-medium shadow-sm overflow-hidden ${
