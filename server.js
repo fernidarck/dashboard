@@ -1091,7 +1091,13 @@ REGLAS IMPORTANTES:
 - Nunca digas que eres una IA a menos que te lo pregunten directamente
 - Si no sabes algo, pide más detalles o transfiere al equipo humano
 - Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)
-- SI EL PRODUCTO TIENE UNA IMAGEN_PARA_ENVIAR: Incluye el texto "ENVIAR_IMAGEN: [URL_DE_LA_IMAGEN]" al final de tu mensaje para que el sistema la envíe automáticamente.`.trim();
+- SI EL PRODUCTO TIENE UNA IMAGEN_PARA_ENVIAR: Incluye el texto "ENVIAR_IMAGEN: [URL_DE_LA_IMAGEN]" al final de tu mensaje para que el sistema la envíe automáticamente.
+
+REGLA DE ESCALACIÓN (OBLIGATORIA):
+Cuando NO puedas resolver autónomamente (cotización de envío, precio especial, soporte técnico, caso complejo) y necesites que un asesor contacte al cliente:
+1. Di al cliente: "Perfecto, registré tu consulta. Un asesor te contactará pronto. 🙌"
+2. En la ÚLTIMA línea escribe ÚNICAMENTE: #PEDIDO_LISTO
+Esto notifica al equipo automáticamente. NUNCA digas "asesor te contactará" sin agregar #PEDIDO_LISTO al final.`.trim();
 
     res.json({ systemPrompt, nombre, rol, empresa, tono, idioma, tipo });
   } catch (err) {
