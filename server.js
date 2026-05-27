@@ -343,10 +343,11 @@ app.get('/api/leads', async (req, res) => {
     const { archived } = req.query;
     const isArchived = archived === 'true' ? 1 : 0;
     const rows = await db.all(`
-      SELECT l.*, 
+      SELECT l.*,
         (SELECT text FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessage,
-        (SELECT timestamp FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageTime
-      FROM leads l 
+        (SELECT timestamp FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageTime,
+        (SELECT sender FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageSender
+      FROM leads l
       WHERE l.archived = ? 
       ORDER BY l.priority DESC, l.id DESC
     `, isArchived);

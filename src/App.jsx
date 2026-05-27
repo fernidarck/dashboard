@@ -141,12 +141,27 @@ const App = () => {
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
     audio.play().catch(() => {});
   });
+  // Detectar mensajes entrantes: clave = leadId, valor = lastMessageTime conocido
+  const knownLastTimes = useRef({});
 
   // --- DATA FETCHING ---
   const fetchLeads = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/leads?t=${Date.now()}`);
       const data = await res.json();
+      // Detectar mensajes nuevos comparando lastMessageTime por lead
+      const known = knownLastTimes.current;
+      const isFirstLoad = Object.keys(known).length === 0;
+      data.forEach(lead => {
+        const prev = known[lead.id];
+        const curr = lead.lastMessageTime;
+        if (!isFirstLoad && curr && curr !== prev && lead.lastMessageSender === 'client') {
+          playMessageAlert.current();
+          setNotification(`💬 Nuevo mensaje de ${lead.name || lead.phone}`);
+          setTimeout(() => setNotification(null), 4000);
+        }
+        known[lead.id] = curr;
+      });
       setLeads(data);
       if (data.length > 0 && !selectedChatId) {
         setSelectedChatId(data[0].id);
