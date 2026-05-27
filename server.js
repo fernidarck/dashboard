@@ -536,6 +536,23 @@ app.post('/api/webhook/n8n', async (req, res) => {
       if (botImageFinal) await saveSmartMessage(leadId, 'bot', '', time, botImageFinal, 'image');
     }
 
+    // Auto-crear pedido cuando el bot cierra venta (#PEDIDO_LISTO)
+    if (data.etiqueta === 'PEDIDO_LISTO') {
+      const lead = await db.get("SELECT nombre, phone FROM leads WHERE id = ?", leadId);
+      const producto = data.pedido_producto || 'Ver conversación';
+      const guateDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+      const timestamp = guateDate.getUTCFullYear() + '-' +
+        String(guateDate.getUTCMonth() + 1).padStart(2, '0') + '-' +
+        String(guateDate.getUTCDate()).padStart(2, '0') + ' ' +
+        String(guateDate.getUTCHours()).padStart(2, '0') + ':' +
+        String(guateDate.getUTCMinutes()).padStart(2, '0');
+      const pedidoResult = await db.run(
+        "INSERT INTO pedidos (cliente, phone, producto, cantidad, notas, estado, timestamp) VALUES (?, ?, ?, ?, ?, 'Nuevo', ?)",
+        lead?.nombre || nombre, lead?.phone || data.phone, producto, '1', mensajeSecundario?.slice(0, 200) || '', timestamp
+      );
+      console.log(`🛒 Pedido auto-creado #${pedidoResult.lastID} para lead ${leadId}: ${producto}`);
+    }
+
     res.json({ success: true, action: existingLead ? "updated" : "created" });
   } catch (err) {
     console.error("❌ Error webhook n8n:", err);
