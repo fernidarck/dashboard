@@ -341,6 +341,28 @@ app.get('/api/stats', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.get('/api/capture/stats', async (req, res) => {
+  try {
+    const total = await db.get("SELECT COUNT(*) as c FROM leads WHERE archived = 0");
+    const fields = [
+      { key: 'nombre',    label: 'Nombre' },
+      { key: 'phone',     label: 'Teléfono' },
+      { key: 'direccion', label: 'Dirección' },
+      { key: 'nit',       label: 'NIT' },
+      { key: 'email',     label: 'Email' },
+      { key: 'motor',     label: 'Motor / Producto' },
+      { key: 'falla',     label: 'Falla / Problema' },
+      { key: 'zona',      label: 'Zona' },
+      { key: 'notas',     label: 'Notas' },
+    ];
+    const stats = await Promise.all(fields.map(async f => {
+      const row = await db.get(`SELECT COUNT(*) as c FROM leads WHERE archived = 0 AND ${f.key} IS NOT NULL AND TRIM(${f.key}) != ''`);
+      return { ...f, captured: row.c, total: total.c, pct: total.c > 0 ? Math.round((row.c / total.c) * 100) : 0 };
+    }));
+    res.json(stats);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/leads', async (req, res) => {
   try {
     const { archived } = req.query;

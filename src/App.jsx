@@ -109,6 +109,18 @@ const App = () => {
     Vendedor: '',
     Soporte: ''
   });
+  const [captureStats, setCaptureStats] = useState([]);
+  const [captureFields, setCaptureFields] = useState([
+    { key: 'nombre',    label: 'Nombre completo',    activo: true,  pregunta: '¿Me podés dar tu nombre completo?' },
+    { key: 'direccion', label: 'Dirección de entrega', activo: true, pregunta: '¿A qué dirección te lo enviamos?' },
+    { key: 'nit',       label: 'NIT / Facturación',  activo: true,  pregunta: '¿Necesitás factura? ¿Cuál es tu NIT? (si es consumidor final podés decir "CF")' },
+    { key: 'phone',     label: 'Teléfono',           activo: true,  pregunta: '¿Cuál es tu número de teléfono?' },
+    { key: 'motor',     label: 'Motor / Producto',   activo: true,  pregunta: '¿Qué modelo de motor o producto te interesa?' },
+    { key: 'falla',     label: 'Falla / Problema',   activo: false, pregunta: '¿Cuál es la falla que presenta tu equipo?' },
+    { key: 'zona',      label: 'Zona / Municipio',   activo: false, pregunta: '¿En qué zona o municipio estás?' },
+    { key: 'email',     label: 'Email',              activo: false, pregunta: '¿Tenés un correo electrónico para enviarte la cotización?' },
+  ]);
+
   const [mensajesBot, setMensajesBot] = useState({
     bienvenida: '¡Hola! Soy {nombre} de {empresa}. ¿En qué te puedo ayudar hoy? 😊',
     fallback: 'Disculpa, no entendí bien. ¿Podrías repetirlo de otra forma?',
@@ -211,6 +223,7 @@ const App = () => {
         if (s.key === 'agent_idioma') config.idioma = s.value;
         if (s.key === 'agent_tono') config.tono = s.value;
         if (s.key === 'agent_productos') config.productos = s.value;
+        if (s.key === 'capture_fields') { try { setCaptureFields(JSON.parse(s.value)); } catch(e) {} }
         if (s.key === 'msg_bienvenida') loadedMensajes.bienvenida = s.value;
         if (s.key === 'msg_fallback') loadedMensajes.fallback = s.value;
         if (s.key === 'msg_fuera_horario') loadedMensajes.fuera_horario = s.value;
@@ -260,6 +273,13 @@ const App = () => {
     } catch (err) { console.error(err); }
   };
 
+  const fetchCaptureStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/capture/stats`);
+      setCaptureStats(await res.json());
+    } catch(err) { console.error(err); }
+  };
+
   const fetchLearning = async () => {
     try {
       const [insightsRes, knowledgeRes] = await Promise.all([
@@ -301,6 +321,7 @@ const App = () => {
     fetchHandoff();
     fetchLearning();
     fetchStats();
+    fetchCaptureStats();
     
     const interval = setInterval(() => {
       fetchLeads();
@@ -1839,6 +1860,83 @@ const App = () => {
                              </div>
                           </div>
                        </div>
+                    </div>
+
+                    {/* Stats reales de captura */}
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
+                      <div className="flex items-center justify-between border-b border-slate-50 pb-6">
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                          <Database size={18} className="text-[#FF6B00]" />
+                          <span>Datos capturados en producción</span>
+                        </h3>
+                        <button onClick={fetchCaptureStats} className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"><RefreshCw size={14} className="text-slate-500" /></button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {captureStats.map(f => (
+                          <div key={f.key} className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[11px] font-black text-slate-700">{f.label}</span>
+                              <span className="text-[10px] font-bold text-slate-400">{f.captured}/{f.total} leads · {f.pct}%</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${f.pct >= 70 ? 'bg-emerald-500' : f.pct >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${f.pct}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                        {captureStats.length === 0 && <p className="text-[10px] text-slate-400 italic col-span-2 text-center py-6">Cargando...</p>}
+                      </div>
+                    </div>
+
+                    {/* Config campos activos */}
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
+                      <div className="flex items-center justify-between border-b border-slate-50 pb-6">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Campos que el bot recolecta</h3>
+                          <p className="text-[10px] text-slate-400 italic mt-1">Activa campos y personaliza la pregunta que hace el bot</p>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            setLoading(true);
+                            try {
+                              await fetch(`${API_BASE_URL}/api/settings`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ key: 'capture_fields', value: JSON.stringify(captureFields) })
+                              });
+                              setNotification('✅ Campos guardados');
+                              setTimeout(() => setNotification(null), 3000);
+                            } catch(e) { setNotification('❌ Error'); }
+                            finally { setLoading(false); }
+                          }}
+                          className="flex items-center space-x-2 bg-emerald-500 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-600 transition-all shadow-lg"
+                        ><Save size={14} /><span>Guardar</span></button>
+                      </div>
+                      <div className="space-y-3">
+                        {captureFields.map((f, i) => (
+                          <div key={f.key} className={`p-5 rounded-3xl border transition-all ${f.activo ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100 opacity-60'}`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-3">
+                                <button
+                                  onClick={() => setCaptureFields(prev => prev.map((x, j) => j === i ? { ...x, activo: !x.activo } : x))}
+                                  className={`w-10 h-6 rounded-full transition-all relative shrink-0 ${f.activo ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                >
+                                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${f.activo ? 'left-5' : 'left-1'}`} />
+                                </button>
+                                <span className="text-[11px] font-black text-slate-800">{f.label}</span>
+                              </div>
+                              <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${f.activo ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{f.activo ? 'Activo' : 'Inactivo'}</span>
+                            </div>
+                            {f.activo && (
+                              <input
+                                type="text"
+                                value={f.pregunta}
+                                onChange={e => setCaptureFields(prev => prev.map((x, j) => j === i ? { ...x, pregunta: e.target.value } : x))}
+                                className="w-full p-3 bg-white border border-slate-100 rounded-2xl text-[11px] font-medium text-slate-600 outline-none focus:ring-2 focus:ring-[#FF6B00]/30 italic"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
