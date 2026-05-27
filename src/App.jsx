@@ -1421,15 +1421,15 @@ const App = () => {
                          <div key={pedido.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
                            <div className="flex justify-between items-start mb-4">
                              <span className="text-[9px] font-black text-slate-300 uppercase tracking-tighter">#{pedido.id}</span>
-                             <div className="flex items-center space-x-1">
+                             <div className="flex items-center space-x-2">
                                <button
                                  onClick={() => setEditingPedido({ ...pedido })}
-                                 className="h-6 w-6 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-blue-50 hover:text-blue-500 transition-colors border border-slate-100"
-                               ><Pencil size={10} /></button>
+                                 className="h-8 w-8 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-blue-500 hover:text-white transition-all"
+                               ><Pencil size={13} /></button>
                                <button
                                  onClick={() => deletePedido(pedido.id)}
-                                 className="h-6 w-6 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-colors border border-slate-100"
-                               ><Trash2 size={10} /></button>
+                                 className="h-8 w-8 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"
+                               ><Trash2 size={13} /></button>
                              </div>
                            </div>
                            <h4 className="text-sm font-black text-slate-900 mb-1">{pedido.producto}</h4>
