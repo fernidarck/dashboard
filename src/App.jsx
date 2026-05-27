@@ -109,6 +109,12 @@ const App = () => {
     Vendedor: '',
     Soporte: ''
   });
+  const [mensajesBot, setMensajesBot] = useState({
+    bienvenida: '¡Hola! Soy {nombre} de {empresa}. ¿En qué te puedo ayudar hoy? 😊',
+    fallback: 'Disculpa, no entendí bien. ¿Podrías repetirlo de otra forma?',
+    fuera_horario: 'En este momento estamos fuera de horario. Te responderemos pronto. ¡Gracias!',
+    despedida: '¡Fue un placer atenderte! Si necesitas algo más, aquí estaré. 🙌',
+  });
   const [selectedAgent, setSelectedAgent] = useState('Recepcionista');
   const [handoffTriggers, setHandoffTriggers] = useState([]);
   
@@ -195,6 +201,7 @@ const App = () => {
         ? data
         : Object.entries(data).map(([key, value]) => ({ key, value }));
 
+      const loadedMensajes = { ...mensajesBot };
       settingsArray.forEach(s => {
         if (s.key === 'agent_nombre') config.nombre = s.value;
         if (s.key === 'agent_rol') config.rol = s.value;
@@ -204,14 +211,18 @@ const App = () => {
         if (s.key === 'agent_idioma') config.idioma = s.value;
         if (s.key === 'agent_tono') config.tono = s.value;
         if (s.key === 'agent_productos') config.productos = s.value;
-        
+        if (s.key === 'msg_bienvenida') loadedMensajes.bienvenida = s.value;
+        if (s.key === 'msg_fallback') loadedMensajes.fallback = s.value;
+        if (s.key === 'msg_fuera_horario') loadedMensajes.fuera_horario = s.value;
+        if (s.key === 'msg_despedida') loadedMensajes.despedida = s.value;
         if (s.key === 'prompt_recepcionista') loadedPrompts.Recepcionista = s.value;
         if (s.key === 'prompt_ventas') loadedPrompts.Vendedor = s.value;
         if (s.key === 'prompt_soporte') loadedPrompts.Soporte = s.value;
       });
-      
+
       setAgentConfig(config);
       setPrompts(loadedPrompts);
+      setMensajesBot(loadedMensajes);
     } catch (err) { console.error(err); }
   };
 
@@ -1679,30 +1690,73 @@ const App = () => {
 
                 {subTabIA === 'Mensajes' && (
                   <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
-                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm">
-                      <div className="flex items-center space-x-4 mb-8">
-                        <div className="h-12 w-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center">
-                          <MessageSquare size={24} />
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Flujo de Conversación</h3>
-                          <p className="text-[10px] text-slate-400 italic">Configura cómo inicia la charla el bot</p>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-6">
-                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                          <div className="flex items-center justify-between mb-4">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Saludo Inicial</span>
-                            <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
+                    <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+                      <div className="flex items-center justify-between border-b border-slate-50 pb-6">
+                        <div className="flex items-center space-x-4">
+                          <div className="h-12 w-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center"><MessageSquare size={22} /></div>
+                          <div>
+                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Mensajes del Bot</h3>
+                            <p className="text-[10px] text-slate-400 italic">Textos que el bot usa en situaciones clave</p>
                           </div>
-                          <p className="text-xs text-slate-600 italic">"Hola, soy {agentConfig.nombre} de {agentConfig.empresa}. ¿En qué puedo ayudarte hoy?"</p>
                         </div>
-                        <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                           <p className="text-[9px] text-blue-700 italic leading-relaxed text-center">
-                             💡 Estos mensajes se generan dinámicamente usando el cerebro de la IA. No necesitas configurarlos manualmente.
-                           </p>
-                        </div>
+                        <button
+                          onClick={async () => {
+                            setLoading(true);
+                            try {
+                              await Promise.all([
+                                { key: 'msg_bienvenida', value: mensajesBot.bienvenida },
+                                { key: 'msg_fallback', value: mensajesBot.fallback },
+                                { key: 'msg_fuera_horario', value: mensajesBot.fuera_horario },
+                                { key: 'msg_despedida', value: mensajesBot.despedida },
+                              ].map(s => fetch(`${API_BASE_URL}/api/settings`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(s)
+                              })));
+                              setNotification('✅ Mensajes guardados');
+                              setTimeout(() => setNotification(null), 3000);
+                            } catch(e) { setNotification('❌ Error al guardar'); }
+                            finally { setLoading(false); }
+                          }}
+                          className="flex items-center space-x-2 bg-emerald-500 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg"
+                        >
+                          <Save size={14} /><span>Guardar</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {[
+                          { key: 'bienvenida', label: '👋 Saludo inicial', hint: 'Primer mensaje cuando llega un cliente. Usa {nombre} y {empresa}.', color: 'emerald' },
+                          { key: 'fallback', label: '🤔 No entendí', hint: 'Cuando el bot no comprende el mensaje.', color: 'amber' },
+                          { key: 'fuera_horario', label: '🌙 Fuera de horario', hint: 'Cuando el cliente escribe fuera del horario de atención.', color: 'blue' },
+                          { key: 'despedida', label: '🙌 Despedida', hint: 'Cuando se cierra una conversación satisfactoriamente.', color: 'purple' },
+                        ].map(({ key, label, hint, color }) => (
+                          <div key={key} className="space-y-3">
+                            <div>
+                              <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">{label}</label>
+                              <p className="text-[9px] text-slate-400 italic mt-0.5">{hint}</p>
+                            </div>
+                            <textarea
+                              rows={3}
+                              value={mensajesBot[key]}
+                              onChange={e => setMensajesBot({ ...mensajesBot, [key]: e.target.value })}
+                              className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/30 resize-none leading-relaxed"
+                            />
+                            <div className={`p-3 bg-${color}-50 rounded-xl border border-${color}-100`}>
+                              <p className="text-[9px] text-slate-500 italic">
+                                Preview: {mensajesBot[key]
+                                  .replace('{nombre}', agentConfig.nombre)
+                                  .replace('{empresa}', agentConfig.empresa)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <p className="text-[9px] text-slate-400 italic leading-relaxed">
+                          💡 Estos mensajes se inyectan al prompt del bot en n8n. Usa <code className="bg-white px-1 rounded">{'{'+'nombre}'}</code> y <code className="bg-white px-1 rounded">{'{'+'empresa}'}</code> como variables dinámicas.
+                        </p>
                       </div>
                     </div>
                   </div>

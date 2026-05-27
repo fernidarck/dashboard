@@ -1016,6 +1016,11 @@ app.get('/api/agent/prompt', async (req, res) => {
     };
     const instrucciones = promptMap[tipo] || promptMap.recepcionista;
 
+    const msgBienvenida   = (s.msg_bienvenida   || '').replace('{nombre}', nombre).replace('{empresa}', empresa);
+    const msgFallback     = (s.msg_fallback     || '');
+    const msgFueraHorario = (s.msg_fuera_horario|| '');
+    const msgDespedida    = (s.msg_despedida    || '');
+
     // Obtener catálogo de productos dinámicamente
     const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
     let catalogText = "";
@@ -1038,6 +1043,13 @@ app.get('/api/agent/prompt', async (req, res) => {
       });
     }
 
+    const mensajesSection = [
+      msgBienvenida   ? `MENSAJE DE BIENVENIDA (usa este texto exacto cuando el cliente escribe por primera vez):\n"${msgBienvenida}"` : '',
+      msgFallback     ? `MENSAJE DE FALLBACK (cuando no entiendes el mensaje del cliente):\n"${msgFallback}"` : '',
+      msgFueraHorario ? `MENSAJE FUERA DE HORARIO:\n"${msgFueraHorario}"` : '',
+      msgDespedida    ? `MENSAJE DE DESPEDIDA:\n"${msgDespedida}"` : '',
+    ].filter(Boolean).join('\n\n');
+
     const systemPrompt = `Eres ${nombre}, ${rol} de ${empresa}.
 
 EMPRESA:
@@ -1048,6 +1060,7 @@ ${ragText}
 TONO: ${tono}
 IDIOMA: ${idioma}
 
+${mensajesSection ? `MENSAJES CONFIGURADOS:\n${mensajesSection}\n` : ''}
 INSTRUCCIONES DE COMPORTAMIENTO:
 ${instrucciones}
 
