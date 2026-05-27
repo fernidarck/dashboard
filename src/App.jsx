@@ -141,23 +141,24 @@ const App = () => {
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
     audio.play().catch(() => {});
   });
-  // Detectar mensajes entrantes: clave = leadId, valor = lastMessageTime conocido
-  const knownLastTimes = useRef({});
+  // Detectar mensajes entrantes: clave = leadId, valor = lastClientMsgId conocido
+  const knownLastClientMsgId = useRef({});
 
   // --- DATA FETCHING ---
   const fetchLeads = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/leads?t=${Date.now()}`);
       const data = await res.json();
-      // Detectar mensajes nuevos comparando lastMessageTime por lead
-      const known = knownLastTimes.current;
+      // Detectar mensajes nuevos: comparar ID del último mensaje del cliente
+      // Usar ID en vez de tiempo+sender porque el bot responde antes del próximo poll
+      const known = knownLastClientMsgId.current;
       const isFirstLoad = Object.keys(known).length === 0;
       data.forEach(lead => {
         const prev = known[lead.id];
-        const curr = lead.lastMessageTime;
-        if (!isFirstLoad && curr && curr !== prev && lead.lastMessageSender === 'client') {
+        const curr = lead.lastClientMsgId;
+        if (!isFirstLoad && curr && curr !== prev) {
           playMessageAlert.current();
-          setNotification(`💬 Nuevo mensaje de ${lead.name || lead.phone}`);
+          setNotification(`💬 Nuevo mensaje de ${lead.nombre || lead.phone}`);
           setTimeout(() => setNotification(null), 4000);
         }
         known[lead.id] = curr;
