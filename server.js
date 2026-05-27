@@ -24,7 +24,7 @@ process.on('unhandledRejection', (reason) => {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-console.log("🚀 SERVER VERSION: 1.0.4 (FIXED SYNTAX) - Iniciando servidor del Dashboard...");
+console.log("🚀 SERVER VERSION: 1.0.5 (MEDIA COLUMNS) - Iniciando servidor del Dashboard...");
 const app = express();
 const port = process.env.PORT || 3002;
 const N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
@@ -222,6 +222,8 @@ async function setup() {
     try { await db.exec("ALTER TABLE agenda ADD COLUMN notas TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
 
     console.log("✅ Base de datos inicializada correctamente.");
   } catch (err) {
