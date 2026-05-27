@@ -50,9 +50,12 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res, next) => {
   const indexPath = join(process.cwd(), 'dist/index.html');
   if (fs.existsSync(indexPath)) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(indexPath);
   } else {
-    next(); // Pasar a static o error
+    next();
   }
 });
 
@@ -1449,6 +1452,9 @@ app.use((err, req, res, next) => {
 
 // Todas las demás rutas al index.html
 app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(join(__dirname, 'dist/index.html'));
 });
 
