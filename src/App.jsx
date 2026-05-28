@@ -5,6 +5,7 @@ import {
   Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound
 } from 'lucide-react';
 import Login from './components/Login.jsx';
+import LogoMark from './components/LogoMark.jsx';
 import { useAppData } from './hooks/useAppData.js';
 import ViewDashboard from './components/views/ViewDashboard.jsx';
 import ViewConversaciones from './components/views/ViewConversaciones.jsx';
@@ -159,11 +160,9 @@ export default function App() {
         <div className="p-8">
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center space-x-3">
-              <div className="bg-[#FF6B00] p-2.5 rounded-2xl shadow-xl shadow-orange-100 ring-4 ring-orange-50">
-                <Zap className="text-white" size={24} />
-              </div>
+              <LogoMark size={42} />
               <div>
-                <h1 className="text-xl font-black leading-none tracking-tighter uppercase italic text-slate-800">OneControl</h1>
+                <h1 className="text-xl font-black leading-none tracking-tighter text-slate-800">OneControl</h1>
                 <span className="text-[9px] text-[#FF6B00] font-black uppercase tracking-[0.3em]">SaaS Elite v4.0</span>
               </div>
             </div>

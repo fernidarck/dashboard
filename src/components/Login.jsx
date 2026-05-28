@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Zap, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
+import LogoMark from './LogoMark.jsx';
 
 const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 
@@ -34,8 +35,8 @@ export default function Login({ onLogin }) {
     <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
       <div className="bg-white rounded-[40px] border border-slate-200 shadow-2xl shadow-slate-100 p-12 w-full max-w-md space-y-10">
         <div className="text-center space-y-4">
-          <div className="bg-[#FF6B00] p-4 rounded-3xl shadow-xl shadow-orange-100 ring-4 ring-orange-50 w-fit mx-auto">
-            <Zap className="text-white" size={32} />
+          <div className="flex justify-center">
+            <LogoMark size={64} />
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tighter uppercase italic text-slate-800">OneControl</h1>
