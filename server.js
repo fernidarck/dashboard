@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { open } from 'sqlite';
@@ -767,9 +768,9 @@ app.delete('/api/leads/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── PEDIDOS (Sistema de Órdenes) ─────────────────────────────────────────────
-const OWNER_PHONE = '+50235154362';
-const YCLOUD_API_KEY = 'a25aaba6428e12e4df6310296f675272';
-const YCLOUD_FROM = '+50244315578';
+const OWNER_PHONE = process.env.OWNER_PHONE;
+const YCLOUD_API_KEY = process.env.YCLOUD_API_KEY;
+const YCLOUD_FROM = process.env.YCLOUD_FROM;
 
 async function notificarDueno(mensaje) {
   try {
