@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
   Brain, Database, Zap, Search, Bell, X, MoreVertical,
-  Power, ShieldCheck, LogOut, RefreshCw, Globe
+  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound
 } from 'lucide-react';
 import Login from './components/Login.jsx';
 import { useAppData } from './hooks/useAppData.js';
@@ -44,6 +44,12 @@ export default function App() {
   const [selectedChatId, setSelectedChatId] = useState(null);
   const [selectedLead,   setSelectedLead]   = useState({});
   const [botEnabled,     setBotEnabled]     = useState(true);
+  const [showChangePwd,  setShowChangePwd]  = useState(false);
+  const [newPwd,         setNewPwd]         = useState('');
+  const [confirmPwd,     setConfirmPwd]     = useState('');
+  const [changePwdError, setChangePwdError] = useState('');
+  const [changePwdOk,    setChangePwdOk]    = useState(false);
+  const [changePwdBusy,  setChangePwdBusy]  = useState(false);
 
   const messagesEndRef       = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -106,6 +112,27 @@ export default function App() {
   const handleToggleBot = (leadId) => {
     const lead = leads.find(l => l.id === leadId);
     if (lead) toggleBot(leadId, !lead.botActive);
+  };
+
+  const handleChangeToken = async (e) => {
+    e.preventDefault();
+    setChangePwdError('');
+    if (newPwd.length < 8) { setChangePwdError('Mínimo 8 caracteres'); return; }
+    if (newPwd !== confirmPwd) { setChangePwdError('Las contraseñas no coinciden'); return; }
+    setChangePwdBusy(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/change-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ newToken: newPwd }),
+      });
+      if (!res.ok) { const d = await res.json(); setChangePwdError(d.error || 'Error'); return; }
+      localStorage.setItem('dashboard_token', newPwd);
+      setAuthToken(newPwd);
+      setChangePwdOk(true);
+      setTimeout(() => { setShowChangePwd(false); setChangePwdOk(false); setNewPwd(''); setConfirmPwd(''); }, 1500);
+    } catch { setChangePwdError('Error de conexión'); }
+    finally { setChangePwdBusy(false); }
   };
 
   if (!authToken) return <Login onLogin={(token) => { localStorage.setItem('dashboard_token', token); setAuthToken(token); }} />;
@@ -183,8 +210,14 @@ export default function App() {
             <span>IA {botEnabled ? 'Encendida' : 'Manual'}</span>
           </button>
           <button
+            onClick={() => { setShowChangePwd(true); setNewPwd(''); setConfirmPwd(''); setChangePwdError(''); setChangePwdOk(false); }}
+            className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-[#FF6B00] transition-colors flex items-center justify-center space-x-1 mt-1"
+          >
+            <KeyRound size={12} /><span>Cambiar Contraseña</span>
+          </button>
+          <button
             onClick={() => { localStorage.removeItem('dashboard_token'); setAuthToken(null); }}
-            className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors flex items-center justify-center space-x-1 mt-1"
+            className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors flex items-center justify-center space-x-1"
           >
             <LogOut size={12} /><span>Cerrar Sesión</span>
           </button>
@@ -346,6 +379,53 @@ export default function App() {
             >
               Ver conversación →
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Cambiar Contraseña */}
+      {showChangePwd && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <KeyRound size={16} className="text-[#FF6B00]" />
+                <span className="text-[11px] font-black text-white uppercase tracking-widest">Cambiar Contraseña</span>
+              </div>
+              <button onClick={() => setShowChangePwd(false)} className="text-slate-400 hover:text-white transition-colors"><X size={16} /></button>
+            </div>
+            <form onSubmit={handleChangeToken} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Nueva Contraseña</label>
+                <input
+                  type="password"
+                  value={newPwd}
+                  onChange={e => setNewPwd(e.target.value)}
+                  placeholder="Mínimo 8 caracteres"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] transition-all"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Confirmar Contraseña</label>
+                <input
+                  type="password"
+                  value={confirmPwd}
+                  onChange={e => setConfirmPwd(e.target.value)}
+                  placeholder="Repite la contraseña"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] transition-all"
+                />
+              </div>
+              {changePwdError && <p className="text-[11px] font-bold text-red-500">{changePwdError}</p>}
+              {changePwdOk    && <p className="text-[11px] font-bold text-emerald-500">✓ Contraseña actualizada</p>}
+              <button
+                type="submit"
+                disabled={changePwdBusy || !newPwd || !confirmPwd}
+                className="w-full py-3.5 bg-slate-900 hover:bg-[#FF6B00] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {changePwdBusy ? 'Guardando...' : 'Guardar Contraseña'}
+              </button>
+            </form>
           </div>
         </div>
       )}

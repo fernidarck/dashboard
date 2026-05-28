@@ -37,11 +37,10 @@ app.use(cors());
 app.use(express.json());
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
-const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || 'dev-insecure-token';
+let currentToken = process.env.DASHBOARD_TOKEN || 'dev-insecure-token';
 
 function requireAuth(req, res, next) {
   // Webhooks de entrada y endpoints públicos del bot no requieren auth
-  // req.path es relativo al mount point /api, ej: /webhook/n8n, /bot/status/123
   const publicPaths = ['/webhook/', '/bot/status/', '/agent/prompt'];
   if (publicPaths.some(p => req.path.startsWith(p))) return next();
 
@@ -49,7 +48,7 @@ function requireAuth(req, res, next) {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado' });
   }
-  if (authHeader.slice(7) !== DASHBOARD_TOKEN) {
+  if (authHeader.slice(7) !== currentToken) {
     return res.status(401).json({ error: 'Token inválido' });
   }
   next();
@@ -250,6 +249,10 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
+
+    // Load stored token from settings (overrides env var)
+    const storedToken = await db.get("SELECT value FROM settings WHERE key='dashboard_token'");
+    if (storedToken?.value) currentToken = storedToken.value;
 
     console.log("✅ Base de datos inicializada correctamente.");
   } catch (err) {
@@ -926,6 +929,22 @@ app.post('/api/settings', async (req, res) => {
       : value;
     console.log(`⚙️ Guardando configuración: ${key} (${cleanValue?.length || 0} chars)`);
     await db.run("REPLACE INTO settings (key, value) VALUES (?, ?)", key, cleanValue);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/change-token', async (req, res) => {
+  try {
+    const { newToken } = req.body;
+    if (!newToken || typeof newToken !== 'string' || newToken.trim().length < 8) {
+      return res.status(400).json({ error: 'El token debe tener al menos 8 caracteres' });
+    }
+    const token = newToken.trim();
+    await db.run("REPLACE INTO settings (key, value) VALUES ('dashboard_token', ?)", token);
+    currentToken = token;
+    console.log('🔑 Token de acceso actualizado');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
