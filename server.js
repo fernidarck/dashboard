@@ -1122,6 +1122,45 @@ Esto notifica al equipo automáticamente. NUNCA digas "asesor te contactará" si
   }
 });
 
+// ─── AGENDA ───────────────────────────────────────────────────────────────────
+app.get('/api/agenda', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC");
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/agenda', async (req, res) => {
+  try {
+    const { cliente, phone, fecha, hora, servicio, duracion, estado, notas } = req.body;
+    if (!cliente || !fecha) return res.status(400).json({ error: "Cliente y fecha son requeridos" });
+    const result = await db.run(
+      "INSERT INTO agenda (cliente, phone, fecha, hora, servicio, duracion, estado, notas) VALUES (?,?,?,?,?,?,?,?)",
+      cliente, phone || '', fecha, hora || '', servicio || '', duracion || '1 hora', estado || 'Pendiente', notas || ''
+    );
+    res.json({ success: true, id: result.lastID });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/agenda/:id', async (req, res) => {
+  try {
+    const { cliente, phone, fecha, hora, servicio, duracion, estado, notas } = req.body;
+    await db.run(
+      "UPDATE agenda SET cliente=?, phone=?, fecha=?, hora=?, servicio=?, duracion=?, estado=?, notas=? WHERE id=?",
+      cliente, phone || '', fecha, hora || '', servicio || '', duracion || '1 hora', estado || 'Pendiente', notas || '', req.params.id
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/agenda/:id', async (req, res) => {
+  try {
+    await db.run("DELETE FROM agenda WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── CATÁLOGO DE PRODUCTOS ────────────────────────────────────────────────────
 app.get('/api/products', async (_req, res) => {
   try {
