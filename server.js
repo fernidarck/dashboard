@@ -541,13 +541,6 @@ app.post('/api/webhook/n8n', async (req, res) => {
       leadId = result.lastID;
     }
 
-    const saveSmartMessage = async (lId, sndr, txt, tm, mediaUrl = null, mediaType = null) => {
-      const cleanTxt = txt && txt !== "undefined" && txt !== "null" ? String(txt).trim() : "";
-      if (!cleanTxt && !mediaUrl) return;
-      await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)", 
-        lId, sndr, cleanTxt, mediaUrl, mediaType, tm);
-    };
-
     const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.file_url;
 
     // Client message — media_url is the bot's image, don't attach it here
@@ -771,6 +764,29 @@ app.delete('/api/leads/:id', async (req, res) => {
 const OWNER_PHONE = process.env.OWNER_PHONE;
 const YCLOUD_API_KEY = process.env.YCLOUD_API_KEY;
 const YCLOUD_FROM = process.env.YCLOUD_FROM;
+
+// ─── HANDOFF TRIGGERS CRUD ───────────────────────────────────────────────────
+app.get('/api/handoff/triggers', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM handoff_triggers ORDER BY id ASC");
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/handoff/triggers', async (req, res) => {
+  try {
+    const triggers = req.body;
+    if (!Array.isArray(triggers)) return res.status(400).json({ error: "Se esperaba un array" });
+    await db.run("DELETE FROM handoff_triggers");
+    for (const t of triggers) {
+      if (t.keyword?.trim()) {
+        await db.run("INSERT INTO handoff_triggers (keyword, priority) VALUES (?, ?)", t.keyword.trim(), t.priority || 'urgent');
+      }
+    }
+    res.json({ success: true, saved: triggers.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function notificarDueno(mensaje) {
   try {
