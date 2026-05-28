@@ -36,6 +36,28 @@ console.log(`📌 Webhook detectado: ${N8N_OUTBOUND_WEBHOOK}`);
 app.use(cors());
 app.use(express.json());
 
+// ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
+const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || 'dev-insecure-token';
+
+function requireAuth(req, res, next) {
+  // Webhooks de entrada y endpoints públicos del bot no requieren auth
+  // req.path es relativo al mount point /api, ej: /webhook/n8n, /bot/status/123
+  const publicPaths = ['/webhook/', '/bot/status/', '/agent/prompt'];
+  if (publicPaths.some(p => req.path.startsWith(p))) return next();
+
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+  if (authHeader.slice(7) !== DASHBOARD_TOKEN) {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+  next();
+}
+
+app.use('/api', requireAuth);
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Logger de peticiones (Para depuración en logs de EasyPanel)
 app.use((req, res, next) => {
   console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);

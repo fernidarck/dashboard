@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag, 
-  Brain, Database, Zap, SendHorizontal, Search, Bell, X, 
-  MoreVertical, CheckCircle2, AlertTriangle, UserCircle, Phone, 
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
+  Brain, Database, Zap, SendHorizontal, Search, Bell, X,
+  MoreVertical, CheckCircle2, AlertTriangle, UserCircle, Phone,
   Pencil, Trash2, Plus, Save, TrendingUp, Target, Archive,
   RefreshCw, Power, ShieldCheck, ChevronRight, ChevronLeft,
-  Bot, Sparkles, BookOpen, Tag, LineChart, Globe, Link2
+  Bot, Sparkles, BookOpen, Tag, LineChart, Globe, Link2, LogOut
 } from 'lucide-react';
+import Login from './components/Login.jsx';
 
 const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 const CURRENT_USER_ID = 'fer';
@@ -54,7 +55,7 @@ const AprendizajeLogic = ({ API_BASE_URL, subTabIA }) => {
     if (subTabIA === 'Aprendizaje') {
       const syncLearning = async () => {
         try {
-          await fetch(`${API_BASE_URL}/api/ai/analyze`, { method: 'POST' });
+          await apiFetch(`${API_BASE_URL}/api/ai/analyze`, { method: 'POST' });
         } catch (e) {
           console.error("Error syncing learning data", e);
         }
@@ -66,6 +67,17 @@ const AprendizajeLogic = ({ API_BASE_URL, subTabIA }) => {
 };
 
 const App = () => {
+  const savedToken = localStorage.getItem('dashboard_token');
+  const [authToken, setAuthToken] = useState(savedToken || null);
+
+  const apiFetch = useCallback((url, options = {}) => {
+    const headers = { 'Authorization': `Bearer ${authToken}`, ...(options.headers || {}) };
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return fetch(url, { ...options, headers });
+  }, [authToken]);
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -170,7 +182,7 @@ const App = () => {
   // --- DATA FETCHING ---
   const fetchLeads = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/leads?t=${Date.now()}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/leads?t=${Date.now()}`);
       const data = await res.json();
       // Detectar mensajes nuevos: comparar ID del último mensaje del cliente
       // Usar ID en vez de tiempo+sender porque el bot responde antes del próximo poll
@@ -196,7 +208,7 @@ const App = () => {
   const fetchMessages = async (id) => {
     if (!id) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/messages/${id}?t=${Date.now()}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/messages/${id}?t=${Date.now()}`);
       const data = await res.json();
       setMessages(data);
     } catch (err) { console.error(err); }
@@ -204,7 +216,7 @@ const App = () => {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/settings`);
+      const res = await apiFetch(`${API_BASE_URL}/api/settings`);
       const data = await res.json();
       const config = { ...agentConfig };
       const loadedPrompts = { ...prompts };
@@ -252,14 +264,14 @@ const App = () => {
 
   const fetchAgenda = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/agenda`);
+      const res = await apiFetch(`${API_BASE_URL}/api/agenda`);
       setAgenda(await res.json());
     } catch (err) { console.error(err); }
   };
 
   const fetchPedidos = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/pedidos`);
+      const res = await apiFetch(`${API_BASE_URL}/api/pedidos`);
       const data = await res.json();
       setPedidos(data);
       const count = data.length;
@@ -275,7 +287,7 @@ const App = () => {
 
   const fetchCaptureStats = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/capture/stats`);
+      const res = await apiFetch(`${API_BASE_URL}/api/capture/stats`);
       setCaptureStats(await res.json());
     } catch(err) { console.error(err); }
   };
@@ -299,14 +311,14 @@ const App = () => {
 
   const fetchHandoff = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/handoff/triggers`);
+      const res = await apiFetch(`${API_BASE_URL}/api/handoff/triggers`);
       setHandoffTriggers(await res.json());
     } catch (err) { console.error(err); }
   };
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/stats`);
+      const res = await apiFetch(`${API_BASE_URL}/api/stats`);
       const data = await res.json();
       setStats(data);
     } catch (err) { console.error(err); }
@@ -370,9 +382,9 @@ const App = () => {
     setMessageText('');
     setNotification('💬 Enviando...');
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messages/send`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/messages/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify({ leadId: selectedChatId, text, sender: 'agent' })
       });
       if (!response.ok) {
@@ -422,9 +434,9 @@ const App = () => {
     setTimeout(() => setNotification(null), 3000);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/bot/toggle`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/bot/toggle`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify({ leadId, enabled: newState })
       });
       if (!response.ok) {
@@ -441,9 +453,9 @@ const App = () => {
   const saveSetting = async (key, value) => {
     setLoading(true);
     try {
-      await fetch(`${API_BASE_URL}/api/settings`, {
+      await apiFetch(`${API_BASE_URL}/api/settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify({ key, value })
       });
       setNotification(`✅ ${key.replace('agent_', '').replace('_', ' ')} guardado`);
@@ -455,9 +467,9 @@ const App = () => {
   const saveHandoffTriggers = async () => {
     setLoading(true);
     try {
-      await fetch(`${API_BASE_URL}/api/handoff/triggers`, {
+      await apiFetch(`${API_BASE_URL}/api/handoff/triggers`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify(handoffTriggers)
       });
       setNotification('✅ Triggers de Handoff guardados');
@@ -468,7 +480,7 @@ const App = () => {
 
   const approveKnowledge = async (id) => {
     try {
-      await fetch(`${API_BASE_URL}/api/ai/knowledge/approve/${id}`, {
+      await apiFetch(`${API_BASE_URL}/api/ai/knowledge/approve/${id}`, {
         method: 'POST'
       });
       fetchLearning();
@@ -480,16 +492,16 @@ const App = () => {
 
   const ignoreKnowledge = async (id) => {
     try {
-      await fetch(`${API_BASE_URL}/api/ai/knowledge/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE_URL}/api/ai/knowledge/${id}`, { method: 'DELETE' });
       fetchLearning();
     } catch (err) { console.error(err); }
   };
 
   const updatePedidoEstado = async (id, nuevoEstado) => {
     try {
-      await fetch(`${API_BASE_URL}/api/pedidos/status`, {
+      await apiFetch(`${API_BASE_URL}/api/pedidos/status`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify({ id, estado: nuevoEstado })
       });
       fetchPedidos();
@@ -499,9 +511,9 @@ const App = () => {
   const savePedido = async () => {
     if (!editingPedido) return;
     try {
-      await fetch(`${API_BASE_URL}/api/pedidos/${editingPedido.id}`, {
+      await apiFetch(`${API_BASE_URL}/api/pedidos/${editingPedido.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify(editingPedido)
       });
       setEditingPedido(null);
@@ -514,7 +526,7 @@ const App = () => {
   const deletePedido = async (id) => {
     if (!window.confirm('¿Eliminar este pedido?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/pedidos/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE_URL}/api/pedidos/${id}`, { method: 'DELETE' });
       fetchPedidos();
     } catch (err) { console.error(err); }
   };
@@ -523,9 +535,9 @@ const App = () => {
   const handleSaveCard = async () => {
     if (!newCard.name.trim() || !newCard.content.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/api/rag/save`, {
+      await apiFetch(`${API_BASE_URL}/api/rag/save`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify(newCard)
       });
       setNewCard({ name: '', category: 'General', content: '' });
@@ -538,9 +550,9 @@ const App = () => {
 
   const handleUpdateCard = async (id) => {
     try {
-      await fetch(`${API_BASE_URL}/api/rag/documents/${id}`, {
+      await apiFetch(`${API_BASE_URL}/api/rag/documents/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify(editingCard)
       });
       setEditingCard(null);
@@ -553,9 +565,9 @@ const App = () => {
   const handleSaveProduct = async () => {
     if (!newProduct.nombre.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/api/products`, {
+      await apiFetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify(newProduct)
       });
       setNewProduct(emptyProduct);
@@ -568,9 +580,9 @@ const App = () => {
 
   const handleUpdateProduct = async (id) => {
     try {
-      await fetch(`${API_BASE_URL}/api/products/${id}`, {
+      await apiFetch(`${API_BASE_URL}/api/products/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify(editingProduct)
       });
       setEditingProduct(null);
@@ -583,7 +595,7 @@ const App = () => {
   const handleDeleteDocument = async (id) => {
     if (!window.confirm('¿Eliminar esta tarjeta de conocimiento?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/rag/documents/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE_URL}/api/rag/documents/${id}`, { method: 'DELETE' });
       fetchRAG();
     } catch (err) { console.error(err); }
   };
@@ -591,7 +603,7 @@ const App = () => {
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('¿Eliminar este producto del catálogo?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
       fetchRAG();
     } catch (err) { console.error(err); }
   };
@@ -600,7 +612,7 @@ const App = () => {
     if (!testQuery.trim()) return;
     setIsSearching(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/rag/test-search?query=${encodeURIComponent(testQuery)}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/rag/test-search?query=${encodeURIComponent(testQuery)}`);
       const data = await res.json();
       setTestResults(data.results || []);
     } catch (err) {
@@ -618,7 +630,7 @@ const App = () => {
     formData.append('name', file.name);
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/rag/upload`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/rag/upload`, {
         method: 'POST',
         body: formData
       });
@@ -640,7 +652,7 @@ const App = () => {
     formData.append('image', file);
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/products/upload-image`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/products/upload-image`, {
         method: 'POST',
         body: formData
       });
@@ -666,9 +678,9 @@ const App = () => {
   const handleUpdateLead = async () => {
     if (!editingLead) return;
     try {
-      await fetch(`${API_BASE_URL}/api/leads/${editingLead.id}`, {
+      await apiFetch(`${API_BASE_URL}/api/leads/${editingLead.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify(editingLead)
       });
       setEditingLead(null);
@@ -681,16 +693,16 @@ const App = () => {
   const handleDeleteMessages = async (id) => {
     if (!window.confirm('¿Eliminar todos los mensajes de esta conversación?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/leads/${id}/messages`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE_URL}/api/leads/${id}/messages`, { method: 'DELETE' });
       fetchMessages(id);
     } catch (err) { console.error(err); }
   };
 
   const handleArchiveLead = async (id, currentStatus) => {
     try {
-      await fetch(`${API_BASE_URL}/api/leads/${id}/archive`, {
+      await apiFetch(`${API_BASE_URL}/api/leads/${id}/archive`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify({ archived: !currentStatus })
       });
       fetchLeads();
@@ -763,9 +775,8 @@ const App = () => {
                   if (!leadId) return;
                   setLeads(prev => prev.map(l => l.id === leadId ? {...l, botActive: newState} : l));
                   try {
-                    await fetch(`${API_BASE_URL}/api/bot/toggle`, {
+                    await apiFetch(`${API_BASE_URL}/api/bot/toggle`, {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ leadId, enabled: newState })
                     });
                     setNotification(newState ? `✅ Bot activado` : `🔴 Bot desactivado`);
@@ -855,6 +866,10 @@ const App = () => {
     );
   };
 
+  if (!authToken) {
+    return <Login onLogin={(token) => setAuthToken(token)} />;
+  }
+
   return (
     <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-hidden">
       {/* Sidebar Overlay for Mobile */}
@@ -921,6 +936,13 @@ const App = () => {
           >
             <Power size={14} />
             <span>IA {botEnabled ? 'Encendida' : 'Manual'}</span>
+          </button>
+          <button
+            onClick={() => { localStorage.removeItem('dashboard_token'); setAuthToken(null); }}
+            className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors flex items-center justify-center space-x-1 mt-1"
+          >
+            <LogOut size={12} />
+            <span>Cerrar Sesión</span>
           </button>
         </div>
       </aside>
@@ -1592,7 +1614,7 @@ const App = () => {
                          ];
                          await Promise.all(saves.map(s => fetch(`${API_BASE_URL}/api/settings`, {
                            method: 'POST',
-                           headers: { 'Content-Type': 'application/json' },
+                   
                            body: JSON.stringify(s)
                          })));
                          setNotification('✅ Cerebro sincronizado — n8n ya usa la nueva configuración');
@@ -1725,7 +1747,7 @@ const App = () => {
                                 { key: 'msg_despedida', value: mensajesBot.despedida },
                               ].map(s => fetch(`${API_BASE_URL}/api/settings`, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                        
                                 body: JSON.stringify(s)
                               })));
                               setNotification('✅ Mensajes guardados');
@@ -1892,9 +1914,9 @@ const App = () => {
                           onClick={async () => {
                             setLoading(true);
                             try {
-                              await fetch(`${API_BASE_URL}/api/settings`, {
+                              await apiFetch(`${API_BASE_URL}/api/settings`, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                        
                                 body: JSON.stringify({ key: 'capture_fields', value: JSON.stringify(captureFields) })
                               });
                               setNotification('✅ Campos guardados');
