@@ -364,18 +364,6 @@ const App = () => {
   }, [messages]);
 
   // --- ACTIONS ---
-  const handleAction = async (action, data) => {
-    setLoading(true);
-    try {
-      await fetch(`${API_BASE_URL}/api/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, data })
-      });
-    } catch (err) { console.error(err); }
-    setLoading(false);
-  };
-
   const handleSendMessage = async () => {
     if (!messageText.trim() || !selectedChatId) return;
     const text = messageText;
@@ -630,7 +618,7 @@ const App = () => {
     formData.append('name', file.name);
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/upload`, {
+      const res = await fetch(`${API_BASE_URL}/api/rag/upload`, {
         method: 'POST',
         body: formData
       });
@@ -664,12 +652,11 @@ const App = () => {
       } else {
         setNotification('❌ Error al subir imagen');
       }
-    } catch (err) { 
-      setNotification('❌ Error de conexión'); 
+    } catch (err) {
+      setNotification('❌ Error de conexión');
     } finally {
       setLoading(false);
     }
-    setLoading(false);
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -694,7 +681,7 @@ const App = () => {
   const handleDeleteMessages = async (id) => {
     if (!window.confirm('¿Eliminar todos los mensajes de esta conversación?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/messages/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/api/leads/${id}/messages`, { method: 'DELETE' });
       fetchMessages(id);
     } catch (err) { console.error(err); }
   };
@@ -929,7 +916,7 @@ const App = () => {
             <div className="text-[9px] font-bold text-slate-400">ID: {CURRENT_USER_ID}</div>
           </div>
           <button 
-            onClick={() => { setBotEnabled(!botEnabled); handleAction('toggle_bot', { enabled: !botEnabled }); }}
+            onClick={() => setBotEnabled(!botEnabled)}
             className={`w-full py-3 rounded-2xl flex items-center justify-center space-x-2 font-black text-[10px] uppercase tracking-widest transition-all ${botEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-200 text-slate-500'}`}
           >
             <Power size={14} />
