@@ -28,10 +28,10 @@ const __dirname = dirname(__filename);
 console.log("🚀 SERVER VERSION: 1.0.5 (MEDIA COLUMNS) - Iniciando servidor del Dashboard...");
 const app = express();
 const port = process.env.PORT || 3002;
-const N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
+const ENV_N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
 
 console.log(`📌 Puerto detectado: ${port}`);
-console.log(`📌 Webhook detectado: ${N8N_OUTBOUND_WEBHOOK}`);
+console.log(`📌 Webhook detectado (fallback env): ${ENV_N8N_OUTBOUND_WEBHOOK}`);
 
 app.use(cors());
 app.use(express.json());
@@ -264,6 +264,16 @@ async function setup() {
   }
 }
 
+// Helper: obtener configuraciones dinámicas de la base de datos
+async function getDynamicSetting(key, fallback) {
+  try {
+    const row = await db.get("SELECT value FROM settings WHERE key=?", key);
+    return row?.value || fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
 // Helper: extrae ENVIAR_IMAGEN del texto del bot y devuelve texto limpio + URL
 function parseImageFromText(text) {
   if (!text) return { cleanText: text, imageUrl: null };
@@ -277,11 +287,13 @@ function parseImageFromText(text) {
 // Helper: envía imagen vía YCloud WhatsApp API
 async function sendImageViaYCloud(toPhone, imageUrl, caption = '') {
   try {
-    const payload = { from: YCLOUD_FROM, to: toPhone, type: 'image', image: { link: imageUrl } };
+    const apiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    const payload = { from: fromNum, to: toPhone, type: 'image', image: { link: imageUrl } };
     if (caption) payload.image.caption = caption;
     await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': YCLOUD_API_KEY },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
       body: JSON.stringify(payload)
     });
     console.log(`🖼️ Imagen enviada a ${toPhone}: ${imageUrl}`);
@@ -789,9 +801,10 @@ app.delete('/api/leads/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── PEDIDOS (Sistema de Órdenes) ─────────────────────────────────────────────
-const OWNER_PHONE = process.env.OWNER_PHONE;
-const YCLOUD_API_KEY = process.env.YCLOUD_API_KEY;
-const YCLOUD_FROM = process.env.YCLOUD_FROM;
+// Fallback environment variables
+const ENV_OWNER_PHONE = process.env.OWNER_PHONE;
+const ENV_YCLOUD_API_KEY = process.env.YCLOUD_API_KEY;
+const ENV_YCLOUD_FROM = process.env.YCLOUD_FROM;
 
 // ─── HANDOFF TRIGGERS CRUD ───────────────────────────────────────────────────
 app.get('/api/handoff/triggers', async (_req, res) => {
@@ -818,12 +831,15 @@ app.post('/api/handoff/triggers', async (req, res) => {
 
 async function notificarDueno(mensaje) {
   try {
+    const apiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    const ownerNum = await getDynamicSetting('owner_phone', process.env.OWNER_PHONE);
     await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': YCLOUD_API_KEY },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
       body: JSON.stringify({
-        from: YCLOUD_FROM,
-        to: OWNER_PHONE,
+        from: fromNum,
+        to: ownerNum,
         type: 'text',
         text: { body: mensaje }
       })
@@ -974,21 +990,24 @@ app.post('/api/messages/send', async (req, res) => {
         leadId, msgSender, '', imageUrl, 'image', time);
     }
 
-    if (msgSender === 'agent' && N8N_OUTBOUND_WEBHOOK) {
-      const lead = await db.get("SELECT phone FROM leads WHERE id = ?", leadId);
-      const targetPhone = phone || lead?.phone;
-      if (targetPhone) {
-        // Enviar texto limpio a n8n
-        if (cleanText) {
-          fetch(N8N_OUTBOUND_WEBHOOK, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: targetPhone, text: cleanText })
-          }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
-        }
-        // Enviar imagen directo por YCloud si existe
-        if (imageUrl) {
-          sendImageViaYCloud(targetPhone, imageUrl);
+    if (msgSender === 'agent') {
+      const outboundWebhook = await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message");
+      if (outboundWebhook) {
+        const lead = await db.get("SELECT phone FROM leads WHERE id = ?", leadId);
+        const targetPhone = phone || lead?.phone;
+        if (targetPhone) {
+          // Enviar texto limpio a n8n
+          if (cleanText) {
+            fetch(outboundWebhook, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: targetPhone, text: cleanText })
+            }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
+          }
+          // Enviar imagen directo por YCloud si existe
+          if (imageUrl) {
+            sendImageViaYCloud(targetPhone, imageUrl);
+          }
         }
       }
     }

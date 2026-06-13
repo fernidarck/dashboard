@@ -25,7 +25,9 @@ export function useAppData(apiBase, authToken) {
     nombre: 'OneControl Bot', rol: 'Asistente de Ventas',
     empresa: 'OneControl Guatemala', descripcion: '',
     personalidad: 'Servicial y Profesional', idioma: 'Español',
-    tono: 'Amigable', productos: ''
+    tono: 'Amigable', productos: '',
+    ycloud_api_key: '', ycloud_from: '',
+    owner_phone: '', n8n_outbound_webhook: ''
   });
   const [prompts, setPrompts] = useState({ Recepcionista: '', Vendedor: '', Soporte: '' });
   const [mensajesBot, setMensajesBot] = useState({
@@ -108,6 +110,10 @@ export function useAppData(apiBase, authToken) {
         if (s.key === 'agent_idioma')       config.idioma        = s.value;
         if (s.key === 'agent_tono')         config.tono          = s.value;
         if (s.key === 'agent_productos')    config.productos     = s.value;
+        if (s.key === 'ycloud_api_key')     config.ycloud_api_key = s.value;
+        if (s.key === 'ycloud_from')        config.ycloud_from   = s.value;
+        if (s.key === 'owner_phone')        config.owner_phone   = s.value;
+        if (s.key === 'n8n_outbound_webhook') config.n8n_outbound_webhook = s.value;
         if (s.key === 'capture_fields')     { try { setCaptureFields(JSON.parse(s.value)); } catch(e) {} }
         if (s.key === 'msg_bienvenida')     loadedMensajes.bienvenida     = s.value;
         if (s.key === 'msg_fallback')       loadedMensajes.fallback       = s.value;
@@ -467,7 +473,11 @@ export function useAppData(apiBase, authToken) {
         { key: 'agent_personalidad', value: config.personalidad },
         { key: 'agent_idioma',       value: config.idioma },
         { key: 'agent_tono',         value: config.tono },
-        { key: 'agent_productos',    value: config.productos }
+        { key: 'agent_productos',    value: config.productos },
+        { key: 'ycloud_api_key',     value: config.ycloud_api_key },
+        { key: 'ycloud_from',        value: config.ycloud_from },
+        { key: 'owner_phone',        value: config.owner_phone },
+        { key: 'n8n_outbound_webhook', value: config.n8n_outbound_webhook }
       ];
       await Promise.all(saves.map(s => apiFetch(`${apiBase}/api/settings`, {
         method: 'POST',

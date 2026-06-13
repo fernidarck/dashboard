@@ -40,7 +40,7 @@ export default function ViewCerebro({
       </div>
 
       <div className="flex space-x-8 border-b border-slate-200">
-        {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff', 'Aprendizaje'].map(t => (
+        {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff', 'Aprendizaje', 'Conectores'].map(t => (
           <button
             key={t}
             onClick={() => setSubTabIA(t)}
@@ -430,6 +430,69 @@ export default function ViewCerebro({
               className="w-full h-[500px] p-8 bg-slate-50 border border-slate-100 rounded-[32px] text-sm font-medium outline-none italic resize-none leading-relaxed"
               placeholder={`Escribe aquí las instrucciones maestras para el ${selectedAgent}...`}
             />
+          </div>
+        </div>
+      )}
+
+      {subTabIA === 'Conectores' && (
+        <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+          <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                  <Sparkles size={18} className="text-[#FF6B00]" />
+                  <span>Configuración de Canales y WhatsApp (YCloud / n8n)</span>
+                </h3>
+                <p className="text-[10px] text-slate-400 italic mt-1">Configura las credenciales y números de WhatsApp específicos para este cliente</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">API Key de YCloud</label>
+                <input
+                  type="password"
+                  value={agentConfig.ycloud_api_key || ''}
+                  onChange={e => setAgentConfig({...agentConfig, ycloud_api_key: e.target.value})}
+                  placeholder="Ej: a25aaba6428e12e4df6310296f675272"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Número de WhatsApp Remitente (YCloud From)</label>
+                <input
+                  type="text"
+                  value={agentConfig.ycloud_from || ''}
+                  onChange={e => setAgentConfig({...agentConfig, ycloud_from: e.target.value})}
+                  placeholder="Ej: +50244315578"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Número del Dueño (Notificación de Pedidos)</label>
+                <input
+                  type="text"
+                  value={agentConfig.owner_phone || ''}
+                  onChange={e => setAgentConfig({...agentConfig, owner_phone: e.target.value})}
+                  placeholder="Ej: +50235154362"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Webhook de Salida de n8n</label>
+                <input
+                  type="text"
+                  value={agentConfig.n8n_outbound_webhook || ''}
+                  onChange={e => setAgentConfig({...agentConfig, n8n_outbound_webhook: e.target.value})}
+                  placeholder="Ej: https://n8n.domain.com/webhook/send-message"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <p className="text-[9px] text-slate-400 italic leading-relaxed">
+                💡 Recuerda hacer clic en el botón <b>Sincronizar Cerebro</b> en la esquina superior derecha para guardar estas credenciales de forma segura. El backend y los flujos de n8n jalarán la información de forma dinámica.
+              </p>
+            </div>
           </div>
         </div>
       )}
