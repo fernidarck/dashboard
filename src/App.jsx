@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
   Brain, Database, Zap, Search, Bell, X, MoreVertical,
-  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound
+  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown
 } from 'lucide-react';
 import Login from './components/Login.jsx';
 import LogoMark from './components/LogoMark.jsx';
@@ -28,8 +28,10 @@ export default function App() {
     agentConfig, setAgentConfig, prompts, setPrompts,
     mensajesBot, setMensajesBot, captureFields, setCaptureFields,
     loading, notification, setNotification,
+    channels, selectedChannel, setSelectedChannel,
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
+    fetchChannels,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
@@ -37,6 +39,7 @@ export default function App() {
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
     uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
+    saveChannel, deleteChannel,
     playMessageAlert,
   } = useAppData(API_BASE_URL, authToken);
 
@@ -67,6 +70,7 @@ export default function App() {
     fetchLearning();
     fetchStats();
     fetchCaptureStats();
+    fetchChannels();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 5-second polling
@@ -231,6 +235,29 @@ export default function App() {
               <MoreVertical size={20} />
             </button>
             <div className="hidden md:flex bg-slate-100 p-2.5 rounded-xl text-slate-400"><Search size={18} /></div>
+            
+            {/* Filtro de Canal de WhatsApp */}
+            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2 shadow-sm hover:border-[#FF6B00] transition-all">
+              <select
+                value={selectedChannel}
+                onChange={(e) => {
+                  setSelectedChannel(e.target.value);
+                  fetchLeads(e.target.value);
+                }}
+                className="bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none cursor-pointer appearance-none pr-6 pl-1"
+              >
+                <option value="all">📞 Todos los Canales</option>
+                {channels.map(chan => (
+                  <option key={chan.id} value={chan.phone}>
+                    🟢 {chan.name || 'Canal'} ({chan.phone})
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-3 pointer-events-none text-slate-400">
+                <ChevronDown size={11} />
+              </div>
+            </div>
+
             <div className="flex items-center space-x-2">
               <Globe size={14} className="text-slate-400" />
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none italic">Guatemala</span>
@@ -326,6 +353,9 @@ export default function App() {
                 onApproveKnowledge={approveKnowledge}
                 onIgnoreKnowledge={ignoreKnowledge}
                 onRefreshCaptureStats={fetchCaptureStats}
+                channels={channels}
+                onSaveChannel={saveChannel}
+                onDeleteChannel={deleteChannel}
               />
             )}
             {activeTab === 'rag' && (

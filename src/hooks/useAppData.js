@@ -11,6 +11,8 @@ export function useAppData(apiBase, authToken) {
 
   // --- STATE ---
   const [leads, setLeads] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [selectedChannel, setSelectedChannel] = useState('all');
   const [messages, setMessages] = useState([]);
   const [agenda, setAgenda] = useState([]);
   const [pedidos, setPedidos] = useState([]);
@@ -63,9 +65,10 @@ export function useAppData(apiBase, authToken) {
   });
 
   // --- FETCH FUNCTIONS ---
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async (channel = selectedChannel) => {
     try {
-      const res = await apiFetch(`${apiBase}/api/leads?t=${Date.now()}`);
+      const channelParam = channel && channel !== 'all' ? `&channel_phone=${encodeURIComponent(channel)}` : '';
+      const res = await apiFetch(`${apiBase}/api/leads?t=${Date.now()}${channelParam}`);
       const data = await res.json();
       const known = knownLastClientMsgId.current;
       const isFirstLoad = Object.keys(known).length === 0;
@@ -81,7 +84,58 @@ export function useAppData(apiBase, authToken) {
       });
       setLeads(data);
     } catch (err) { console.error(err); }
+  }, [apiFetch, apiBase, selectedChannel]);
+
+  const fetchChannels = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/channels`);
+      setChannels(await res.json());
+    } catch (err) { console.error(err); }
   }, [apiFetch, apiBase]);
+
+  const saveChannel = useCallback(async (channel) => {
+    try {
+      const url = channel.id ? `${apiBase}/api/channels/${channel.id}` : `${apiBase}/api/channels`;
+      const method = channel.id ? 'PUT' : 'POST';
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify(channel)
+      });
+      if (res.ok) {
+        notify(channel.id ? '✅ Canal actualizado' : '✅ Canal registrado');
+        fetchChannels();
+        return true;
+      } else {
+        const d = await res.json();
+        notify(`❌ Error: ${d.error || 'No se pudo guardar'}`);
+        return false;
+      }
+    } catch (err) {
+      console.error(err);
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, notify, fetchChannels]);
+
+  const deleteChannel = useCallback(async (id) => {
+    if (!window.confirm('¿Eliminar este canal de WhatsApp?')) return;
+    try {
+      const res = await apiFetch(`${apiBase}/api/channels/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        notify('✅ Canal eliminado');
+        fetchChannels();
+        return true;
+      } else {
+        const d = await res.json();
+        notify(`❌ Error: ${d.error || 'No se pudo eliminar'}`);
+        return false;
+      }
+    } catch (err) {
+      console.error(err);
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, notify, fetchChannels]);
 
   const fetchMessages = useCallback(async (id) => {
     if (!id) return;
@@ -495,9 +549,11 @@ export function useAppData(apiBase, authToken) {
     agentConfig, setAgentConfig, prompts, setPrompts,
     mensajesBot, setMensajesBot, captureFields, setCaptureFields,
     loading, notification, setNotification,
+    channels, selectedChannel, setSelectedChannel,
     // Fetch
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
+    fetchChannels,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, updatePedidoEstado, savePedido, deletePedido,
@@ -506,6 +562,7 @@ export function useAppData(apiBase, authToken) {
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
     uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
+    saveChannel, deleteChannel,
     // Alerts
     playMessageAlert, notify,
   };

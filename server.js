@@ -159,6 +159,7 @@ async function setup() {
         priority TEXT DEFAULT 'normal',
         handoff_reason TEXT,
         archived INTEGER DEFAULT 0,
+        channel_phone TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -237,6 +238,16 @@ async function setup() {
         frequency INTEGER DEFAULT 1,
         status TEXT DEFAULT 'pending'
       );
+
+      CREATE TABLE IF NOT EXISTS whatsapp_channels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone TEXT UNIQUE,
+        api_key TEXT,
+        name TEXT,
+        outbound_webhook TEXT,
+        active INTEGER DEFAULT 1,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Migraciones rápidas (Columnas nuevas)
@@ -252,6 +263,38 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
+
+    // Migration of existing settings to whatsapp_channels
+    try {
+      const fromNum = await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+      const apiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+      const outboundWebhook = await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK);
+      if (fromNum) {
+        const cleanFromNum = String(fromNum).trim();
+        if (cleanFromNum) {
+          const existing = await db.get("SELECT id FROM whatsapp_channels WHERE phone = ?", cleanFromNum);
+          if (!existing) {
+            await db.run(
+              "INSERT INTO whatsapp_channels (phone, api_key, name, outbound_webhook, active) VALUES (?, ?, ?, ?, 1)",
+              cleanFromNum, apiKey || '', 'Canal Principal', outboundWebhook || ''
+            );
+            console.log(`✅ Canal principal migrado a whatsapp_channels: ${cleanFromNum}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("⚠️ Error migrando canal principal:", e);
+    }
+
+    // Set channel_phone to default channel if null
+    try {
+      const defaultChannel = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
+      if (defaultChannel?.phone) {
+        const cleanDefaultPhone = String(defaultChannel.phone).replace(/\D/g, '');
+        await db.run("UPDATE leads SET channel_phone = ? WHERE channel_phone IS NULL OR channel_phone = ''", cleanDefaultPhone);
+      }
+    } catch(e) {}
 
     // Load stored token from settings (overrides env var)
     const storedToken = await db.get("SELECT value FROM settings WHERE key='dashboard_token'");
@@ -261,6 +304,24 @@ async function setup() {
   } catch (err) {
     console.error("❌ ERROR CRÍTICO EN SETUP DE BD:", err);
     throw err;
+  }
+}
+
+// Helper: obtener canal configurado por número o fallback al primero activo
+async function getChannelConfig(channelPhone) {
+  try {
+    let cleanChan = channelPhone ? String(channelPhone).replace(/\D/g, '') : null;
+    let channel = null;
+    if (cleanChan) {
+      channel = await db.get("SELECT * FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND active = 1", cleanChan);
+    }
+    if (!channel) {
+      channel = await db.get("SELECT * FROM whatsapp_channels WHERE active = 1 LIMIT 1");
+    }
+    return channel;
+  } catch (e) {
+    console.error("❌ Error en getChannelConfig:", e);
+    return null;
   }
 }
 
@@ -285,10 +346,11 @@ function parseImageFromText(text) {
 }
 
 // Helper: envía imagen vía YCloud WhatsApp API
-async function sendImageViaYCloud(toPhone, imageUrl, caption = '') {
+async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone = null) {
   try {
-    const apiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-    const fromNum = await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
     const payload = { from: fromNum, to: toPhone, type: 'image', image: { link: imageUrl } };
     if (caption) payload.image.caption = caption;
     await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
@@ -296,7 +358,7 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '') {
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
       body: JSON.stringify(payload)
     });
-    console.log(`🖼️ Imagen enviada a ${toPhone}: ${imageUrl}`);
+    console.log(`🖼️ Imagen enviada a ${toPhone} desde ${fromNum}: ${imageUrl}`);
   } catch(e) {
     console.error('❌ Error enviando imagen via YCloud:', e.message);
   }
@@ -406,18 +468,29 @@ app.get('/api/capture/stats', async (req, res) => {
 
 app.get('/api/leads', async (req, res) => {
   try {
-    const { archived } = req.query;
+    const { archived, channel_phone } = req.query;
     const isArchived = archived === 'true' ? 1 : 0;
-    const rows = await db.all(`
+    
+    let query = `
       SELECT l.*,
         (SELECT text FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessage,
         (SELECT timestamp FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageTime,
         (SELECT sender FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageSender,
         (SELECT id FROM messages m WHERE m.lead_id = l.id AND m.sender = 'client' ORDER BY id DESC LIMIT 1) as lastClientMsgId
       FROM leads l
-      WHERE l.archived = ? 
-      ORDER BY l.priority DESC, l.id DESC
-    `, isArchived);
+      WHERE l.archived = ?
+    `;
+    const params = [isArchived];
+
+    if (channel_phone && channel_phone !== 'all') {
+      const cleanChan = String(channel_phone).replace(/\D/g, '');
+      query += ` AND REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?`;
+      params.push(cleanChan);
+    }
+
+    query += ` ORDER BY l.priority DESC, l.id DESC`;
+
+    const rows = await db.all(query, ...params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -426,10 +499,17 @@ app.get('/api/leads', async (req, res) => {
 
 app.post('/api/leads', async (req, res) => {
   try {
-    const { nombre, phone, origen, botActive, email } = req.body;
+    const { nombre, phone, origen, botActive, email, channel_phone } = req.body;
+    let targetChannel = channel_phone;
+    if (!targetChannel) {
+      const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
+      targetChannel = defaultChan?.phone || '';
+    }
+    const cleanChannelPhone = targetChannel ? String(targetChannel).replace(/\D/g, '') : '';
+
     const result = await db.run(
-      "INSERT INTO leads (nombre, phone, origen, botActive, email) VALUES (?, ?, ?, ?, ?)",
-      nombre || 'Cliente Nuevo', phone, origen || 'Manual', botActive ?? 1, email || ''
+      "INSERT INTO leads (nombre, phone, origen, botActive, email, channel_phone) VALUES (?, ?, ?, ?, ?, ?)",
+      nombre || 'Cliente Nuevo', phone, origen || 'Manual', botActive ?? 1, email || '', cleanChannelPhone
     );
     res.json({ id: result.lastID, success: true });
   } catch (err) {
@@ -465,18 +545,42 @@ app.post('/api/webhook/whatsapp', async (req, res) => {
     const senderPrincipal = data.sender || 'client';
     const mediaUrl = data.mediaUrl;
     const mediaType = data.mediaType;
+    const channel_phone = data.channel_phone || data.business_phone || data.to || null;
 
     if (!phone) return res.status(400).json({ error: "Falta phone" });
 
-    // Buscar lead por teléfono (normalizado)
+    // Normalize target/channel phone if provided
+    let cleanChannelPhone = null;
+    if (channel_phone) {
+      cleanChannelPhone = String(channel_phone).replace(/\D/g, '');
+    } else {
+      // Fallback: look at default channel
+      const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
+      if (defaultChan) {
+        cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
+      }
+    }
+
+    // Buscar lead por teléfono (normalizado) y canal
     const cleanPhone = String(phone).replace(/\D/g, '');
-    let existingLead = await db.get("SELECT id, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+    let existingLead;
+    if (cleanChannelPhone) {
+      existingLead = await db.get(
+        "SELECT id, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
+        cleanPhone, cleanChannelPhone
+      );
+    } else {
+      existingLead = await db.get(
+        "SELECT id, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+        cleanPhone
+      );
+    }
 
     let leadId;
     if (!existingLead) {
       const result = await db.run(
-        "INSERT INTO leads (nombre, phone, origen, botActive, estado) VALUES (?, ?, 'WhatsApp (n8n)', 1, 'Nuevo')",
-        data.name || 'Cliente WhatsApp', phone
+        "INSERT INTO leads (nombre, phone, origen, botActive, estado, channel_phone) VALUES (?, ?, 'WhatsApp (n8n)', 1, 'Nuevo', ?)",
+        data.name || 'Cliente WhatsApp', phone, cleanChannelPhone
       );
       leadId = result.lastID;
     } else {
@@ -487,7 +591,7 @@ app.post('/api/webhook/whatsapp', async (req, res) => {
     const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
     const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
 
-    console.log(`📩 Procesando Webhook - Lead ID: ${leadId}`);
+    console.log(`📩 Procesando Webhook - Lead ID: ${leadId} (Canal: ${cleanChannelPhone})`);
 
     // ── DETECCIÓN AUTOMÁTICA DE HANDOFF ────────────────────────────────────
     const handoffReason = data.handoff_reason || await detectHandoff(mensajePrincipal);
@@ -540,15 +644,40 @@ app.post('/api/webhook/n8n', async (req, res) => {
   const motor = data.motor || "N/A";
   const falla = data.falla || "N/A";
   const zona = data.zona || "N/A";
+  const channel_phone = req.body.channel_phone || req.body.business_phone || req.body.to || null;
 
   try {
     const cleanPhone = String(data.phone).replace(/\D/g, '');
     const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
     const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
 
-    console.log(`📨 WEBHOOK N8N recibido:`, JSON.stringify({ phone: data.phone, mensaje: mensajePrincipal?.slice?.(0,50), respuesta_bot: mensajeSecundario?.slice?.(0,50), media_url: data.media_url, mediaUrl: data.mediaUrl }));
-    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone}`);
-    const existingLead = await db.get("SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+    // Normalize target/channel phone if provided
+    let cleanChannelPhone = null;
+    if (channel_phone) {
+      cleanChannelPhone = String(channel_phone).replace(/\D/g, '');
+    } else {
+      // Fallback: look at default channel
+      const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
+      if (defaultChan) {
+        cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
+      }
+    }
+
+    console.log(`📨 WEBHOOK N8N recibido:`, JSON.stringify({ phone: data.phone, channel_phone: cleanChannelPhone, mensaje: mensajePrincipal?.slice?.(0,50), respuesta_bot: mensajeSecundario?.slice?.(0,50), media_url: data.media_url, mediaUrl: data.mediaUrl }));
+    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone} y canal ${cleanChannelPhone}`);
+    
+    let existingLead;
+    if (cleanChannelPhone) {
+      existingLead = await db.get(
+        "SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
+        cleanPhone, cleanChannelPhone
+      );
+    } else {
+      existingLead = await db.get(
+        "SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+        cleanPhone
+      );
+    }
     
     let currentEstado = data.etiqueta || (existingLead ? existingLead.estado : "Nuevo");
     const STATUS_SCORES = { 'Nuevo': 10, 'Interesado': 40, 'Cita Agendada': 75, 'Venta': 100, 'Post-Venta': 100, 'Perdido': 0, 'Intervención Requerida': 85 };
@@ -576,8 +705,8 @@ app.post('/api/webhook/n8n', async (req, res) => {
       leadId = existingLead.id;
     } else {
       console.log("   🆕 Creando nuevo lead...");
-      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        nombre, data.phone, email, finalScore, finalEstado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null);
+      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        nombre, data.phone, email, finalScore, finalEstado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone);
       leadId = result.lastID;
     }
 
@@ -597,7 +726,7 @@ app.post('/api/webhook/n8n', async (req, res) => {
 
     // Auto-crear pedido cuando el bot cierra venta (#PEDIDO_LISTO)
     if (data.etiqueta === 'PEDIDO_LISTO') {
-      const lead = await db.get("SELECT nombre, phone FROM leads WHERE id = ?", leadId);
+      const lead = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", leadId);
       const producto = data.pedido_producto || 'Ver conversación';
       const guateDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
       const timestamp = guateDate.getUTCFullYear() + '-' +
@@ -611,7 +740,8 @@ app.post('/api/webhook/n8n', async (req, res) => {
       );
       console.log(`🛒 Pedido auto-creado #${pedidoResult.lastID} para lead ${leadId}: ${producto}`);
       await notificarDueno(
-        `🛒 *NUEVO PEDIDO #${pedidoResult.lastID}*\n👤 ${lead?.nombre || nombre}\n📦 ${producto}\n📱 ${lead?.phone || data.phone}\n\nRevisa el dashboard para gestionar el pedido.`
+        `🛒 *NUEVO PEDIDO #${pedidoResult.lastID}*\n👤 ${lead?.nombre || nombre}\n📦 ${producto}\n📱 ${lead?.phone || data.phone}\n\nRevisa el dashboard para gestionar el pedido.`,
+        lead?.channel_phone || cleanChannelPhone
       );
     }
 
@@ -625,18 +755,40 @@ app.post('/api/webhook/n8n', async (req, res) => {
 // Endpoint dedicado para activar Handoff (n8n puede llamar esto directamente)
 app.post('/api/leads/handoff', async (req, res) => {
   try {
-    const { leadId, phone, reason, mensaje, nombre: nombreParam } = req.body;
+    const { leadId, phone, reason, mensaje, nombre: nombreParam, channel_phone } = req.body;
     if (!leadId && !phone) return res.status(400).json({ error: "Se necesita leadId o phone" });
+
+    let cleanChannelPhone = null;
+    if (channel_phone) {
+      cleanChannelPhone = String(channel_phone).replace(/\D/g, '');
+    } else {
+      const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
+      if (defaultChan) {
+        cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
+      }
+    }
 
     let id = leadId;
     if (!id && phone) {
       const cleanPhone = String(phone).replace(/\D/g, '');
-      const lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?", cleanPhone);
+      let lead;
+      if (cleanChannelPhone) {
+        lead = await db.get(
+          "SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
+          cleanPhone, cleanChannelPhone
+        );
+      } else {
+        lead = await db.get(
+          "SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+          cleanPhone
+        );
+      }
+      
       if (!lead) {
         // Crear lead si no existe y viene con nombre
         const result = await db.run(
-          "INSERT INTO leads (nombre, phone, estado, origen, botActive, priority) VALUES (?, ?, 'Intervención Requerida', 'WhatsApp (n8n)', 0, 'urgent')",
-          nombreParam || 'Cliente Nuevo', phone
+          "INSERT INTO leads (nombre, phone, estado, origen, botActive, priority, channel_phone) VALUES (?, ?, 'Intervención Requerida', 'WhatsApp (n8n)', 0, 'urgent', ?)",
+          nombreParam || 'Cliente Nuevo', phone, cleanChannelPhone
         );
         id = result.lastID;
       } else {
@@ -650,8 +802,8 @@ app.post('/api/leads/handoff', async (req, res) => {
       // Solo guardar el mensaje del cliente si viene, pero no re-marcar como urgente
       if (mensaje && mensaje.trim()) {
         const now = new Date();
-  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
+        const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+        const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
         await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
       }
       const skipReason = currentLead.botActive === 0 ? 'Bot ya inactivo — handoff ignorado' : 'Lead ya en gestión manual';
@@ -668,8 +820,8 @@ app.post('/api/leads/handoff', async (req, res) => {
     // Bug 3 fix: guardar el mensaje del cliente aunque el bot esté apagado
     if (mensaje && mensaje.trim()) {
       const now = new Date();
-  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
+      const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+      const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
       await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
     }
 
@@ -748,17 +900,36 @@ app.post('/api/bot/toggle', async (req, res) => {
 app.get('/api/bot/status/:phone', async (req, res) => {
   try {
     const cleanPhone = String(req.params.phone).replace(/\D/g, '');
-    const lead = await db.get(
-      "SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
-      cleanPhone
-    );
+    const reqChannel = req.query.channel_phone || req.query.to || req.query.business_phone;
+    let cleanChannelPhone = reqChannel ? String(reqChannel).replace(/\D/g, '') : null;
+
+    if (!cleanChannelPhone) {
+      // Fallback: look at default channel
+      const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
+      if (defaultChan) {
+        cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
+      }
+    }
+
+    let lead;
+    if (cleanChannelPhone) {
+      lead = await db.get(
+        "SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
+        cleanPhone, cleanChannelPhone
+      );
+    } else {
+      lead = await db.get(
+        "SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+        cleanPhone
+      );
+    }
 
     if (!lead) {
       // Si el lead no existe aún, el bot puede responder (nuevo cliente)
       return res.json({ botActive: true, priority: 'normal', handoff_reason: null, found: false });
     }
 
-    console.log(`🤖 Consulta de estado bot para ${cleanPhone}: botActive=${!!lead.botActive}, priority=${lead.priority}`);
+    console.log(`🤖 Consulta de estado bot para ${cleanPhone} (canal ${cleanChannelPhone}): botActive=${!!lead.botActive}, priority=${lead.priority}`);
     res.json({
       botActive: !!lead.botActive,
       priority: lead.priority || 'normal',
@@ -829,22 +1000,50 @@ app.post('/api/handoff/triggers', async (req, res) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function notificarDueno(mensaje) {
+async function notificarDueno(mensaje, channelPhone = null) {
   try {
-    const apiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-    const fromNum = await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
     const ownerNum = await getDynamicSetting('owner_phone', process.env.OWNER_PHONE);
-    await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({
-        from: fromNum,
-        to: ownerNum,
-        type: 'text',
-        text: { body: mensaje }
-      })
-    });
-    console.log(`📲 Notificación enviada al dueño: ${mensaje.substring(0,50)}...`);
+    
+    if (!ownerNum) {
+      console.log('⚠️ No se configuró número de teléfono del dueño para notificaciones.');
+      return;
+    }
+
+    // Permitir múltiples números separados por coma, punto y coma, o espacios
+    const targetPhones = ownerNum.split(/[,;\s]+/).map(p => p.trim()).filter(p => p.length > 0);
+
+    if (targetPhones.length === 0) {
+      console.log('⚠️ No se encontraron números válidos en owner_phone:', ownerNum);
+      return;
+    }
+
+    console.log(`📲 Enviando notificaciones a ${targetPhones.length} destinatarios desde ${fromNum}...`);
+
+    await Promise.all(targetPhones.map(async (toPhone) => {
+      try {
+        const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+          body: JSON.stringify({
+            from: fromNum,
+            to: toPhone,
+            type: 'text',
+            text: { body: mensaje }
+          })
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`❌ Error enviando notificación a ${toPhone}: ${res.status} ${errText}`);
+        } else {
+          console.log(`📲 Notificación enviada a ${toPhone}: ${mensaje.substring(0,50)}...`);
+        }
+      } catch (err) {
+        console.error(`❌ Error enviando notificación a ${toPhone}:`, err.message);
+      }
+    }));
   } catch(e) {
     console.error('❌ Error enviando notificación al dueño:', e.message);
   }
@@ -866,9 +1065,18 @@ app.post('/api/pedidos', async (req, res) => {
       cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', timestamp
     );
     console.log(`🛒 Nuevo pedido #${result.lastID}: ${producto} — ${cliente}`);
+
+    // Buscar canal del lead
+    let channelPhone = null;
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    if (cleanPhone) {
+      const lead = await db.get("SELECT channel_phone FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? LIMIT 1", cleanPhone);
+      channelPhone = lead?.channel_phone || null;
+    }
+
     // Notificar al dueño por WhatsApp
     const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
-    await notificarDueno(msg);
+    await notificarDueno(msg, channelPhone);
     res.json({ success: true, id: result.lastID });
   } catch(err) {
     console.error('❌ Error creando pedido:', err);
@@ -954,6 +1162,80 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
+// ─── CANALES DE WHATSAPP (CRUD) ──────────────────────────────────────────────
+app.get('/api/channels', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM whatsapp_channels ORDER BY id ASC");
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/channels/by-phone/:phone', async (req, res) => {
+  try {
+    const cleanPhone = String(req.params.phone).replace(/\D/g, '');
+    const channel = await db.get("SELECT * FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND active = 1", cleanPhone);
+    if (!channel) {
+      return res.status(404).json({ error: "Canal no encontrado o inactivo" });
+    }
+    res.json(channel);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/channels', async (req, res) => {
+  try {
+    const { phone, api_key, name, outbound_webhook, active } = req.body;
+    if (!phone) return res.status(400).json({ error: "El teléfono es requerido" });
+    const cleanPhone = String(phone).trim();
+    
+    // Check if phone already exists
+    const existing = await db.get("SELECT id FROM whatsapp_channels WHERE phone = ?", cleanPhone);
+    if (existing) {
+      return res.status(400).json({ error: "Este número de teléfono ya está registrado" });
+    }
+
+    const result = await db.run(
+      "INSERT INTO whatsapp_channels (phone, api_key, name, outbound_webhook, active) VALUES (?, ?, ?, ?, ?)",
+      cleanPhone, api_key || '', name || 'Canal WhatsApp', outbound_webhook || '', active ?? 1
+    );
+    res.json({ success: true, id: result.lastID });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/channels/:id', async (req, res) => {
+  try {
+    const { phone, api_key, name, outbound_webhook, active } = req.body;
+    if (!phone) return res.status(400).json({ error: "El teléfono es requerido" });
+    const cleanPhone = String(phone).trim();
+
+    await db.run(
+      "UPDATE whatsapp_channels SET phone=?, api_key=?, name=?, outbound_webhook=?, active=? WHERE id=?",
+      cleanPhone, api_key, name, outbound_webhook, active ?? 1, req.params.id
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/channels/:id', async (req, res) => {
+  try {
+    const countRow = await db.get("SELECT COUNT(*) as c FROM whatsapp_channels");
+    if (countRow.c <= 1) {
+      return res.status(400).json({ error: "No se puede eliminar el último canal activo" });
+    }
+    await db.run("DELETE FROM whatsapp_channels WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/change-token', async (req, res) => {
   try {
     const { newToken } = req.body;
@@ -991,11 +1273,14 @@ app.post('/api/messages/send', async (req, res) => {
     }
 
     if (msgSender === 'agent') {
-      const outboundWebhook = await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message");
-      if (outboundWebhook) {
-        const lead = await db.get("SELECT phone FROM leads WHERE id = ?", leadId);
-        const targetPhone = phone || lead?.phone;
-        if (targetPhone) {
+      const lead = await db.get("SELECT phone, channel_phone FROM leads WHERE id = ?", leadId);
+      const targetPhone = phone || lead?.phone;
+      if (targetPhone) {
+        // Obtenemos la configuración de canal específica para el lead
+        const channel = await getChannelConfig(lead?.channel_phone);
+        const outboundWebhook = channel?.outbound_webhook || await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message");
+
+        if (outboundWebhook) {
           // Enviar texto limpio a n8n
           if (cleanText) {
             fetch(outboundWebhook, {
@@ -1006,7 +1291,7 @@ app.post('/api/messages/send', async (req, res) => {
           }
           // Enviar imagen directo por YCloud si existe
           if (imageUrl) {
-            sendImageViaYCloud(targetPhone, imageUrl);
+            sendImageViaYCloud(targetPhone, imageUrl, '', lead?.channel_phone);
           }
         }
       }

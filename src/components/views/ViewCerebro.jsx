@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Save, MessageSquare, Database, AlertTriangle, Plus, Trash2,
-  RefreshCw, Sparkles, LineChart, Brain
+  RefreshCw, Sparkles, LineChart, Brain, Pencil, Phone, ShieldCheck, Power
 } from 'lucide-react';
 
 export default function ViewCerebro({
@@ -13,10 +13,53 @@ export default function ViewCerebro({
   aiInsights, aiKnowledge,
   onSyncBrain, onSaveSetting, onSaveHandoff,
   onApproveKnowledge, onIgnoreKnowledge,
-  onRefreshCaptureStats
+  onRefreshCaptureStats,
+  channels = [], onSaveChannel, onDeleteChannel
 }) {
   const [subTabIA, setSubTabIA] = useState('General');
   const [selectedAgent, setSelectedAgent] = useState('Recepcionista');
+
+  // Channel Form States
+  const [editingChannel, setEditingChannel] = useState(null);
+  const [chanName, setChanName] = useState('');
+  const [chanPhone, setChanPhone] = useState('');
+  const [chanApiKey, setChanApiKey] = useState('');
+  const [chanWebhook, setChanWebhook] = useState('');
+  const [chanActive, setChanActive] = useState(true);
+
+  const handleStartAdd = () => {
+    setEditingChannel({ id: null });
+    setChanName('');
+    setChanPhone('');
+    setChanApiKey('');
+    setChanWebhook('');
+    setChanActive(true);
+  };
+
+  const handleStartEdit = (chan) => {
+    setEditingChannel(chan);
+    setChanName(chan.name || '');
+    setChanPhone(chan.phone || '');
+    setChanApiKey(chan.api_key || '');
+    setChanWebhook(chan.outbound_webhook || '');
+    setChanActive(!!chan.active);
+  };
+
+  const handleSaveChannelClick = async (e) => {
+    e.preventDefault();
+    if (!chanPhone.trim()) return;
+    const success = await onSaveChannel({
+      id: editingChannel.id,
+      name: chanName,
+      phone: chanPhone,
+      api_key: chanApiKey,
+      outbound_webhook: chanWebhook,
+      active: chanActive ? 1 : 0
+    });
+    if (success) {
+      setEditingChannel(null);
+    }
+  };
 
   useEffect(() => {
     if (subTabIA === 'Aprendizaje') {
@@ -436,61 +479,191 @@ export default function ViewCerebro({
 
       {subTabIA === 'Conectores' && (
         <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
-          <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
-            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+          {/* Configuración Global de Dueño */}
+          <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-50 pb-4">
               <div>
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
-                  <Sparkles size={18} className="text-[#FF6B00]" />
-                  <span>Configuración de Canales y WhatsApp (YCloud / n8n)</span>
+                  <ShieldCheck size={18} className="text-[#FF6B00]" />
+                  <span>Notificaciones de Pedidos</span>
                 </h3>
-                <p className="text-[10px] text-slate-400 italic mt-1">Configura las credenciales y números de WhatsApp específicos para este cliente</p>
+                <p className="text-[10px] text-slate-400 italic mt-1">Configura a qué números del dueño se enviarán las notificaciones de nuevos pedidos</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">API Key de YCloud</label>
-                <input
-                  type="password"
-                  value={agentConfig.ycloud_api_key || ''}
-                  onChange={e => setAgentConfig({...agentConfig, ycloud_api_key: e.target.value})}
-                  placeholder="Ej: a25aaba6428e12e4df6310296f675272"
-                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Número de WhatsApp Remitente (YCloud From)</label>
-                <input
-                  type="text"
-                  value={agentConfig.ycloud_from || ''}
-                  onChange={e => setAgentConfig({...agentConfig, ycloud_from: e.target.value})}
-                  placeholder="Ej: +50244315578"
-                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Número del Dueño (Notificación de Pedidos)</label>
+            <div className="space-y-4">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Número(s) del Dueño (separados por coma)</label>
+              <div className="flex space-x-4">
                 <input
                   type="text"
                   value={agentConfig.owner_phone || ''}
                   onChange={e => setAgentConfig({...agentConfig, owner_phone: e.target.value})}
-                  placeholder="Ej: +50235154362"
-                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                  placeholder="Ej: +50235154362, +50287654321"
+                  className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
                 />
-              </div>
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Webhook de Salida de n8n</label>
-                <input
-                  type="text"
-                  value={agentConfig.n8n_outbound_webhook || ''}
-                  onChange={e => setAgentConfig({...agentConfig, n8n_outbound_webhook: e.target.value})}
-                  placeholder="Ej: https://n8n.domain.com/webhook/send-message"
-                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+                <button
+                  onClick={() => onSaveSetting('owner_phone', agentConfig.owner_phone)}
+                  className="bg-slate-900 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FF6B00] transition-colors"
+                >
+                  Guardar Teléfonos
+                </button>
               </div>
             </div>
+          </div>
+
+          {/* Gestión de Canales */}
+          <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                  <Phone size={18} className="text-[#FF6B00]" />
+                  <span>Canales de WhatsApp Remitentes</span>
+                </h3>
+                <p className="text-[10px] text-slate-400 italic mt-1">Administra los números de teléfono activos y sus credenciales de YCloud individuales</p>
+              </div>
+              {!editingChannel && (
+                <button
+                  onClick={handleStartAdd}
+                  className="bg-emerald-500 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center space-x-2 shadow-lg active:scale-95 transition-all"
+                >
+                  <Plus size={14} /><span>Añadir Canal</span>
+                </button>
+              )}
+            </div>
+
+            {editingChannel ? (
+              <form onSubmit={handleSaveChannelClick} className="bg-slate-50 p-8 rounded-3xl border border-slate-100 space-y-6 animate-in zoom-in-95 duration-300">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">
+                  {editingChannel.id ? '✏️ Editar Canal de WhatsApp' : '🆕 Registrar Nuevo Canal de WhatsApp'}
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Descriptivo</label>
+                    <input
+                      type="text"
+                      value={chanName}
+                      onChange={e => setChanName(e.target.value)}
+                      placeholder="Ej: Reach Portones Principal"
+                      className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-[#FF6B00]"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de WhatsApp (YCloud From)</label>
+                    <input
+                      type="text"
+                      value={chanPhone}
+                      onChange={e => setChanPhone(e.target.value)}
+                      placeholder="Ej: +50244315578"
+                      className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-[#FF6B00]"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">API Key de YCloud</label>
+                    <input
+                      type="password"
+                      value={chanApiKey}
+                      onChange={e => setChanApiKey(e.target.value)}
+                      placeholder="API Key secreta para este número"
+                      className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-[#FF6B00]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Webhook de Salida de n8n</label>
+                    <input
+                      type="text"
+                      value={chanWebhook}
+                      onChange={e => setChanWebhook(e.target.value)}
+                      placeholder="Ej: https://n8n.domain.com/webhook/send-message"
+                      className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-[#FF6B00]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 p-4 bg-white rounded-2xl border border-slate-200 w-fit">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado del Canal</label>
+                  <button
+                    type="button"
+                    onClick={() => setChanActive(!chanActive)}
+                    className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${chanActive ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}
+                  >
+                    {chanActive ? 'Activo' : 'Inactivo'}
+                  </button>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button
+                    type="submit"
+                    className="px-8 py-3.5 bg-slate-900 hover:bg-[#FF6B00] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md"
+                  >
+                    Guardar Canal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingChannel(null)}
+                    className="px-8 py-3.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="overflow-x-auto rounded-[24px] border border-slate-100 shadow-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                      <th className="px-6 py-4">Canal</th>
+                      <th className="px-6 py-4">Teléfono</th>
+                      <th className="px-6 py-4">API Key</th>
+                      <th className="px-6 py-4">Webhook de Salida</th>
+                      <th className="px-6 py-4">Estado</th>
+                      <th className="px-6 py-4 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
+                    {channels.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-10 text-center text-slate-400 italic">No hay canales de WhatsApp registrados. Haz clic en "Añadir Canal" para empezar.</td>
+                      </tr>
+                    ) : channels.map(chan => (
+                      <tr key={chan.id} className="hover:bg-slate-50/55 transition-colors">
+                        <td className="px-6 py-4 font-black text-slate-800">{chan.name}</td>
+                        <td className="px-6 py-4 text-slate-500">{chan.phone}</td>
+                        <td className="px-6 py-4 font-mono text-[10px] text-slate-400">{chan.api_key ? `••••${chan.api_key.substring(chan.api_key.length - 6)}` : 'No configurada'}</td>
+                        <td className="px-6 py-4 text-slate-400 truncate max-w-xs">{chan.outbound_webhook || 'Default webhook'}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border ${chan.active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                            {chan.active ? 'Activo' : 'Inactivo'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end items-center space-x-2">
+                            <button
+                              onClick={() => handleStartEdit(chan)}
+                              className="p-2 bg-slate-100 text-slate-600 hover:bg-slate-900 hover:text-white rounded-xl transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              onClick={() => onDeleteChannel(chan.id)}
+                              className="p-2 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white rounded-xl transition-colors"
+                              title="Eliminar"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
               <p className="text-[9px] text-slate-400 italic leading-relaxed">
-                💡 Recuerda hacer clic en el botón <b>Sincronizar Cerebro</b> en la esquina superior derecha para guardar estas credenciales de forma segura. El backend y los flujos de n8n jalarán la información de forma dinámica.
+                💡 Cada número que agregues aquí funcionará como un canal independiente. Los leads y conversaciones se separarán automáticamente en base al número al que escriba el cliente. En n8n, puedes consultar la API `/api/channels/by-phone/[NÚMERO]` para obtener la API Key de YCloud de forma dinámica.
               </p>
             </div>
           </div>
