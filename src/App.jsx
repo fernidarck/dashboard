@@ -434,20 +434,20 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Cambiar Contraseña */}
+      {/* Modal: Cambiar Token de Acceso */}
       {showChangePwd && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 px-6 py-4 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <KeyRound size={16} className="text-[#FF6B00]" />
-                <span className="text-[11px] font-black text-white uppercase tracking-widest">Cambiar Contraseña</span>
+                <span className="text-[11px] font-black text-white uppercase tracking-widest">Cambiar Token de Acceso</span>
               </div>
               <button onClick={() => setShowChangePwd(false)} className="text-slate-400 hover:text-white transition-colors"><X size={16} /></button>
             </div>
             <form onSubmit={handleChangeToken} className="p-6 space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Nueva Contraseña</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Nuevo Token de Acceso</label>
                 <input
                   type="password"
                   value={newPwd}
@@ -458,23 +458,23 @@ export default function App() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Confirmar Contraseña</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Confirmar Token</label>
                 <input
                   type="password"
                   value={confirmPwd}
                   onChange={e => setConfirmPwd(e.target.value)}
-                  placeholder="Repite la contraseña"
+                  placeholder="Repite el token de acceso"
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] transition-all"
                 />
               </div>
               {changePwdError && <p className="text-[11px] font-bold text-red-500">{changePwdError}</p>}
-              {changePwdOk    && <p className="text-[11px] font-bold text-emerald-500">✓ Contraseña actualizada</p>}
+              {changePwdOk    && <p className="text-[11px] font-bold text-emerald-500">✓ Token de acceso actualizado</p>}
               <button
                 type="submit"
                 disabled={changePwdBusy || !newPwd || !confirmPwd}
                 className="w-full py-3.5 bg-slate-900 hover:bg-[#FF6B00] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {changePwdBusy ? 'Guardando...' : 'Guardar Contraseña'}
+                {changePwdBusy ? 'Guardando...' : 'Guardar Token de Acceso'}
               </button>
             </form>
           </div>
