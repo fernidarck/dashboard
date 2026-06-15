@@ -23,6 +23,7 @@ export default function App() {
   const [authToken, setAuthToken] = useState(savedToken || null);
 
   const {
+    currentUser, users,
     leads, messages, agenda, pedidos, documents, products,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
     agentConfig, setAgentConfig, prompts, setPrompts,
@@ -31,7 +32,7 @@ export default function App() {
     channels, selectedChannel, setSelectedChannel,
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
-    fetchChannels,
+    fetchChannels, fetchUsers,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
@@ -39,7 +40,7 @@ export default function App() {
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
     uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
-    saveChannel, deleteChannel,
+    saveChannel, deleteChannel, saveUser, deleteUser,
     playMessageAlert,
   } = useAppData(API_BASE_URL, authToken);
 
@@ -58,6 +59,13 @@ export default function App() {
   const messagesEndRef       = useRef(null);
   const messagesContainerRef = useRef(null);
   const prevChatIdRef        = useRef(null);
+
+  // Redirect non-admins to dashboard if they try to access cerebro or rag
+  useEffect(() => {
+    if (currentUser && currentUser.role !== 'admin' && (activeTab === 'cerebro' || activeTab === 'rag')) {
+      setActiveTab('dashboard');
+    }
+  }, [currentUser, activeTab]);
 
   // Initial data load
   useEffect(() => {
@@ -189,21 +197,23 @@ export default function App() {
               <SidebarItem icon={Calendar}      label="Agenda IA"        id="agenda" />
               <SidebarItem icon={ShoppingBag}   label="Pedidos IA"       id="pedidos" />
             </div>
-            <div>
-              <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
-              <SidebarItem icon={Brain}    label="Agente IA"  id="cerebro" />
-              <SidebarItem icon={Database} label="Base RAG"   id="rag" />
-            </div>
+            {currentUser?.role === 'admin' && (
+              <div>
+                <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
+                <SidebarItem icon={Brain}    label="Agente IA"  id="cerebro" />
+                <SidebarItem icon={Database} label="Base RAG"   id="rag" />
+              </div>
+            )}
           </nav>
         </div>
 
         <div className="mt-auto p-8 border-t border-slate-100 bg-slate-50/30">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              <ShieldCheck size={14} className="text-emerald-500" />
-              <span>Maestro Activo</span>
+              <ShieldCheck size={14} className={currentUser?.role === 'admin' ? "text-emerald-500" : "text-blue-500"} />
+              <span>{currentUser?.role === 'admin' ? 'Administrador' : 'Operador'}</span>
             </div>
-            <div className="text-[9px] font-bold text-slate-400">ID: {CURRENT_USER_ID}</div>
+            <div className="text-[9px] font-bold text-slate-400 truncate max-w-[120px]">{currentUser?.name || currentUser?.username || 'Cargando...'}</div>
           </div>
           <button
             onClick={() => setBotEnabled(v => !v)}
@@ -212,12 +222,14 @@ export default function App() {
             <Power size={14} />
             <span>IA {botEnabled ? 'Encendida' : 'Manual'}</span>
           </button>
-          <button
-            onClick={() => { setShowChangePwd(true); setNewPwd(''); setConfirmPwd(''); setChangePwdError(''); setChangePwdOk(false); }}
-            className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-[#FF6B00] transition-colors flex items-center justify-center space-x-1 mt-1"
-          >
-            <KeyRound size={12} /><span>Cambiar Contraseña</span>
-          </button>
+          {currentUser?.role === 'admin' && (
+            <button
+              onClick={() => { setShowChangePwd(true); setNewPwd(''); setConfirmPwd(''); setChangePwdError(''); setChangePwdOk(false); }}
+              className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-[#FF6B00] transition-colors flex items-center justify-center space-x-1 mt-1"
+            >
+              <KeyRound size={12} /><span>Token de Acceso</span>
+            </button>
+          )}
           <button
             onClick={() => { localStorage.removeItem('dashboard_token'); setAuthToken(null); }}
             className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors flex items-center justify-center space-x-1"
@@ -240,18 +252,24 @@ export default function App() {
             <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2 shadow-sm hover:border-[#FF6B00] transition-all">
               <select
                 value={selectedChannel}
+                disabled={!!currentUser?.channel_phone}
                 onChange={(e) => {
                   setSelectedChannel(e.target.value);
                   fetchLeads(e.target.value);
                 }}
-                className="bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none cursor-pointer appearance-none pr-6 pl-1"
+                className={`bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none appearance-none pr-6 pl-1 ${currentUser?.channel_phone ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
               >
-                <option value="all">📞 Todos los Canales</option>
+                {!currentUser?.channel_phone && <option value="all">📞 Todos los Canales</option>}
                 {channels.map(chan => (
                   <option key={chan.id} value={chan.phone}>
                     🟢 {chan.name || 'Canal'} ({chan.phone})
                   </option>
                 ))}
+                {currentUser?.channel_phone && !channels.some(c => c.phone === currentUser.channel_phone) && (
+                  <option value={currentUser.channel_phone}>
+                    🟢 Canal Asignado ({currentUser.channel_phone})
+                  </option>
+                )}
               </select>
               <div className="absolute right-3 pointer-events-none text-slate-400">
                 <ChevronDown size={11} />
@@ -334,6 +352,10 @@ export default function App() {
             )}
             {activeTab === 'cerebro' && (
               <ViewCerebro
+                currentUser={currentUser}
+                users={users}
+                onSaveUser={saveUser}
+                onDeleteUser={deleteUser}
                 agentConfig={agentConfig}
                 setAgentConfig={setAgentConfig}
                 prompts={prompts}

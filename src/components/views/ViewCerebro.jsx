@@ -5,6 +5,10 @@ import {
 } from 'lucide-react';
 
 export default function ViewCerebro({
+  currentUser,
+  users = [],
+  onSaveUser,
+  onDeleteUser,
   agentConfig, setAgentConfig,
   prompts, setPrompts,
   mensajesBot, setMensajesBot,
@@ -18,6 +22,52 @@ export default function ViewCerebro({
 }) {
   const [subTabIA, setSubTabIA] = useState('General');
   const [selectedAgent, setSelectedAgent] = useState('Recepcionista');
+
+  // User Form States
+  const [editingUser, setEditingUser] = useState(null);
+  const [userName, setUserName] = useState('');
+  const [userPassword, setUserPassword] = useState('');
+  const [userRealName, setUserRealName] = useState('');
+  const [userRole, setUserRole] = useState('operator');
+  const [userChannelPhone, setUserChannelPhone] = useState(null);
+  const [userActive, setUserActive] = useState(true);
+
+  const handleStartAddUser = () => {
+    setEditingUser({ id: null });
+    setUserName('');
+    setUserPassword('');
+    setUserRealName('');
+    setUserRole('operator');
+    setUserChannelPhone(null);
+    setUserActive(true);
+  };
+
+  const handleStartEditUser = (user) => {
+    setEditingUser(user);
+    setUserName(user.username || '');
+    setUserPassword('');
+    setUserRealName(user.name || '');
+    setUserRole(user.role || 'operator');
+    setUserChannelPhone(user.channel_phone || null);
+    setUserActive(!!user.active);
+  };
+
+  const handleSaveUserClick = async (e) => {
+    e.preventDefault();
+    if (!userName.trim() || !userRealName.trim()) return;
+    const success = await onSaveUser({
+      id: editingUser.id,
+      username: userName,
+      password: userPassword,
+      name: userRealName,
+      role: userRole,
+      channel_phone: userRole === 'admin' ? null : userChannelPhone, // Admin always gets null channel
+      active: userActive ? 1 : 0
+    });
+    if (success) {
+      setEditingUser(null);
+    }
+  };
 
   // Channel Form States
   const [editingChannel, setEditingChannel] = useState(null);
@@ -83,7 +133,7 @@ export default function ViewCerebro({
       </div>
 
       <div className="flex space-x-8 border-b border-slate-200">
-        {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff', 'Aprendizaje', 'Conectores'].map(t => (
+        {['General', 'Mensajes', 'Captura de Datos', 'Prompt', 'Handoff', 'Aprendizaje', 'Conectores', 'Usuarios'].map(t => (
           <button
             key={t}
             onClick={() => setSubTabIA(t)}
@@ -664,6 +714,199 @@ export default function ViewCerebro({
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
               <p className="text-[9px] text-slate-400 italic leading-relaxed">
                 💡 Cada número que agregues aquí funcionará como un canal independiente. Los leads y conversaciones se separarán automáticamente en base al número al que escriba el cliente. En n8n, puedes consultar la API `/api/channels/by-phone/[NÚMERO]` para obtener la API Key de YCloud de forma dinámica.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTabIA === 'Usuarios' && (
+        <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6">
+          <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-8">
+            <div className="flex items-center justify-between border-b border-slate-50 pb-6">
+              <div className="flex items-center space-x-4">
+                <div className="h-12 w-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center"><ShieldCheck size={22} /></div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic">Gestión de Usuarios</h3>
+                  <p className="text-[10px] text-slate-400 italic">Administra los operadores de ventas y sus canales de WhatsApp asignados</p>
+                </div>
+              </div>
+              {!editingUser && (
+                <button
+                  onClick={handleStartAddUser}
+                  className="flex items-center space-x-2 bg-slate-900 hover:bg-[#FF6B00] text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95"
+                >
+                  <Plus size={14} /><span>Añadir Usuario</span>
+                </button>
+              )}
+            </div>
+
+            {editingUser ? (
+              <form onSubmit={handleSaveUserClick} className="space-y-6 max-w-2xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Completo</label>
+                    <input
+                      type="text"
+                      value={userRealName}
+                      onChange={e => setUserRealName(e.target.value)}
+                      placeholder="Ej: Carlos Gómez"
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Usuario (Login)</label>
+                    <input
+                      type="text"
+                      value={userName}
+                      onChange={e => setUserName(e.target.value)}
+                      placeholder="Ej: carlos"
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                      required
+                      disabled={editingUser.id !== null}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Contraseña {editingUser.id !== null && '(Dejar en blanco para mantener)'}
+                    </label>
+                    <input
+                      type="password"
+                      value={userPassword}
+                      onChange={e => setUserPassword(e.target.value)}
+                      placeholder={editingUser.id !== null ? "••••••••" : "Mínimo 6 caracteres"}
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                      required={editingUser.id === null}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Rol</label>
+                    <select
+                      value={userRole}
+                      onChange={e => setUserRole(e.target.value)}
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="operator">Operador de Ventas</option>
+                      <option value="admin">Administrador</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Canal de WhatsApp Asignado</label>
+                    <select
+                      value={userChannelPhone || ''}
+                      onChange={e => setUserChannelPhone(e.target.value || null)}
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">Ninguno (Acceso completo a todos los canales - Solo Admin)</option>
+                      {channels.map(chan => (
+                        <option key={chan.id} value={chan.phone}>
+                          {chan.name} ({chan.phone})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 w-fit">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado de la cuenta</label>
+                  <button
+                    type="button"
+                    onClick={() => setUserActive(!userActive)}
+                    className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userActive ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}
+                  >
+                    {userActive ? 'Activo' : 'Inactivo'}
+                  </button>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button
+                    type="submit"
+                    className="px-8 py-3.5 bg-slate-900 hover:bg-[#FF6B00] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md"
+                  >
+                    Guardar Usuario
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingUser(null)}
+                    className="px-8 py-3.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="overflow-x-auto rounded-[24px] border border-slate-100 shadow-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                      <th className="px-6 py-4">Usuario</th>
+                      <th className="px-6 py-4">Nombre Completo</th>
+                      <th className="px-6 py-4">Rol</th>
+                      <th className="px-6 py-4">Canal Asignado</th>
+                      <th className="px-6 py-4">Estado</th>
+                      <th className="px-6 py-4 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
+                    {users.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-10 text-center text-slate-400 italic">No hay usuarios registrados.</td>
+                      </tr>
+                    ) : users.map(user => (
+                      <tr key={user.id} className="hover:bg-slate-50/55 transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-slate-500">@{user.username}</td>
+                        <td className="px-6 py-4 font-black text-slate-800">{user.name}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border ${user.role === 'admin' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                            {user.role === 'admin' ? 'Admin' : 'Operador'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-medium">
+                          {user.channel_phone ? (
+                            <div className="flex items-center space-x-1.5">
+                              <Phone size={12} className="text-emerald-500" />
+                              <span>{channels.find(c => c.phone === user.channel_phone)?.name || 'Canal'} ({user.channel_phone})</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Acceso Global</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border ${user.active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                            {user.active ? 'Activo' : 'Inactivo'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end items-center space-x-2">
+                            <button
+                              onClick={() => handleStartEditUser(user)}
+                              className="p-2 bg-slate-100 text-slate-600 hover:bg-slate-900 hover:text-white rounded-xl transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              onClick={() => onDeleteUser(user.id)}
+                              className="p-2 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white rounded-xl transition-colors"
+                              title="Eliminar"
+                              disabled={currentUser?.id === user.id}
+                              style={{ opacity: currentUser?.id === user.id ? 0.4 : 1 }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <p className="text-[9px] text-slate-400 italic leading-relaxed">
+                💡 Los usuarios con rol de <strong>Operador</strong> solo podrán ver y gestionar los leads, citas, pedidos y mensajes que pertenezcan a su canal asignado. Además, el selector de canales se bloqueará a su número asignado y se les restringirá el acceso a las pestañas de Cerebro de la IA y Base RAG.
               </p>
             </div>
           </div>

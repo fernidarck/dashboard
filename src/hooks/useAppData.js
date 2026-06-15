@@ -10,6 +10,8 @@ export function useAppData(apiBase, authToken) {
   }, [authToken]);
 
   // --- STATE ---
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users, setUsers] = useState([]);
   const [leads, setLeads] = useState([]);
   const [channels, setChannels] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState('all');
@@ -92,6 +94,92 @@ export function useAppData(apiBase, authToken) {
       setChannels(await res.json());
     } catch (err) { console.error(err); }
   }, [apiFetch, apiBase]);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/users`);
+      if (res.ok) {
+        setUsers(await res.json());
+      }
+    } catch (err) { console.error(err); }
+  }, [apiFetch, apiBase]);
+
+  const saveUser = useCallback(async (user) => {
+    try {
+      const url = user.id ? `${apiBase}/api/users/${user.id}` : `${apiBase}/api/users`;
+      const method = user.id ? 'PUT' : 'POST';
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify(user)
+      });
+      if (res.ok) {
+        notify(user.id ? '✅ Usuario actualizado' : '✅ Usuario creado');
+        fetchUsers();
+        return true;
+      } else {
+        const d = await res.json();
+        notify(`❌ Error: ${d.error || 'No se pudo guardar'}`);
+        return false;
+      }
+    } catch (err) {
+      console.error(err);
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, notify, fetchUsers]);
+
+  const deleteUser = useCallback(async (id) => {
+    if (!window.confirm('¿Eliminar este usuario?')) return;
+    try {
+      const res = await apiFetch(`${apiBase}/api/users/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        notify('✅ Usuario eliminado');
+        fetchUsers();
+        return true;
+      } else {
+        const d = await res.json();
+        notify(`❌ Error: ${d.error || 'No se pudo eliminar'}`);
+        return false;
+      }
+    } catch (err) {
+      console.error(err);
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, notify, fetchUsers]);
+
+  // Auth synchronization effect
+  useEffect(() => {
+    if (!authToken) {
+      setCurrentUser(null);
+      setUsers([]);
+      return;
+    }
+    const fetchMe = async () => {
+      try {
+        const res = await apiFetch(`${apiBase}/api/auth/me`);
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentUser(data.user);
+          if (data.user?.role === 'admin') {
+            fetchUsers();
+          }
+        } else {
+          setCurrentUser(null);
+        }
+      } catch (err) {
+        console.error("Error fetching me:", err);
+      }
+    };
+    fetchMe();
+  }, [authToken, apiFetch, apiBase, fetchUsers]);
+
+  // Override selected channel if user has assigned channel
+  useEffect(() => {
+    if (currentUser?.channel_phone) {
+      setSelectedChannel(currentUser.channel_phone);
+    }
+  }, [currentUser]);
 
   const saveChannel = useCallback(async (channel) => {
     try {
@@ -544,6 +632,7 @@ export function useAppData(apiBase, authToken) {
 
   return {
     // State
+    currentUser, users, setCurrentUser,
     leads, messages, agenda, pedidos, documents, products,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
     agentConfig, setAgentConfig, prompts, setPrompts,
@@ -553,7 +642,7 @@ export function useAppData(apiBase, authToken) {
     // Fetch
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
-    fetchChannels,
+    fetchChannels, fetchUsers,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, updatePedidoEstado, savePedido, deletePedido,
@@ -562,7 +651,7 @@ export function useAppData(apiBase, authToken) {
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
     uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
-    saveChannel, deleteChannel,
+    saveChannel, deleteChannel, saveUser, deleteUser,
     // Alerts
     playMessageAlert, notify,
   };

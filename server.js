@@ -9,7 +9,11 @@ import multer from 'multer';
 import pdf from 'pdf-parse';
 import fs from 'fs';
 import * as XLSX from 'xlsx';
+import crypto from 'crypto';
 
+function hashPassword(password) {
+  return crypto.createHash('sha256').update(password).digest('hex');
+}
 
 process.on('uncaughtException', (err) => {
   console.error('❌ UNCAUGHT EXCEPTION:', err.message);
@@ -39,10 +43,10 @@ app.use(express.json());
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
 let currentToken = process.env.DASHBOARD_TOKEN || 'dev-insecure-token';
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   // Webhooks de entrada y endpoints públicos del bot no requieren auth
-  const publicPaths = ['/webhook/', '/bot/status/', '/agent/prompt'];
-  if (publicPaths.some(p => req.path.startsWith(p))) return next();
+  const publicPaths = ['/webhook/', '/bot/status/', '/agent/prompt', '/auth/login'];
+  if (publicPaths.some(p => req.path.startsWith(p) || req.path === p)) return next();
 
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -51,10 +55,40 @@ function requireAuth(req, res, next) {
   const tokenSent = authHeader.slice(7);
   const envToken = process.env.DASHBOARD_TOKEN || 'dev-insecure-token';
   const n8nStaticToken = 'onecontrol-n8n-token-static-2026';
-  if (tokenSent !== currentToken && tokenSent !== envToken && tokenSent !== n8nStaticToken) {
-    return res.status(401).json({ error: 'Token inválido' });
+
+  // 1. Verificar tokens estáticos globales
+  if (tokenSent === currentToken || tokenSent === envToken || tokenSent === n8nStaticToken) {
+    req.user = {
+      id: 0,
+      username: 'admin',
+      name: 'Administrador (Token)',
+      role: 'admin',
+      channel_phone: null
+    };
+    return next();
   }
-  next();
+
+  // 2. Verificar sesiones dinámicas en la base de datos
+  try {
+    const session = await db.get(
+      "SELECT s.token, u.id, u.username, u.name, u.role, u.channel_phone FROM sessions s INNER JOIN users u ON s.user_id = u.id WHERE s.token = ? AND u.active = 1",
+      tokenSent
+    );
+    if (session) {
+      req.user = {
+        id: session.id,
+        username: session.username,
+        name: session.name,
+        role: session.role,
+        channel_phone: session.channel_phone
+      };
+      return next();
+    }
+  } catch (err) {
+    console.error("❌ Error en requireAuth:", err.message);
+  }
+
+  return res.status(401).json({ error: 'Token inválido' });
 }
 
 app.use('/api', requireAuth);
@@ -248,7 +282,40 @@ async function setup() {
         active INTEGER DEFAULT 1,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT DEFAULT 'operator',
+        channel_phone TEXT,
+        active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
     `);
+
+    // Sembrar el usuario administrador por defecto si no hay usuarios
+    try {
+      const userCount = await db.get("SELECT COUNT(*) as count FROM users");
+      if (userCount.count === 0) {
+        const hashed = hashPassword('admin');
+        await db.run(
+          "INSERT INTO users (username, password, name, role, active) VALUES (?, ?, ?, ?, ?)",
+          'admin', hashed, 'Administrador', 'admin', 1
+        );
+        console.log("👤 Usuario administrador inicial creado: 'admin' / 'admin'");
+      }
+    } catch (e) {
+      console.error("⚠️ Error sembrando administrador:", e);
+    }
 
     // Migraciones rápidas (Columnas nuevas)
     try { await db.exec("ALTER TABLE leads ADD COLUMN archived INTEGER DEFAULT 0"); } catch(e){}
@@ -446,7 +513,14 @@ app.get('/api/stats', async (req, res) => {
 });
 app.get('/api/capture/stats', async (req, res) => {
   try {
-    const total = await db.get("SELECT COUNT(*) as c FROM leads WHERE archived = 0");
+    let totalQuery = "SELECT COUNT(*) as c FROM leads WHERE archived = 0";
+    const params = [];
+    if (req.user.channel_phone) {
+      totalQuery += " AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?";
+      params.push(String(req.user.channel_phone).replace(/\D/g, ''));
+    }
+    const total = await db.get(totalQuery, ...params);
+
     const fields = [
       { key: 'nombre',    label: 'Nombre' },
       { key: 'phone',     label: 'Teléfono' },
@@ -459,7 +533,13 @@ app.get('/api/capture/stats', async (req, res) => {
       { key: 'notas',     label: 'Notas' },
     ];
     const stats = await Promise.all(fields.map(async f => {
-      const row = await db.get(`SELECT COUNT(*) as c FROM leads WHERE archived = 0 AND ${f.key} IS NOT NULL AND TRIM(${f.key}) != ''`);
+      let q = `SELECT COUNT(*) as c FROM leads WHERE archived = 0 AND ${f.key} IS NOT NULL AND TRIM(${f.key}) != ''`;
+      const fParams = [];
+      if (req.user.channel_phone) {
+        q += " AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?";
+        fParams.push(String(req.user.channel_phone).replace(/\D/g, ''));
+      }
+      const row = await db.get(q, ...fParams);
       return { ...f, captured: row.c, total: total.c, pct: total.c > 0 ? Math.round((row.c / total.c) * 100) : 0 };
     }));
     res.json(stats);
@@ -470,6 +550,12 @@ app.get('/api/leads', async (req, res) => {
   try {
     const { archived, channel_phone } = req.query;
     const isArchived = archived === 'true' ? 1 : 0;
+    
+    // Force filtering by the operator's channel phone if defined
+    let activeChannelPhone = channel_phone;
+    if (req.user.channel_phone) {
+      activeChannelPhone = req.user.channel_phone;
+    }
     
     let query = `
       SELECT l.*,
@@ -482,8 +568,8 @@ app.get('/api/leads', async (req, res) => {
     `;
     const params = [isArchived];
 
-    if (channel_phone && channel_phone !== 'all') {
-      const cleanChan = String(channel_phone).replace(/\D/g, '');
+    if (activeChannelPhone && activeChannelPhone !== 'all') {
+      const cleanChan = String(activeChannelPhone).replace(/\D/g, '');
       query += ` AND REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?`;
       params.push(cleanChan);
     }
@@ -863,7 +949,17 @@ app.post('/api/leads/handoff/resolve', async (req, res) => {
 
 app.get('/api/messages/:leadId', async (req, res) => {
   try {
-    const rows = await db.all("SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC", req.params.leadId);
+    const leadId = req.params.leadId;
+    if (req.user.channel_phone) {
+      const lead = await db.get("SELECT channel_phone FROM leads WHERE id = ?", leadId);
+      if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
+      const cleanLeadChan = String(lead.channel_phone || '').replace(/\D/g, '');
+      const cleanUserChan = String(req.user.channel_phone).replace(/\D/g, '');
+      if (cleanLeadChan !== cleanUserChan) {
+        return res.status(403).json({ error: "No tienes permiso para ver este lead" });
+      }
+    }
+    const rows = await db.all("SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC", leadId);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1084,10 +1180,22 @@ app.post('/api/pedidos', async (req, res) => {
   }
 });
 
-app.get('/api/pedidos', async (_req, res) => {
+app.get('/api/pedidos', async (req, res) => {
   try {
-    const rows = await db.all('SELECT * FROM pedidos ORDER BY id DESC');
-    res.json(rows);
+    if (req.user.channel_phone) {
+      const cleanChan = String(req.user.channel_phone).replace(/\D/g, '');
+      const rows = await db.all(
+        `SELECT p.* FROM pedidos p
+         INNER JOIN leads l ON REPLACE(REPLACE(REPLACE(p.phone, '+', ''), ' ', ''), '-', '') = REPLACE(REPLACE(REPLACE(l.phone, '+', ''), ' ', ''), '-', '')
+         WHERE REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?
+         ORDER BY p.id DESC`,
+        cleanChan
+      );
+      res.json(rows);
+    } else {
+      const rows = await db.all('SELECT * FROM pedidos ORDER BY id DESC');
+      res.json(rows);
+    }
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1236,6 +1344,155 @@ app.delete('/api/channels/:id', async (req, res) => {
   }
 });
 
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "Usuario y contraseña son requeridos" });
+    }
+    const cleanUsername = String(username).trim().toLowerCase();
+    const hashed = hashPassword(password);
+
+    const user = await db.get("SELECT * FROM users WHERE username = ? AND active = 1", cleanUsername);
+    if (!user || user.password !== hashed) {
+      return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+    }
+
+    // Generar session token
+    const token = crypto.randomBytes(32).toString('hex');
+    await db.run("INSERT INTO sessions (token, user_id) VALUES (?, ?)", token, user.id);
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        channel_phone: user.channel_phone
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      await db.run("DELETE FROM sessions WHERE token = ?", token);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  res.json({ user: req.user });
+});
+
+// Middleware para verificar que el usuario sea administrador
+function requireAdmin(req, res, next) {
+  if (req.user && req.user.role === 'admin') {
+    return next();
+  }
+  return res.status(403).json({ error: "Acceso denegado: se requiere rol de administrador" });
+}
+
+app.get('/api/users', requireAdmin, async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT id, username, name, role, channel_phone, active, created_at FROM users ORDER BY id ASC");
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', requireAdmin, async (req, res) => {
+  try {
+    const { username, password, name, role, channel_phone, active } = req.body;
+    if (!username || !password || !name) {
+      return res.status(400).json({ error: "Usuario, contraseña y nombre son requeridos" });
+    }
+    const cleanUsername = String(username).trim().toLowerCase();
+    
+    // Check if username already exists
+    const existing = await db.get("SELECT id FROM users WHERE username = ?", cleanUsername);
+    if (existing) {
+      return res.status(400).json({ error: "Este nombre de usuario ya está registrado" });
+    }
+
+    const hashed = hashPassword(password);
+    const result = await db.run(
+      "INSERT INTO users (username, password, name, role, channel_phone, active) VALUES (?, ?, ?, ?, ?, ?)",
+      cleanUsername, hashed, name, role || 'operator', channel_phone || null, active ?? 1
+    );
+    res.json({ success: true, id: result.lastID });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const { username, password, name, role, channel_phone, active } = req.body;
+    if (!username || !name) {
+      return res.status(400).json({ error: "Usuario y nombre son requeridos" });
+    }
+    const cleanUsername = String(username).trim().toLowerCase();
+
+    // Check if another user has the same username
+    const existing = await db.get("SELECT id FROM users WHERE username = ? AND id != ?", cleanUsername, req.params.id);
+    if (existing) {
+      return res.status(400).json({ error: "Este nombre de usuario ya está en uso" });
+    }
+
+    if (password && password.trim() !== '') {
+      // Update password as well
+      const hashed = hashPassword(password);
+      await db.run(
+        "UPDATE users SET username=?, password=?, name=?, role=?, channel_phone=?, active=? WHERE id=?",
+        cleanUsername, hashed, name, role, channel_phone || null, active ?? 1, req.params.id
+      );
+    } else {
+      // Update without password
+      await db.run(
+        "UPDATE users SET username=?, name=?, role=?, channel_phone=?, active=? WHERE id=?",
+        cleanUsername, name, role, channel_phone || null, active ?? 1, req.params.id
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', requireAdmin, async (req, res) => {
+  try {
+    // Prevent deleting the currently logged-in user
+    if (req.user.id === parseInt(req.params.id)) {
+      return res.status(400).json({ error: "No puedes eliminar tu propio usuario" });
+    }
+    // Prevent deleting the primary admin user (id = 1) if it's the only admin
+    const countAdmins = await db.get("SELECT COUNT(*) as c FROM users WHERE role = 'admin'");
+    const targetUser = await db.get("SELECT role FROM users WHERE id = ?", req.params.id);
+    if (targetUser && targetUser.role === 'admin' && countAdmins.c <= 1) {
+      return res.status(400).json({ error: "No se puede eliminar el último administrador" });
+    }
+
+    // Delete active sessions for the user first
+    await db.run("DELETE FROM sessions WHERE user_id = ?", req.params.id);
+    await db.run("DELETE FROM users WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/change-token', async (req, res) => {
   try {
     const { newToken } = req.body;
@@ -1256,6 +1513,16 @@ app.post('/api/messages/send', async (req, res) => {
   try {
     const { leadId, text, sender, phone } = req.body;
     if (!leadId || !text) return res.status(400).json({ error: "Faltan datos" });
+
+    if (req.user.channel_phone) {
+      const lead = await db.get("SELECT channel_phone FROM leads WHERE id = ?", leadId);
+      if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
+      const cleanLeadChan = String(lead.channel_phone || '').replace(/\D/g, '');
+      const cleanUserChan = String(req.user.channel_phone).replace(/\D/g, '');
+      if (cleanLeadChan !== cleanUserChan) {
+        return res.status(403).json({ error: "No tienes permiso para enviar mensajes a este lead" });
+      }
+    }
 
     const msgSender = sender || 'agent';
     const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -1471,10 +1738,22 @@ Esto notifica al equipo automáticamente. NUNCA digas "asesor te contactará" si
 });
 
 // ─── AGENDA ───────────────────────────────────────────────────────────────────
-app.get('/api/agenda', async (_req, res) => {
+app.get('/api/agenda', async (req, res) => {
   try {
-    const rows = await db.all("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC");
-    res.json(rows);
+    if (req.user.channel_phone) {
+      const cleanChan = String(req.user.channel_phone).replace(/\D/g, '');
+      const rows = await db.all(
+        `SELECT a.* FROM agenda a
+         INNER JOIN leads l ON REPLACE(REPLACE(REPLACE(a.phone, '+', ''), ' ', ''), '-', '') = REPLACE(REPLACE(REPLACE(l.phone, '+', ''), ' ', ''), '-', '')
+         WHERE REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?
+         ORDER BY a.fecha ASC, a.hora ASC`,
+        cleanChan
+      );
+      res.json(rows);
+    } else {
+      const rows = await db.all("SELECT * FROM agenda ORDER BY fecha ASC, hora ASC");
+      res.json(rows);
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
