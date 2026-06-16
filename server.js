@@ -45,8 +45,17 @@ let currentToken = process.env.DASHBOARD_TOKEN || 'dev-insecure-token';
 
 async function requireAuth(req, res, next) {
   // Webhooks de entrada y endpoints públicos del bot no requieren auth
-  const publicPaths = ['/webhook/', '/bot/status/', '/agent/prompt', '/auth/login'];
+  const publicPaths = [
+    '/webhook/',
+    '/bot/status/',
+    '/agent/prompt',
+    '/auth/login',
+    '/rag/context',
+    '/leads/handoff',
+    '/leads/update-contact'
+  ];
   if (publicPaths.some(p => req.path.startsWith(p) || req.path === p)) return next();
+  if (req.path === '/settings' && req.method === 'GET') return next();
 
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
