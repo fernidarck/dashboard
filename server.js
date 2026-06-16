@@ -721,6 +721,93 @@ app.post('/api/webhook/whatsapp', async (req, res) => {
   }
 });
 
+app.get('/api/webhook/setup-all-ycloud', async (req, res) => {
+  try {
+    const channels = await db.all("SELECT phone, api_key FROM whatsapp_channels WHERE active = 1");
+    const results = [];
+
+    for (const channel of channels) {
+      const apiKey = channel.api_key;
+      const phone = channel.phone;
+      if (!apiKey || apiKey.trim() === '') {
+        results.push({ phone, status: "ignored (empty api key)" });
+        continue;
+      }
+
+      console.log(`🔧 Configurando webhook YCloud para canal ${phone}...`);
+      
+      // 1. Obtener webhooks existentes para verificar si ya está configurado
+      const getRes = await fetch("https://api.ycloud.com/v2/webhookEndpoints", {
+        headers: { "X-API-Key": apiKey, "Accept": "application/json" }
+      });
+
+      if (!getRes.ok) {
+        results.push({ phone, status: `error fetching: ${getRes.status} ${await getRes.text()}` });
+        continue;
+      }
+
+      const getJson = await getRes.json();
+      const targetUrl = "https://appn8n-n8n.83aqlq.easypanel.host/webhook/21228c18-514c-4039-9afb-ac40c3635f7c";
+      const existing = getJson.items?.find(item => item.url === targetUrl);
+
+      if (existing) {
+        if (existing.status === 'active') {
+          results.push({ phone, status: "already active" });
+          continue;
+        } else {
+          // Reactivar si está deshabilitado
+          const patchRes = await fetch(`https://api.ycloud.com/v2/webhookEndpoints/${existing.id}`, {
+            method: 'PATCH',
+            headers: {
+              "X-API-Key": apiKey,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({ status: 'active' })
+          });
+          results.push({ phone, status: `reactivated: ${patchRes.status}` });
+          continue;
+        }
+      }
+
+      // 2. Crear nuevo webhook endpoint
+      const postRes = await fetch("https://api.ycloud.com/v2/webhookEndpoints", {
+        method: 'POST',
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({
+          url: targetUrl,
+          enabledEvents: [
+            "whatsapp.inbound_message.received",
+            "whatsapp.smb.message.echoes",
+            "contact.attributes_changed"
+          ],
+          eventProperties: [
+            {
+              event: "contact.attributes_changed",
+              properties: ["tags"]
+            }
+          ],
+          status: "active"
+        })
+      });
+
+      if (postRes.ok) {
+        results.push({ phone, status: "created successfully" });
+      } else {
+        results.push({ phone, status: `failed creating: ${postRes.status} ${await postRes.text()}` });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/webhook/n8n', async (req, res) => {
   const data = req.body;
   console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
