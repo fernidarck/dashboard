@@ -1545,9 +1545,9 @@ app.post('/api/messages/send', async (req, res) => {
       if (targetPhone) {
         // Obtenemos la configuración de canal específica para el lead
         const channel = await getChannelConfig(lead?.channel_phone);
-        const outboundWebhook = channel?.outbound_webhook || await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message");
+        const outboundWebhook = channel?.outbound_webhook || await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK);
 
-        if (outboundWebhook) {
+        if (outboundWebhook && outboundWebhook.trim() !== '') {
           // Enviar texto limpio a n8n
           if (cleanText) {
             fetch(outboundWebhook, {
@@ -1557,6 +1557,31 @@ app.post('/api/messages/send', async (req, res) => {
             }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
           }
           // Enviar imagen directo por YCloud si existe
+          if (imageUrl) {
+            sendImageViaYCloud(targetPhone, imageUrl, '', lead?.channel_phone);
+          }
+        } else {
+          // FALLBACK DIRECTO A YCLOUD: Si no hay webhook de n8n, enviar el texto directamente a YCloud
+          const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+          const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+          if (apiKey && fromNum && cleanText) {
+            console.log(`📩 Enviando texto directamente por YCloud (Sin n8n) desde ${fromNum} a ${targetPhone}`);
+            fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+              body: JSON.stringify({
+                from: fromNum,
+                to: targetPhone,
+                type: 'text',
+                text: { body: cleanText }
+              })
+            }).then(async r => {
+              if (!r.ok) {
+                const t = await r.text();
+                console.error(`❌ Error directo YCloud: ${r.status} ${t}`);
+              }
+            }).catch(err => console.error("❌ Error de red directo YCloud:", err.message));
+          }
           if (imageUrl) {
             sendImageViaYCloud(targetPhone, imageUrl, '', lead?.channel_phone);
           }
