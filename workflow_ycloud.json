@@ -1366,7 +1366,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"from\": \"+50244315578\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto1 }}\"\n  }\n}",
+        "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto1 }}\"\n  }\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -1393,7 +1393,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"from\": \"+50244315578\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto2 }}\"\n  }\n}",
+        "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto2 }}\"\n  }\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -1628,7 +1628,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({ \"from\": \"+50244315578\", \"to\": $('Webhook').item.json.body.whatsappInboundMessage.from, \"type\": \"text\", \"text\": { \"body\": $json.texto_limpio, \"preview_url\": true } }) }}",
+        "jsonBody": "={{ ({ \"from\": $('Webhook').item.json.body.whatsappInboundMessage.to, \"to\": $('Webhook').item.json.body.whatsappInboundMessage.from, \"type\": \"text\", \"text\": { \"body\": $json.texto_limpio, \"preview_url\": true } }) }}",
         "options": {}
       },
       "id": "92e3c409-5ae1-460a-af33-db025d6621f6",
@@ -1776,7 +1776,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"from\": \"+50244315578\",\n  \"to\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.from }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.mediaUrl }}\",\n    \"caption\": \"{{ $json.texto_limpio }}\"\n  }\n}",
+        "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.from }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.mediaUrl }}\",\n    \"caption\": \"{{ $json.texto_limpio }}\"\n  }\n}",
         "options": {}
       },
       "id": "667402aa-e652-450f-ab08-c001e82f4c32",

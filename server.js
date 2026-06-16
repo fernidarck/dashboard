@@ -1553,7 +1553,11 @@ app.post('/api/messages/send', async (req, res) => {
             fetch(outboundWebhook, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ phone: targetPhone, text: cleanText })
+              body: JSON.stringify({
+                phone: targetPhone,
+                text: cleanText,
+                channel_phone: lead?.channel_phone || channel?.phone || null
+              })
             }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
           }
           // Enviar imagen directo por YCloud si existe
