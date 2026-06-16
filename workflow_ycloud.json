@@ -1056,8 +1056,7 @@
     {
       "parameters": {
         "url": "https://api.ycloud.com/v2/contact/contacts",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "none",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -1067,7 +1066,17 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1077,12 +1086,6 @@
       ],
       "id": "2b19efcf-fbdc-4b47-ac98-443e75e9d6c1",
       "name": "GET Contacto Cliente",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "NphMGDjGcAx9asTH",
-          "name": "ycloud"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -1178,7 +1181,7 @@
             },
             {
               "name": "X-API-key",
-              "value": "a25aaba6428e12e4df6310296f675272"
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
             }
           ]
         },
@@ -1202,7 +1205,7 @@
           "parameters": [
             {
               "name": "X-API-key",
-              "value": "a25aaba6428e12e4df6310296f675272"
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
             },
             {
               "name": "accept",
@@ -1249,7 +1252,7 @@
             },
             {
               "name": "X-API-key",
-              "value": "a25aaba6428e12e4df6310296f675272"
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
             }
           ]
         },
@@ -1362,12 +1365,21 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.ycloud.com/v2/whatsapp/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto1 }}\"\n  }\n}",
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1377,24 +1389,27 @@
       ],
       "id": "81c3ad81-9433-4821-b4f6-b06de847e21e",
       "name": "Enviar Foto 1 YCloud",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "NphMGDjGcAx9asTH",
-          "name": "ycloud"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://api.ycloud.com/v2/whatsapp/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto2 }}\"\n  }\n}",
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1404,12 +1419,6 @@
       ],
       "id": "3f8d79aa-0460-457e-a3d2-d562aeee05e2",
       "name": "Enviar Foto 2 YCloud",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "NphMGDjGcAx9asTH",
-          "name": "ycloud"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -1624,12 +1633,21 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.ycloud.com/v2/whatsapp/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ ({ \"from\": $('Webhook').item.json.body.whatsappInboundMessage.to, \"to\": $('Webhook').item.json.body.whatsappInboundMessage.from, \"type\": \"text\", \"text\": { \"body\": $json.texto_limpio, \"preview_url\": true } }) }}",
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
+            }
+          ]
+        }
       },
       "id": "92e3c409-5ae1-460a-af33-db025d6621f6",
       "name": "enviar cliente",
@@ -1639,12 +1657,6 @@
         -4320,
         -928
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "NphMGDjGcAx9asTH",
-          "name": "ycloud"
-        }
-      },
       "onError": "continueErrorOutput"
     },
     {
@@ -1772,12 +1784,21 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.ycloud.com/v2/whatsapp/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.from }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.mediaUrl }}\",\n    \"caption\": \"{{ $json.texto_limpio }}\"\n  }\n}",
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
+            }
+          ]
+        }
       },
       "id": "667402aa-e652-450f-ab08-c001e82f4c32",
       "name": "Enviar Foto Real",
@@ -1786,13 +1807,7 @@
       "position": [
         -4624,
         -1152
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "NphMGDjGcAx9asTH",
-          "name": "ycloud"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -1876,6 +1891,32 @@
       ],
       "id": "01c9a101-1e9a-4c22-921c-a99f36f9a765",
       "name": "Guardar Mensaje Agente"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://ycloud-dashboard.83aqlq.easypanel.host/api/bot/channel-key",
+        "authentication": "none",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.to }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -10000,
+        224
+      ],
+      "id": "get-channel-key-node-id",
+      "name": "Obtener API Key"
     }
   ],
   "connections": {
@@ -2198,7 +2239,7 @@
       "main": [
         [
           {
-            "node": "Cliente o Agente",
+            "node": "Obtener API Key",
             "type": "main",
             "index": 0
           }
@@ -2532,6 +2573,17 @@
         [
           {
             "node": "Guardar Mensaje Agente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener API Key": {
+      "main": [
+        [
+          {
+            "node": "Cliente o Agente",
             "type": "main",
             "index": 0
           }

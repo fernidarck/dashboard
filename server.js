@@ -52,7 +52,8 @@ async function requireAuth(req, res, next) {
     '/auth/login',
     '/rag/context',
     '/leads/handoff',
-    '/leads/update-contact'
+    '/leads/update-contact',
+    '/bot/channel-key'
   ];
   if (publicPaths.some(p => req.path.startsWith(p) || req.path === p)) return next();
   if (req.path === '/settings' && req.method === 'GET') return next();
@@ -1258,6 +1259,26 @@ app.get('/api/settings', async (_req, res) => {
     // El dashboard debe recibir los prompts limpios. 
     // n8n usa /api/agent/prompt que ya tiene su propia inyección lógica.
     res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/bot/channel-key', async (req, res) => {
+  try {
+    const phone = req.query.phone;
+    if (!phone) return res.status(400).json({ error: "Falta phone" });
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const channel = await db.get(
+      "SELECT api_key FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND active = 1",
+      cleanPhone
+    );
+    if (channel && channel.api_key && channel.api_key.trim() !== '') {
+      return res.json({ api_key: channel.api_key });
+    }
+    // Fallback a la API key por defecto del env
+    const defaultApiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    res.json({ api_key: defaultApiKey });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
