@@ -109,9 +109,9 @@
       "parameters": {
         "model": {
           "__rl": true,
-          "value": "gpt-4o",
+          "value": "deepseek-v4-pro",
           "mode": "list",
-          "cachedResultName": "gpt-4o"
+          "cachedResultName": "deepseek-v4-pro"
         },
         "options": {
           "temperature": 0.5
@@ -347,9 +347,9 @@
         "operation": "analyze",
         "modelId": {
           "__rl": true,
-          "value": "gpt-4o",
+          "value": "deepseek-v4-pro",
           "mode": "list",
-          "cachedResultName": "GPT-4O"
+          "cachedResultName": "deepseek-v4-pro"
         },
         "text": "=ROL: Analista técnico visual especializado en automatización (onecontrol.shop).\n\nOBJETIVO:\nAnalizar cualquier imagen recibida y generar un reporte técnico estructurado, útil para cotización o diagnóstico.\n\nREGLAS GENERALES:\n- Enfocarse únicamente en objetos, equipos, estructuras o productos.\n- Ignorar completamente personas, rostros, documentos o información sensible.\n- No identificar identidad de personas ni datos personales.\n- Si la imagen no contiene elementos relevantes (portones, motores, muebles u objetos técnicos), clasificar como \"OTRO\".\n* Si el portón NO tiene motor -> SERVICIO: VENTA DE AUTOMATIZACIÓN\n🔍 IMPORTANTE: Extrae también el MODELO ESPECÍFICO si es visible.\nBusca en la imagen:\n- Etiquetas con números/letras (ej. \"422\", \"844\", \"S2500\", \"LA400\")\n- Texto cerca del logo de la marca\n- Placas con código de modelo\n\nSi NO ves modelo claro, escribe \"MODELO: NO VISIBLE\"\n\nFORMATO ACTUALIZADO:\nSERVICIO_BUSQUEDA: [...]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA] | [MODELO] | [TIPO inicial] | [ESTADO]. DETALLE: [...]\n\nINSTRUCCIONES DE IDENTIFICACIÓN:\n\n1. MOTORES:\n- Detectar si hay motor de portón.\n- Identificar marca si es visible (Liftmaster, FAAC, PPA, Nice, Genius, etc.).\n- Identificar MODELO si es visible (números/códigos en etiquetas, ej: \"422\", \"LA400\", \"884\").\n- Tipo de mecanismo: Cremallera, Brazo/Pistón, Cadena.\n- DETERMINAR HIDRÁULICO vs ESTÁNDAR:\n  * HIDRÁULICO: pistón robusto + sistema visible de aceite + más grande + cuerpo metálico cilíndrico macizo\n  * ESTÁNDAR (electromecánico): brazo articulado + caja con motor eléctrico visible + más pequeño\n  * 🚨 Si NO podés determinar con CERTEZA si es hidráulico o estándar → pon \"REQUIERE_VERIFICACION\"\n- 🚨 NUNCA pongas \"ESTÁNDAR\" si no estás 100% seguro. Es preferible \"REQUIERE_VERIFICACION\"\n\nCLASIFICACIÓN DE SERVICIO:\n- Si es Cadena → MANTENIMIENTO MOTORES DE CADENA\n- Si es Cremallera → MANTENIMIENTO MOTORES DE CREMALLERA\n- Si es Brazo/Pistón ESTÁNDAR (CONFIRMADO) → MANTENIMIENTO MOTORES DE BRAZOS\n- Si es Brazo/Pistón HIDRÁULICO (CONFIRMADO) → MANTENIMIENTO DE EQUIPOS HIDRAULICOS\n- Si REQUIERE_VERIFICACION → REVISAR_TIPO_MOTOR\n\nFORMATO DE SALIDA (OBLIGATORIO):\nSERVICIO_BUSQUEDA: [Nombre de la CLASIFICACIÓN o REVISAR_TIPO_MOTOR]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA o SIN MARCA] | [MODELO o SIN MODELO] | [TIPO: HIDRÁULICO/ESTÁNDAR/REQUIERE_VERIFICACION] | [ESTADO]. DETALLE: [...]\n2. PORTONES:\n- Tipo: Corredizo, Abatible, Levadizo.\n- Estado: funcional, oxidado, descarrilado, golpeado, incompleto.\n- ¿TIENE MOTOR INSTALADO?: [SÍ/NO/NO SE VE].\n- INTENCIÓN PROBABLE: \n  * Si TIENE motor -> Mantenimiento o Reparación.\n  * Si NO tiene motor -> Automatización (Venta de motor nuevo).\n\n3. MUEBLES (si aplica):\n- Tipo de mueble (ej. Zapatera, estantería).\n- Material: melamina, metal, madera.\n- Estado: armado, desarmado, dañado.\n\n4. OTROS OBJETOS Y ACCESORIOS DE TIENDA:\n- Si no es portón/motor/mueble, identificar el objeto (ej. Electrocerradura, Control remoto, Sensor).\n- Describir el objeto principal de forma técnica y clara.\n- Para accesorios o muebles, la CLASIFICACIÓN DE SERVICIO debe ser el nombre común del producto.\n* Si el portón NO tiene motor -> SERVICIO: VENTA DE AUTOMATIZACIÓN\n5. ESTADO TÉCNICO GENERAL:\n- Nuevo\n- Usado\n- Dañado\n- Referencia (cuando el cliente solo muestra ejemplo)\n\nREGLAS CRÍTICAS:\n- No inventar marcas. Si no es visible, usar \"SIN MARCA\".\n- Si no se puede determinar el tipo, usar \"NO IDENTIFICABLE\".\n- NUNCA respondas que no puedes asistir con la solicitud si hay un producto en la imagen. Si el objeto no es un motor, descríbelo y asígnale su nombre comercial en SERVICIO_BUSQUEDA.\n- Priorizar precisión sobre suposición.\n\nFORMATO DE SALIDA (OBLIGATORIO):\nSERVICIO_BUSQUEDA: [Nombre de la CLASIFICACIÓN DE SERVICIO o nombre del producto detectado]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA] | [TIPO: HIDRÁULICO/ESTÁNDAR/NO IDENTIFICABLE] | [ESTADO]. DETALLE: [Descripción técnica clara y útil para diagnóstico o venta].",
         "inputType": "base64",
@@ -482,9 +482,9 @@
       "parameters": {
         "model": {
           "__rl": true,
-          "value": "gpt-4o",
+          "value": "deepseek-v4-pro",
           "mode": "list",
-          "cachedResultName": "gpt-4o"
+          "cachedResultName": "deepseek-v4-pro"
         },
         "options": {}
       },
