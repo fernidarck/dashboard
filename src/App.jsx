@@ -40,7 +40,7 @@ export default function App() {
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
     uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
-    saveChannel, deleteChannel, saveUser, deleteUser,
+    saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     playMessageAlert,
   } = useAppData(API_BASE_URL, authToken);
 
@@ -150,6 +150,16 @@ export default function App() {
 
   if (!authToken) return <Login onLogin={(token) => { localStorage.setItem('dashboard_token', token); setAuthToken(token); }} />;
 
+  const currentChannelObj = channels.find(c => {
+    const cPhone = String(c.phone || '').replace(/\D/g, '');
+    const selPhone = String(selectedChannel || '').replace(/\D/g, '');
+    return cPhone === selPhone;
+  });
+  const activeChannelPhone = currentChannelObj?.phone || (channels[0]?.phone);
+  const activeChannelBotEnabled = currentChannelObj
+    ? currentChannelObj.bot_active !== 0
+    : (channels[0] ? channels[0].bot_active !== 0 : true);
+
   const SidebarItem = ({ icon: Icon, label, id }) => (
     <button
       onClick={() => { setActiveTab(id); setSidebarOpen(false); }}
@@ -216,11 +226,16 @@ export default function App() {
             <div className="text-[9px] font-bold text-slate-400 truncate max-w-[120px]">{currentUser?.name || currentUser?.username || 'Cargando...'}</div>
           </div>
           <button
-            onClick={() => setBotEnabled(v => !v)}
-            className={`w-full py-3 rounded-2xl flex items-center justify-center space-x-2 font-black text-[10px] uppercase tracking-widest transition-all ${botEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-200 text-slate-500'}`}
+            onClick={() => {
+              if (activeChannelPhone) {
+                toggleChannelBot(activeChannelPhone, !activeChannelBotEnabled);
+              }
+            }}
+            className={`w-full py-3 rounded-2xl flex items-center justify-center space-x-2 font-black text-[10px] uppercase tracking-widest transition-all ${activeChannelBotEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-200 text-slate-500'}`}
+            disabled={!activeChannelPhone}
           >
             <Power size={14} />
-            <span>IA {botEnabled ? 'Encendida' : 'Manual'}</span>
+            <span>IA {activeChannelBotEnabled ? 'Encendida' : 'Manual'}</span>
           </button>
           {currentUser?.role === 'admin' && (
             <button

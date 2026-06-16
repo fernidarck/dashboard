@@ -225,6 +225,28 @@ export function useAppData(apiBase, authToken) {
     }
   }, [apiFetch, apiBase, notify, fetchChannels]);
 
+  const toggleChannelBot = useCallback(async (phone, enabled) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/channels/toggle-bot`, {
+        method: 'POST',
+        body: JSON.stringify({ phone, enabled })
+      });
+      if (res.ok) {
+        notify(enabled ? '✅ IA del canal activada' : '🔴 IA del canal desactivada');
+        fetchChannels();
+        return true;
+      } else {
+        const d = await res.json();
+        notify(`❌ Error: ${d.error || 'No se pudo cambiar el estado'}`);
+        return false;
+      }
+    } catch (err) {
+      console.error(err);
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, notify, fetchChannels]);
+
   const fetchMessages = useCallback(async (id) => {
     if (!id) return;
     try {
@@ -651,7 +673,7 @@ export function useAppData(apiBase, authToken) {
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
     uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
-    saveChannel, deleteChannel, saveUser, deleteUser,
+    saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     // Alerts
     playMessageAlert, notify,
   };

@@ -290,6 +290,7 @@ async function setup() {
         name TEXT,
         outbound_webhook TEXT,
         active INTEGER DEFAULT 1,
+        bot_active INTEGER DEFAULT 1,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -311,6 +312,14 @@ async function setup() {
         FOREIGN KEY(user_id) REFERENCES users(id)
       );
     `);
+
+    // Migration: add bot_active column to whatsapp_channels if not exists
+    try {
+      await db.run("ALTER TABLE whatsapp_channels ADD COLUMN bot_active INTEGER DEFAULT 1");
+      console.log("Migration: Added bot_active column to whatsapp_channels");
+    } catch (e) {
+      // Column already exists, safe to ignore
+    }
 
     // Sembrar el usuario administrador por defecto si no hay usuarios
     try {
@@ -1104,6 +1113,19 @@ app.get('/api/bot/status/:phone', async (req, res) => {
       }
     }
 
+    const channelConfig = await getChannelConfig(cleanChannelPhone);
+    if (channelConfig && channelConfig.bot_active === 0) {
+      console.log(`🤖 Bot desactivado GLOBALMENTE para el canal ${cleanChannelPhone}`);
+      return res.json({
+        botActive: false,
+        priority: 'normal',
+        handoff_reason: "Desactivado globalmente para el canal",
+        nombre: 'Cliente',
+        estado: 'Manual',
+        found: true
+      });
+    }
+
     let lead;
     if (cleanChannelPhone) {
       lead = await db.get(
@@ -1412,7 +1434,7 @@ app.get('/api/channels/by-phone/:phone', async (req, res) => {
 
 app.post('/api/channels', async (req, res) => {
   try {
-    const { phone, api_key, name, outbound_webhook, active } = req.body;
+    const { phone, api_key, name, outbound_webhook, active, bot_active } = req.body;
     if (!phone) return res.status(400).json({ error: "El teléfono es requerido" });
     const cleanPhone = String(phone).trim();
     
@@ -1423,8 +1445,8 @@ app.post('/api/channels', async (req, res) => {
     }
 
     const result = await db.run(
-      "INSERT INTO whatsapp_channels (phone, api_key, name, outbound_webhook, active) VALUES (?, ?, ?, ?, ?)",
-      cleanPhone, api_key || '', name || 'Canal WhatsApp', outbound_webhook || '', active ?? 1
+      "INSERT INTO whatsapp_channels (phone, api_key, name, outbound_webhook, active, bot_active) VALUES (?, ?, ?, ?, ?, ?)",
+      cleanPhone, api_key || '', name || 'Canal WhatsApp', outbound_webhook || '', active ?? 1, bot_active ?? 1
     );
     res.json({ success: true, id: result.lastID });
   } catch (err) {
@@ -1432,15 +1454,31 @@ app.post('/api/channels', async (req, res) => {
   }
 });
 
+app.post('/api/channels/toggle-bot', async (req, res) => {
+  try {
+    const { phone, enabled } = req.body;
+    if (!phone) return res.status(400).json({ error: "Falta phone" });
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const result = await db.run(
+      "UPDATE whatsapp_channels SET bot_active = ? WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+      enabled ? 1 : 0, cleanPhone
+    );
+    console.log(`🤖 Toggle bot canal ${cleanPhone} a ${enabled}: ${result.changes} fila(s) afectada(s)`);
+    res.json({ success: true, bot_active: !!enabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put('/api/channels/:id', async (req, res) => {
   try {
-    const { phone, api_key, name, outbound_webhook, active } = req.body;
+    const { phone, api_key, name, outbound_webhook, active, bot_active } = req.body;
     if (!phone) return res.status(400).json({ error: "El teléfono es requerido" });
     const cleanPhone = String(phone).trim();
 
     await db.run(
-      "UPDATE whatsapp_channels SET phone=?, api_key=?, name=?, outbound_webhook=?, active=? WHERE id=?",
-      cleanPhone, api_key, name, outbound_webhook, active ?? 1, req.params.id
+      "UPDATE whatsapp_channels SET phone=?, api_key=?, name=?, outbound_webhook=?, active=?, bot_active=? WHERE id=?",
+      cleanPhone, api_key, name, outbound_webhook, active ?? 1, bot_active ?? 1, req.params.id
     );
     res.json({ success: true });
   } catch (err) {
