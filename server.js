@@ -1106,10 +1106,19 @@ app.get('/api/bot/status/:phone', async (req, res) => {
     let cleanChannelPhone = reqChannel ? String(reqChannel).replace(/\D/g, '') : null;
 
     if (!cleanChannelPhone) {
-      // Fallback: look at default channel
-      const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
-      if (defaultChan) {
-        cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
+      // Intenta obtener el canal desde el lead existente
+      const existingLead = await db.get(
+        "SELECT channel_phone FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? LIMIT 1",
+        cleanPhone
+      );
+      if (existingLead && existingLead.channel_phone) {
+        cleanChannelPhone = String(existingLead.channel_phone).replace(/\D/g, '');
+      } else {
+        // Fallback: usar el canal principal por defecto
+        const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
+        if (defaultChan) {
+          cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
+        }
       }
     }
 

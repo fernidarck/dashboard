@@ -1510,7 +1510,7 @@
     },
     {
       "parameters": {
-        "url": "={{ 'https://ycloud-dashboard.83aqlq.easypanel.host/api/bot/status/' + $('Webhook').item.json.body.whatsappInboundMessage.from.replace('+', '') }}",
+        "url": "={{ 'https://ycloud-dashboard.83aqlq.easypanel.host/api/bot/status/' + $('Webhook').item.json.body.whatsappInboundMessage.from.replace('+', '') + '?channel_phone=' + $('Webhook').item.json.body.whatsappInboundMessage.to }}",
         "options": {
           "response": {
             "response": {
