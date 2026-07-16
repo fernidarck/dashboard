@@ -500,6 +500,17 @@ async function detectHandoff(text) {
 
 // Función inteligente para guardar mensajes y actualizar leads
 async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null, mediaType = null) {
+  // Dedup: no reinsertar si el último mensaje del lead es idéntico (mismo sender + texto).
+  // Evita duplicados cuando varias rutas (nodo n8n aditivo, HTTP Request2, handoff) guardan el mismo mensaje.
+  const lastMsg = await db.get(
+    "SELECT sender, text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1",
+    leadId
+  );
+  if (lastMsg && lastMsg.sender === sender && (lastMsg.text || '') === (text || '') && !mediaUrl) {
+    console.log(`↩️  Mensaje duplicado ignorado (lead ${leadId}, ${sender})`);
+    return;
+  }
+
   // 1. Guardar mensaje
   await db.run(
     "INSERT INTO messages (lead_id, sender, text, timestamp, mediaUrl, mediaType) VALUES (?, ?, ?, ?, ?, ?)",
@@ -996,7 +1007,7 @@ app.post('/api/leads/handoff', async (req, res) => {
         const now = new Date();
         const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
         const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
-        await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
+        await saveSmartMessage(id, 'client', mensaje.trim(), time);
       }
       const skipReason = currentLead.botActive === 0 ? 'Bot ya inactivo — handoff ignorado' : 'Lead ya en gestión manual';
       console.log(`ℹ️ Lead ${id}: ${skipReason}`);
@@ -1014,7 +1025,7 @@ app.post('/api/leads/handoff', async (req, res) => {
       const now = new Date();
       const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
       const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
-      await db.run("INSERT INTO messages (lead_id, sender, text, timestamp) VALUES (?, ?, ?, ?)", id, 'client', mensaje.trim(), time);
+      await saveSmartMessage(id, 'client', mensaje.trim(), time);
     }
 
     console.log(`🚨 HANDOFF activado para lead ${id}: "${handoffReason}"`);
@@ -1138,12 +1149,24 @@ app.get('/api/bot/status/:phone', async (req, res) => {
     let lead;
     if (cleanChannelPhone) {
       lead = await db.get(
-        "SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
+        "SELECT id, botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
         cleanPhone, cleanChannelPhone
       );
+      // Fallback: lead viejo cuyo channel_phone quedó desincronizado (NULL o distinto).
+      // Lo encontramos por teléfono y le reparamos el channel_phone al canal recibido.
+      if (!lead) {
+        lead = await db.get(
+          "SELECT id, botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id DESC LIMIT 1",
+          cleanPhone
+        );
+        if (lead) {
+          await db.run("UPDATE leads SET channel_phone = ? WHERE id = ?", cleanChannelPhone, lead.id);
+          console.log(`🔧 Backfill channel_phone=${cleanChannelPhone} en lead ${lead.id}`);
+        }
+      }
     } else {
       lead = await db.get(
-        "SELECT botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+        "SELECT id, botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
         cleanPhone
       );
     }
