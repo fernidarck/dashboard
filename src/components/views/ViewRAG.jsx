@@ -20,7 +20,7 @@ const STOCK_STYLES        = {
   'Agotado':    'bg-red-50 text-red-600 border-red-100',
 };
 const emptyCard    = { name: '', category: 'General', content: '' };
-const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'Motores', stock: 'En stock', imagen: '' };
+const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'Motores', stock: '', imagen: '', imagenes: [] };
 
 export default function ViewRAG({
   documents, products,
@@ -81,6 +81,42 @@ export default function ViewRAG({
     const file = e.target.files[0];
     if (!file) return;
     onUploadProductImage(file, type, setNewProduct, setEditingProduct);
+    e.target.value = '';
+  };
+
+  const getImgs = (p) => Array.isArray(p?.imagenes) ? p.imagenes : (p?.imagen ? [p.imagen] : []);
+
+  const removeProductImage = (idx, type) => {
+    const setter = type === 'new' ? setNewProduct : setEditingProduct;
+    setter(prev => {
+      const imgs = getImgs(prev).filter((_, i) => i !== idx);
+      return { ...prev, imagenes: imgs, imagen: imgs[0] || '' };
+    });
+  };
+
+  const renderImageGrid = (product, type) => {
+    const imgs = getImgs(product);
+    return (
+      <div className="space-y-2">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Imágenes ({imgs.length}/5)</label>
+        <div className="grid grid-cols-3 gap-2">
+          {imgs.map((url, i) => (
+            <div key={i} className="aspect-square rounded-2xl overflow-hidden relative group border border-slate-100">
+              <img src={url} alt={`img ${i+1}`} className="w-full h-full object-cover" />
+              <button type="button" onClick={() => removeProductImage(i, type)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-80 hover:opacity-100"><X size={12} /></button>
+              {i === 0 && <span className="absolute bottom-1 left-1 bg-slate-900/80 text-white text-[7px] font-black px-1.5 py-0.5 rounded-md uppercase">Principal</span>}
+            </div>
+          ))}
+          {imgs.length < 5 && (
+            <div className="aspect-square bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center relative group cursor-pointer hover:border-[#FF6B00]">
+              <Plus size={20} className="text-slate-300 group-hover:scale-110 group-hover:text-[#FF6B00] transition-transform" />
+              <input type="file" onChange={(e) => handleProductImageUpload(e, type)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
+            </div>
+          )}
+        </div>
+        <p className="text-[8px] text-slate-400 italic leading-tight">Hasta 5 imágenes. La primera es la principal.</p>
+      </div>
+    );
   };
 
   return (
@@ -211,15 +247,22 @@ export default function ViewRAG({
           {products.map(prod => (
             <div key={prod.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-100 transition-all duration-500 group overflow-hidden flex flex-col">
               <div className="aspect-[4/3] bg-slate-50 relative overflow-hidden flex items-center justify-center">
-                {prod.imagen
-                  ? <img src={prod.imagen} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                {getImgs(prod).length > 0
+                  ? <img src={getImgs(prod)[0]} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                   : <ShoppingBag size={48} className="text-slate-200 group-hover:scale-110 transition-transform duration-700" />
                 }
+                {getImgs(prod).length > 1 && <span className="absolute bottom-4 left-4 bg-slate-900/75 text-white text-[8px] font-black px-2 py-1 rounded-lg shadow-lg">📷 {getImgs(prod).length}</span>}
                 <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
                   <button onClick={() => setEditingProduct(prod)} className="bg-white p-3 rounded-2xl text-slate-900 hover:bg-[#FF6B00] hover:text-white transition-all shadow-xl active:scale-90"><Pencil size={18} /></button>
                   <button onClick={() => onDeleteProduct(prod.id)} className="bg-white p-3 rounded-2xl text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl active:scale-90"><Trash2 size={18} /></button>
                 </div>
-                <span className={`absolute top-4 right-4 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-tighter border shadow-lg ${STOCK_STYLES[prod.stock] || STOCK_STYLES['En stock']}`}>{prod.stock}</span>
+                {(() => {
+                  const q = parseInt(prod.stock, 10);
+                  const hasNum = !isNaN(q);
+                  const label = hasNum ? (q <= 0 ? 'Agotado' : `Stock: ${q}`) : (prod.stock || '');
+                  const style = !hasNum ? STOCK_STYLES['En stock'] : (q <= 0 ? STOCK_STYLES['Agotado'] : q <= 3 ? STOCK_STYLES['Poco stock'] : STOCK_STYLES['En stock']);
+                  return label ? <span className={`absolute top-4 right-4 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-tighter border shadow-lg ${style}`}>{label}</span> : null;
+                })()}
               </div>
               <div className="p-6 space-y-4 flex-1 flex flex-col">
                 <span className="text-[8px] font-black text-[#FF6B00] uppercase tracking-widest">{prod.categoria}</span>
@@ -314,13 +357,8 @@ export default function ViewRAG({
             </div>
             <div className="p-10 space-y-8">
               <div className="flex flex-col md:flex-row gap-8">
-                <div className="w-48 space-y-4 shrink-0">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 block">Imagen</label>
-                  <div className="aspect-square bg-slate-50 rounded-3xl border-2 border-dashed border-slate-100 flex items-center justify-center relative group overflow-hidden">
-                    {newProduct.imagen ? <img src={newProduct.imagen} alt="Preview" className="w-full h-full object-cover" /> : <Plus size={24} className="text-slate-300 group-hover:scale-110 transition-transform" />}
-                    <input type="file" onChange={(e) => handleProductImageUpload(e, 'new')} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
-                  </div>
-                  <p className="text-[8px] text-slate-400 text-center italic leading-tight">Clic para subir imagen</p>
+                <div className="w-48 shrink-0">
+                  {renderImageGrid(newProduct, 'new')}
                 </div>
                 <div className="flex-1 space-y-6">
                   <div className="space-y-2">
@@ -333,10 +371,8 @@ export default function ViewRAG({
                       <input type="text" value={newProduct.precio} onChange={e => setNewProduct({...newProduct, precio: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="2500.00" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock</label>
-                      <select value={newProduct.stock} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
-                        {STOCK_OPTIONS.map(o => <option key={o}>{o}</option>)}
-                      </select>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock (cantidad)</label>
+                      <input type="number" min="0" value={newProduct.stock} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Ej: 10" />
                     </div>
                   </div>
                 </div>
@@ -373,12 +409,8 @@ export default function ViewRAG({
             </div>
             <div className="p-10 space-y-8">
               <div className="flex flex-col md:flex-row gap-8">
-                <div className="w-48 space-y-4 shrink-0">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 block">Imagen</label>
-                  <div className="aspect-square bg-slate-50 rounded-3xl border-2 border-dashed border-slate-100 flex items-center justify-center relative group overflow-hidden">
-                    {editingProduct.imagen ? <img src={editingProduct.imagen} alt="Preview" className="w-full h-full object-cover" /> : <ShoppingBag size={24} className="text-slate-300 group-hover:scale-110 transition-transform" />}
-                    <input type="file" onChange={(e) => handleProductImageUpload(e, 'edit')} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
-                  </div>
+                <div className="w-48 shrink-0">
+                  {renderImageGrid(editingProduct, 'edit')}
                 </div>
                 <div className="flex-1 space-y-6">
                   <div className="space-y-2">
@@ -391,10 +423,8 @@ export default function ViewRAG({
                       <input type="text" value={editingProduct.precio} onChange={e => setEditingProduct({...editingProduct, precio: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock</label>
-                      <select value={editingProduct.stock} onChange={e => setEditingProduct({...editingProduct, stock: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
-                        {STOCK_OPTIONS.map(o => <option key={o}>{o}</option>)}
-                      </select>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock (cantidad)</label>
+                      <input type="number" min="0" value={editingProduct.stock} onChange={e => setEditingProduct({...editingProduct, stock: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Ej: 10" />
                     </div>
                   </div>
                 </div>

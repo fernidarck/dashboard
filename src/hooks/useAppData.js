@@ -587,8 +587,14 @@ export function useAppData(apiBase, authToken) {
       });
       const data = await res.json();
       if (data.success) {
-        if (type === 'new') setNew(prev => ({ ...prev, imagen: data.imageUrl }));
-        else if (type === 'edit') setEdit(prev => ({ ...prev, imagen: data.imageUrl }));
+        const appendImg = (prev) => {
+          const imgs = Array.isArray(prev.imagenes) ? prev.imagenes : (prev.imagen ? [prev.imagen] : []);
+          if (imgs.length >= 5) { notify('⚠️ Máximo 5 imágenes por producto', 3000); return prev; }
+          const next = [...imgs, data.imageUrl];
+          return { ...prev, imagenes: next, imagen: next[0] };
+        };
+        if (type === 'new') setNew(appendImg);
+        else if (type === 'edit') setEdit(appendImg);
         notify('✅ Imagen subida', 3000);
       } else {
         notify('❌ Error al subir imagen', 3000);

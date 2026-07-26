@@ -346,6 +346,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE leads ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"); } catch(e){}
     try { await db.exec("ALTER TABLE agenda ADD COLUMN notas TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
@@ -897,6 +898,15 @@ app.post('/api/webhook/n8n', async (req, res) => {
       console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id}`);
       const updates = ["estado = ?", "score = ?"];
       const params = [finalEstado, finalScore];
+
+      // Renombrar si el lead tiene nombre genérico y llega uno real
+      const GENERIC_NAMES = ['agente', 'cliente', 'cliente nuevo', ''];
+      if (data.nombre && !GENERIC_NAMES.includes(String(data.nombre).trim().toLowerCase())
+          && GENERIC_NAMES.includes(String(existingLead.nombre || '').trim().toLowerCase())) {
+        updates.push("nombre = ?");
+        params.push(data.nombre);
+        console.log(`   ✏️ Renombrando lead ${existingLead.id}: "${existingLead.nombre}" → "${data.nombre}"`);
+      }
 
       if (data.bot_apagado !== undefined) {
         updates.push("botActive = ?");
@@ -1899,7 +1909,7 @@ app.get('/api/agent/prompt', async (req, res) => {
       prods.forEach(p => {
         catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'} | Stock: ${p.stock}\n`;
         if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\n`;
-        if (p.imagen) catalogText += `  IMAGEN_PARA_ENVIAR: ${p.imagen}\n`;
+        normalizeProductImages(p).forEach(u => { catalogText += `  IMAGEN_PARA_ENVIAR: ${u}\n`; });
       });
     }
 
@@ -2005,20 +2015,31 @@ app.delete('/api/agenda/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── CATÁLOGO DE PRODUCTOS ────────────────────────────────────────────────────
+// Helper: normaliza imagenes a array (parsea JSON; fallback a [imagen] para productos viejos)
+function normalizeProductImages(p) {
+  let arr = [];
+  try { arr = p.imagenes ? JSON.parse(p.imagenes) : []; } catch (e) { arr = []; }
+  if ((!Array.isArray(arr) || arr.length === 0) && p.imagen) arr = [p.imagen];
+  return Array.isArray(arr) ? arr.filter(Boolean) : [];
+}
+
 app.get('/api/products', async (_req, res) => {
   try {
-    res.json(await db.all("SELECT * FROM products ORDER BY categoria, nombre"));
+    const rows = await db.all("SELECT * FROM products ORDER BY categoria, nombre");
+    rows.forEach(p => { p.imagenes = normalizeProductImages(p); });
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock, imagen, catalog_link } = req.body;
+    const { nombre, descripcion, precio, categoria, stock, imagen, imagenes, catalog_link } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
+    const imgs = (Array.isArray(imagenes) ? imagenes : (imagen ? [imagen] : [])).filter(Boolean).slice(0, 5);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', precio || '', categoria || 'General', stock || 'En stock', imagen || '', catalog_link || '', ts
+      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, imagenes, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', precio || '', categoria || 'General', stock ?? '', imgs[0] || '', JSON.stringify(imgs), catalog_link || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2026,10 +2047,11 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock, activo, imagen, catalog_link } = req.body;
+    const { nombre, descripcion, precio, categoria, stock, activo, imagen, imagenes, catalog_link } = req.body;
+    const imgs = (Array.isArray(imagenes) ? imagenes : (imagen ? [imagen] : [])).filter(Boolean).slice(0, 5);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=?, catalog_link=? WHERE id=?",
-      nombre, descripcion, precio, categoria, stock, activo ?? 1, imagen ?? '', catalog_link ?? '', req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, catalog_link=? WHERE id=?",
+      nombre, descripcion, precio, categoria, stock ?? '', activo ?? 1, imgs[0] || '', JSON.stringify(imgs), catalog_link ?? '', req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2106,7 +2128,7 @@ app.get('/api/products/context', async (_req, res) => {
           if (p.stock) context += ` (${p.stock})`;
           context += '\n';
           if (p.descripcion) context += `  ${p.descripcion}\n`;
-          if (p.imagen) context += `  IMAGEN_PARA_ENVIAR: ${p.imagen}\n`;
+          normalizeProductImages(p).forEach(u => { context += `  IMAGEN_PARA_ENVIAR: ${u}\n`; });
           if (p.catalog_link) context += `  CATALOGO_LINK: ${p.catalog_link}\n`;
         }
         context += '\n';
