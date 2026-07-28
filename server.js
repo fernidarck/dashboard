@@ -924,13 +924,21 @@ app.post('/api/webhook/n8n', async (req, res) => {
     }
 
     const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.file_url;
+    const mediaType = data.media_type || (mediaUrl ? 'image' : null);
+    const senderPrincipal = data.sender || 'client';
+    // Si viene media SIN respuesta_bot, la imagen pertenece al mensaje principal (cliente o agente)
+    const mediaEsDelPrincipal = mediaUrl && !mensajeSecundario;
 
-    // Client message — media_url is the bot's image, don't attach it here
-    if (mensajePrincipal) {
-      await saveSmartMessage(leadId, data.sender || 'client', mensajePrincipal, time);
+    // Mensaje del cliente/agente (adjunta su imagen si la mandó)
+    if (mensajePrincipal || mediaEsDelPrincipal) {
+      await saveSmartMessage(
+        leadId, senderPrincipal, mensajePrincipal || '', time,
+        mediaEsDelPrincipal ? mediaUrl : null,
+        mediaEsDelPrincipal ? mediaType : null
+      );
     }
-    // Bot response — attach media_url to bot sender
-    if (mensajeSecundario || mediaUrl) {
+    // Respuesta del bot (con su imagen si trae respuesta_bot + media)
+    if (mensajeSecundario) {
       const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(mensajeSecundario || '');
       const botImageFinal = mediaUrl || botImageUrl;
       if (cleanBot) await saveSmartMessage(leadId, 'bot', cleanBot, time);
