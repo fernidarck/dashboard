@@ -1162,16 +1162,16 @@ app.get('/api/bot/status/:phone', async (req, res) => {
         "SELECT id, botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
         cleanPhone, cleanChannelPhone
       );
-      // Fallback: lead viejo cuyo channel_phone quedó desincronizado (NULL o distinto).
-      // Lo encontramos por teléfono y le reparamos el channel_phone al canal recibido.
+      // Fallback SOLO para leads legacy SIN canal asignado (NULL/vacío).
+      // Los canales son INDEPENDIENTES: NO tomamos un lead de otro canal (eso mezclaba conversaciones).
       if (!lead) {
         lead = await db.get(
-          "SELECT id, botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id DESC LIMIT 1",
+          "SELECT id, botActive, priority, handoff_reason, nombre, estado FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND (channel_phone IS NULL OR channel_phone = '') ORDER BY id DESC LIMIT 1",
           cleanPhone
         );
         if (lead) {
           await db.run("UPDATE leads SET channel_phone = ? WHERE id = ?", cleanChannelPhone, lead.id);
-          console.log(`🔧 Backfill channel_phone=${cleanChannelPhone} en lead ${lead.id}`);
+          console.log(`🔧 Backfill channel_phone=${cleanChannelPhone} en lead legacy ${lead.id}`);
         }
       }
     } else {
