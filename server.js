@@ -946,6 +946,20 @@ app.post('/api/webhook/n8n', async (req, res) => {
       if (botImageFinal) await saveSmartMessage(leadId, 'bot', '', time, botImageFinal, 'image');
     }
 
+    // 🙋 Solicitud de humano: el cliente quiere hablar con una persona
+    if (data.solicita_humano || data.etiqueta === 'SOLICITA_HUMANO') {
+      await db.run(
+        "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = 'Cliente pidió hablar con un humano', estado = 'Intervención Requerida' WHERE id = ?",
+        leadId
+      );
+      try {
+        const l = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", leadId);
+        const alerta = `🙋 *SOLICITUD DE AYUDA*\n\nUn cliente quiere hablar con una persona.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ${l?.phone || data.phone || ''}${mensajePrincipal ? `\n💬 "${String(mensajePrincipal).slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
+        await notificarDueno(alerta, l?.channel_phone || cleanChannelPhone);
+      } catch (e) { console.error('⚠️ No se pudo notificar solicitud de humano:', e.message); }
+      console.log(`🙋 Solicitud de humano para lead ${leadId}`);
+    }
+
     // Auto-crear pedido cuando el bot cierra venta (#PEDIDO_LISTO)
     if (data.etiqueta === 'PEDIDO_LISTO') {
       const lead = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", leadId);
