@@ -1048,6 +1048,14 @@ app.post('/api/leads/handoff', async (req, res) => {
     }
 
     console.log(`🚨 HANDOFF activado para lead ${id}: "${handoffReason}"`);
+
+    // 🔔 Alerta al dueño: hay que responder (solicitud de ayuda)
+    try {
+      const l = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", id);
+      const alerta = `🙋 *SOLICITUD DE AYUDA*\n\nUn cliente necesita que le respondas.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ${l?.phone || phone || 'Sin teléfono'}\n📝 Motivo: ${handoffReason}${mensaje ? `\n💬 "${String(mensaje).slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
+      await notificarDueno(alerta, l?.channel_phone || null);
+    } catch (e) { console.error('⚠️ No se pudo notificar el handoff al dueño:', e.message); }
+
     res.json({ success: true, leadId: id, reason: handoffReason });
   } catch (err) {
     console.error("❌ Error en handoff:", err);
