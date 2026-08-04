@@ -10,6 +10,7 @@ import pdf from 'pdf-parse';
 import fs from 'fs';
 import * as XLSX from 'xlsx';
 import crypto from 'crypto';
+import Jimp from 'jimp';
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -2073,9 +2074,20 @@ app.delete('/api/products/:id', async (req, res) => {
 });
 
 // SUBIR IMAGEN DE PRODUCTO
-app.post('/api/products/upload-image', productImagesUpload.single('image'), (req, res) => {
+app.post('/api/products/upload-image', productImagesUpload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No se subió ninguna imagen" });
+    // Comprimir/redimensionar para que WhatsApp la acepte (máx 5MB; dejamos < 1MB)
+    const filePath = join('uploads', req.file.filename);
+    try {
+      const img = await Jimp.read(filePath);
+      if (img.bitmap.width > 1600) img.resize(1600, Jimp.AUTO);
+      img.quality(80);
+      await img.writeAsync(filePath);
+      console.log(`🖼️ Imagen comprimida: ${req.file.filename} (${(fs.statSync(filePath).size/1024).toFixed(0)} KB)`);
+    } catch (e) {
+      console.error('⚠️ No se pudo comprimir la imagen (se usa la original):', e.message);
+    }
     const host = req.get('host');
     const protocol = req.protocol;
     const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
@@ -2083,6 +2095,30 @@ app.post('/api/products/upload-image', productImagesUpload.single('image'), (req
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Recomprimir imágenes existentes del catálogo (para las que ya se subieron pesadas >5MB)
+app.get('/api/products/recompress-images', async (req, res) => {
+  try {
+    const prods = await db.all("SELECT imagen, imagenes FROM products");
+    const urls = new Set();
+    prods.forEach(p => normalizeProductImages(p).forEach(u => urls.add(u)));
+    let comprimidas = 0, saltadas = 0;
+    for (const u of urls) {
+      const m = String(u).match(/\/uploads\/([^/?]+)/);
+      if (!m) { saltadas++; continue; }
+      const fp = join('uploads', m[1]);
+      try {
+        if (!fs.existsSync(fp) || fs.statSync(fp).size <= 1200000) { saltadas++; continue; }
+        const img = await Jimp.read(fp);
+        if (img.bitmap.width > 1600) img.resize(1600, Jimp.AUTO);
+        img.quality(80);
+        await img.writeAsync(fp);
+        comprimidas++;
+      } catch (e) { saltadas++; }
+    }
+    res.json({ success: true, comprimidas, saltadas });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
