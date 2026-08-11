@@ -118,7 +118,13 @@ export default function App() {
         });
       });
     } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      // Solo autoscroll si el usuario YA está cerca del fondo.
+      // Si subió a leer mensajes viejos, no lo tironeamos hacia abajo.
+      const c = messagesContainerRef.current;
+      if (c) {
+        const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 120;
+        if (nearBottom) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
