@@ -505,11 +505,13 @@ async function detectHandoff(text) {
 async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null, mediaType = null) {
   // Dedup: no reinsertar si el último mensaje del lead es idéntico (mismo sender + texto).
   // Evita duplicados cuando varias rutas (nodo n8n aditivo, HTTP Request2, handoff) guardan el mismo mensaje.
-  const lastMsg = await db.get(
-    "SELECT sender, text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1",
+  // Mirar los últimos 5 mensajes (no solo el último): el mensaje del cliente se
+  // guarda al llegar y de nuevo cuando el bot responde (con la respuesta en medio).
+  const recent = await db.all(
+    "SELECT sender, text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5",
     leadId
   );
-  if (lastMsg && lastMsg.sender === sender && (lastMsg.text || '') === (text || '') && !mediaUrl) {
+  if (!mediaUrl && text && recent.some(m => m.sender === sender && (m.text || '') === (text || ''))) {
     console.log(`↩️  Mensaje duplicado ignorado (lead ${leadId}, ${sender})`);
     return;
   }
