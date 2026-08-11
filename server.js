@@ -1337,6 +1337,30 @@ async function notificarDueno(mensaje, channelPhone = null) {
   }
 }
 
+// 🚨 Alerta: el bot falló (lo llama el Error Workflow "GUARDIAN" de n8n)
+// Se dispara cuando el bot no pudo responder por CUALQUIER motivo (saldo agotado
+// de OpenAI/chat, llave vencida, proxy caído, etc). Anti-spam: 1 aviso cada 15 min.
+let lastBotDownAlert = 0;
+app.post('/api/alert/bot-down', async (req, res) => {
+  try {
+    const { workflow, node, error } = req.body || {};
+    const now = Date.now();
+    if (now - lastBotDownAlert < 15 * 60 * 1000) {
+      return res.json({ success: true, throttled: true });
+    }
+    lastBotDownAlert = now;
+    // Enviar desde el canal principal del bot (el primero configurado)
+    const ch = await db.get("SELECT phone FROM whatsapp_channels ORDER BY id LIMIT 1");
+    const alerta = `🚨 *EL BOT FALLÓ*\n\nUn cliente escribió y el bot NO pudo responder.\n${node ? `\n⚙️ Nodo: ${node}` : ''}${error ? `\n❌ Motivo: ${String(error).slice(0, 200)}` : ''}\n\n👉 Suele ser: saldo agotado (OpenAI o chat), llave vencida o el proxy caído.\nRevisá los saldos y el dashboard.`;
+    await notificarDueno(alerta, ch?.phone || null);
+    console.log('🚨 Alerta de bot caído enviada:', node || '', '|', error || '');
+    res.json({ success: true });
+  } catch (e) {
+    console.error('❌ Error en /api/alert/bot-down:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/pedidos', async (req, res) => {
   try {
     const { cliente, phone, producto, cantidad, precio, notas } = req.body;
