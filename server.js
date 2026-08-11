@@ -2306,7 +2306,9 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Búsqueda simple por palabras clave (Mejorada para plurales)
     const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
-    const keywords = q.toLowerCase().split(/\s+/)
+    const keywords = q.toLowerCase()
+                      .replace(/[¿?¡!.,;:()"'*\n]/g, ' ')   // quitar puntuación: "visacuotas?" → "visacuotas"
+                      .split(/\s+/)
                       .filter(k => k.length > 2)
                       .map(normalizeKw);
     
