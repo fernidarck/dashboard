@@ -349,6 +349,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
@@ -1962,7 +1963,7 @@ app.get('/api/agent/prompt', async (req, res) => {
     if (prods.length > 0) {
       catalogText = "CATÁLOGO DE PRODUCTOS DISPONIBLES (Usa esta información para cotizar y dar precios reales):\n";
       prods.forEach(p => {
-        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'} | Stock: ${p.stock}\n`;
+        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${p.stock}\n`;
         if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\n`;
         normalizeProductImages(p).forEach(u => { catalogText += `  IMAGEN_PARA_ENVIAR: ${u}\n`; });
       });
@@ -2088,13 +2089,13 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock, imagen, imagenes, catalog_link } = req.body;
+    const { nombre, descripcion, precio, precio_oferta, categoria, stock, imagen, imagenes, catalog_link } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const imgs = (Array.isArray(imagenes) ? imagenes : (imagen ? [imagen] : [])).filter(Boolean).slice(0, 5);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, precio, categoria, stock, imagen, imagenes, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', precio || '', categoria || 'General', stock ?? '', imgs[0] || '', JSON.stringify(imgs), catalog_link || '', ts
+      "INSERT INTO products (nombre, descripcion, precio, precio_oferta, categoria, stock, imagen, imagenes, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', imgs[0] || '', JSON.stringify(imgs), catalog_link || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2102,11 +2103,11 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, stock, activo, imagen, imagenes, catalog_link } = req.body;
+    const { nombre, descripcion, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, catalog_link } = req.body;
     const imgs = (Array.isArray(imagenes) ? imagenes : (imagen ? [imagen] : [])).filter(Boolean).slice(0, 5);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, precio=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, catalog_link=? WHERE id=?",
-      nombre, descripcion, precio, categoria, stock ?? '', activo ?? 1, imgs[0] || '', JSON.stringify(imgs), catalog_link ?? '', req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, catalog_link=? WHERE id=?",
+      nombre, descripcion, precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, imgs[0] || '', JSON.stringify(imgs), catalog_link ?? '', req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2215,6 +2216,7 @@ app.get('/api/products/context', async (_req, res) => {
         for (const p of prods) {
           context += `• ${p.nombre}`;
           if (p.precio) context += ` — ${p.precio}`;
+          if (p.precio_oferta) context += ` 🔥 OFERTA: ${p.precio_oferta}`;
           if (p.stock) context += ` (${p.stock})`;
           context += '\n';
           if (p.descripcion) context += `  ${p.descripcion}\n`;
@@ -2294,7 +2296,7 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
-    const prods = await db.all("SELECT nombre as name, categoria as category, COALESCE(descripcion, '') || ' - Precio: ' || COALESCE(precio, 'Consultar') || ' - Imagen: ' || COALESCE(imagen, '') || ' - Link: ' || COALESCE(catalog_link, '') as content FROM products WHERE activo = 1");
+    const prods = await db.all("SELECT nombre as name, categoria as category, COALESCE(descripcion, '') || ' - Precio: ' || COALESCE(precio, 'Consultar') || CASE WHEN COALESCE(precio_oferta,'') <> '' THEN ' - OFERTA: ' || precio_oferta ELSE '' END || ' - Imagen: ' || COALESCE(imagen, '') || ' - Link: ' || COALESCE(catalog_link, '') as content FROM products WHERE activo = 1");
     
     const allKnowledge = [...docs, ...prods];
 

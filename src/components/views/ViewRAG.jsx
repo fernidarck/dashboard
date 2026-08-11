@@ -20,7 +20,7 @@ const STOCK_STYLES        = {
   'Agotado':    'bg-red-50 text-red-600 border-red-100',
 };
 const emptyCard    = { name: '', category: 'General', content: '' };
-const emptyProduct = { nombre: '', descripcion: '', precio: '', categoria: 'Motores', stock: '', imagen: '', imagenes: [] };
+const emptyProduct = { nombre: '', descripcion: '', precio: '', precio_oferta: '', categoria: 'Motores', stock: '', imagen: '', imagenes: [] };
 
 export default function ViewRAG({
   documents, products,
@@ -271,7 +271,15 @@ export default function ViewRAG({
                   <p className="text-[10px] text-slate-400 italic line-clamp-2">{prod.descripcion}</p>
                 </div>
                 <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-                  <span className="text-lg font-black text-slate-900 tabular-nums italic">Q{prod.precio}</span>
+                  {prod.precio_oferta ? (
+                    <span className="flex items-baseline gap-2">
+                      <span className="text-xs font-bold text-slate-400 line-through tabular-nums italic">Q{prod.precio}</span>
+                      <span className="text-lg font-black text-[#FF6B00] tabular-nums italic">Q{prod.precio_oferta}</span>
+                      <span className="text-[8px] font-black text-[#FF6B00] uppercase bg-orange-50 px-1.5 py-0.5 rounded-full">Oferta</span>
+                    </span>
+                  ) : (
+                    <span className="text-lg font-black text-slate-900 tabular-nums italic">Q{prod.precio}</span>
+                  )}
                   <span className="h-2 w-2 bg-emerald-400 rounded-full" />
                 </div>
               </div>
@@ -371,6 +379,10 @@ export default function ViewRAG({
                       <input type="text" value={newProduct.precio} onChange={e => setNewProduct({...newProduct, precio: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="2500.00" />
                     </div>
                     <div className="space-y-2">
+                      <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest ml-4">🔥 Precio de Oferta (Q)</label>
+                      <input type="text" value={newProduct.precio_oferta || ''} onChange={e => setNewProduct({...newProduct, precio_oferta: e.target.value})} className="w-full px-6 py-4 bg-orange-50/50 border border-orange-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Opcional. Ej: 2200.00" />
+                    </div>
+                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock (cantidad)</label>
                       <input type="number" min="0" value={newProduct.stock} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Ej: 10" />
                     </div>
@@ -421,6 +433,10 @@ export default function ViewRAG({
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Precio (Q)</label>
                       <input type="text" value={editingProduct.precio} onChange={e => setEditingProduct({...editingProduct, precio: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest ml-4">🔥 Precio de Oferta (Q)</label>
+                      <input type="text" value={editingProduct.precio_oferta || ''} onChange={e => setEditingProduct({...editingProduct, precio_oferta: e.target.value})} className="w-full px-6 py-4 bg-orange-50/50 border border-orange-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Opcional. Ej: 2200.00" />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock (cantidad)</label>
