@@ -1,10 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search, X, UserCircle, Phone, Pencil, Trash2, Archive,
   Power, Database, MessageSquare, Tag, Bot, AlertTriangle,
   Flame, CheckCircle2, Clock, Sparkles, Send, ArrowRight,
-  Filter, MessageCircle
+  Filter, MessageCircle, ExternalLink, Zap, Copy
 } from 'lucide-react';
+
+function getCleanWhatsAppUrl(phone) {
+  if (!phone) return null;
+  let clean = String(phone).replace(/\D/g, '');
+  if (clean.length === 8) clean = '502' + clean;
+  return `https://wa.me/${clean}`;
+}
 
 function ClientSidebarPanel({
   lead,
@@ -18,13 +25,14 @@ function ClientSidebarPanel({
   if (!lead) return null;
 
   const needsAttention = lead.priority === 'urgent' || !lead.botActive || lead.estado === 'Intervención Requerida' || !!lead.handoff_reason;
+  const waUrl = getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id);
 
   return (
     <div className="w-84 md:w-96 border-l border-slate-100 bg-white flex flex-col shrink-0 animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar shadow-2xl z-20">
       <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
         <div>
           <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Ficha del Lead</h3>
-          <p className="text-[10px] font-bold text-slate-400">Detalles & Accesos Rápidos</p>
+          <p className="text-[10px] font-bold text-slate-400">Detalles & Acceso Inmediato</p>
         </div>
         <button onClick={onClose} className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-slate-600 transition-colors">
           <X size={18} />
@@ -33,11 +41,13 @@ function ClientSidebarPanel({
 
       <div className="p-6 space-y-6">
         {/* Header Lead Profile */}
-        <div className="text-center bg-slate-50/70 p-6 rounded-3xl border border-slate-100">
+        <div className="text-center bg-slate-50/80 p-6 rounded-3xl border border-slate-100">
           <div className="relative inline-block mb-3">
             <div className={`h-20 w-20 rounded-[28px] flex items-center justify-center font-black text-2xl mx-auto border-4 border-white shadow-xl ${
               lead.priority === 'urgent'
                 ? 'bg-red-600 text-white animate-pulse'
+                : !lead.botActive
+                ? 'bg-amber-500 text-white'
                 : 'bg-slate-900 text-[#FF6B00]'
             }`}>
               {lead.priority === 'urgent' ? '!' : (lead.nombre?.[0] || '?')}
@@ -54,26 +64,40 @@ function ClientSidebarPanel({
             <span>{lead.botActive ? 'IA Gestionando' : 'Control Humano / Manual'}</span>
           </p>
 
-          {/* Botón directo para ir a la conversación */}
-          <button
-            onClick={() => onOpenConversation && onOpenConversation(lead.id)}
-            className="mt-4 w-full py-3 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg shadow-orange-200 transition-all active:scale-95 group"
-          >
-            <MessageSquare size={16} className="group-hover:scale-110 transition-transform" />
-            <span>Abrir Chat Directo</span>
-            <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-          </button>
+          {/* Botones de acción directa */}
+          <div className="mt-4 space-y-2">
+            <button
+              onClick={() => onOpenConversation && onOpenConversation(lead.id)}
+              className="w-full py-3 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg shadow-orange-200 transition-all active:scale-95 group"
+            >
+              <MessageSquare size={16} className="group-hover:scale-110 transition-transform" />
+              <span>Abrir Chat en OneControl</span>
+              <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+
+            {waUrl && (
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-wider flex items-center justify-center space-x-2 shadow-md transition-all active:scale-95"
+              >
+                <ExternalLink size={14} />
+                <span>Abrir en WhatsApp</span>
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Alerta si requiere hablarle */}
         {needsAttention && (
-          <div className="p-4 rounded-2xl bg-red-50 border border-red-200 space-y-1">
+          <div className="p-4 rounded-2xl bg-red-50 border border-red-200 space-y-1.5">
             <div className="flex items-center space-x-2 text-red-700 font-black text-[11px] uppercase tracking-wider">
-              <AlertTriangle size={14} className="animate-bounce" />
-              <span>Requiere que le hables</span>
+              <AlertTriangle size={15} className="animate-bounce shrink-0" />
+              <span>Acción Requerida: Hablarle al cliente</span>
             </div>
             <p className="text-[11px] text-red-600 font-medium leading-snug">
-              {lead.handoff_reason || (lead.priority === 'urgent' ? 'Lead marcado como urgente para atención humana.' : 'El bot está apagado. Responder manualmente.')}
+              {lead.handoff_reason || (lead.priority === 'urgent' ? 'Lead marcado urgente para atención inmediata.' : 'Modo manual activo. El asesor debe enviar información.')}
             </p>
           </div>
         )}
@@ -100,7 +124,7 @@ function ClientSidebarPanel({
           </button>
         </div>
 
-        {/* Datos Capturados */}
+        {/* Datos Capturados por IA */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Datos Capturados</label>
@@ -108,18 +132,18 @@ function ClientSidebarPanel({
           </div>
           <div className="space-y-2 bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
             {[
+              { l: 'Motor / Producto', v: lead.motor, i: Tag, highlight: true },
               { l: 'Zona / Lugar', v: lead.zona, i: Database },
               { l: 'Dirección', v: lead.direccion, i: Database },
-              { l: 'Motor / Producto', v: lead.motor, i: Tag },
               { l: 'Falla / Necesidad', v: lead.falla, i: Tag },
               { l: 'NIT / Factura', v: lead.nit, i: Tag },
               { l: 'Email', v: lead.email, i: MessageSquare },
               { l: 'Notas', v: lead.notas, i: Pencil }
             ].map((d, i) => (
-              <div key={i} className="flex flex-col space-y-1 p-2 rounded-xl bg-white border border-slate-100 group">
+              <div key={i} className={`flex flex-col space-y-1 p-2 rounded-xl border ${d.highlight && d.v && d.v !== 'N/A' ? 'bg-orange-50/50 border-orange-100' : 'bg-white border-slate-100'}`}>
                 <div className="flex items-center space-x-2">
-                  <d.i size={12} className="text-slate-300 group-hover:text-[#FF6B00] transition-colors" />
-                  <span className="text-[9px] font-black text-slate-400 uppercase">{d.l}</span>
+                  <d.i size={12} className={d.highlight && d.v && d.v !== 'N/A' ? 'text-[#FF6B00]' : 'text-slate-300'} />
+                  <span className={`text-[9px] font-black uppercase ${d.highlight && d.v && d.v !== 'N/A' ? 'text-[#FF6B00]' : 'text-slate-400'}`}>{d.l}</span>
                 </div>
                 <span className="text-[11px] font-bold text-slate-800 truncate pl-5">
                   {(d.v && d.v !== 'N/A') ? d.v : '—'}
@@ -159,7 +183,7 @@ function ClientSidebarPanel({
           </div>
         </div>
 
-        {/* Acciones */}
+        {/* Acciones de administración */}
         <div className="space-y-2.5 pt-4 border-t border-slate-100">
           <button
             onClick={() => onArchive(lead.id, lead.archived)}
@@ -192,7 +216,6 @@ export default function ViewCRM({
   const [sidebarLeadId, setSidebarLeadId] = useState(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
-  const [filterTab, setFilterTab] = useState('all'); // 'all' | 'attention' | 'with_data' | 'bot' | 'sales'
   const [searchQuery, setSearchQuery] = useState('');
 
   const sidebarLead = leads.find(l => l.id === sidebarLeadId);
@@ -203,16 +226,36 @@ export default function ViewCRM({
   // Requiere atención = Urgente, Bot apagado, o Estado Intervención / Handoff
   const needsAttention = (l) => l.priority === 'urgent' || !l.botActive || l.estado === 'Intervención Requerida' || !!l.handoff_reason;
 
-  // Conteos
+  // Conteo de atención
   const attentionCount = useMemo(() => leads.filter(l => !l.archived && needsAttention(l)).length, [leads]);
   const withDataCount = useMemo(() => leads.filter(l => !l.archived && tieneDatos(l)).length, [leads]);
   const botCount = useMemo(() => leads.filter(l => !l.archived && l.botActive && l.priority !== 'urgent').length, [leads]);
   const salesCount = useMemo(() => leads.filter(l => !l.archived && (l.estado === 'Venta' || l.estado === 'Interesado' || l.estado === 'Cita Agendada')).length, [leads]);
   const totalCount = useMemo(() => leads.filter(l => !l.archived).length, [leads]);
 
-  // Filtrado de leads
+  // Tab activo: por defecto empieza en 'attention' si hay pendientes, sino en 'all'
+  const [filterTab, setFilterTab] = useState(() => (leads.some(l => !l.archived && needsAttention(l)) ? 'attention' : 'all'));
+
+  // Si cambian los leads y hay urgentes por primera vez
+  useEffect(() => {
+    if (attentionCount > 0 && filterTab === 'all' && !searchQuery) {
+      setFilterTab('attention');
+    }
+  }, [attentionCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Peso de prioridad para ordenar: Los más importantes SIEMPRE primero
+  const getLeadPriorityWeight = (l) => {
+    if (l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason) return 100;
+    if (!l.botActive) return 80;
+    if (tieneDatos(l) && (l.estado === 'Interesado' || l.estado === 'Cita Agendada' || (l.score || 0) >= 50)) return 60;
+    if (tieneDatos(l)) return 40;
+    if (l.botActive) return 20;
+    return 0;
+  };
+
+  // Filtrado y ORDENAMIENTO inteligente
   const visibleLeads = useMemo(() => {
-    return leads.filter(lead => {
+    const filtered = leads.filter(lead => {
       if (lead.archived) return false;
 
       // Filtro por tab
@@ -237,6 +280,15 @@ export default function ViewCRM({
 
       return true;
     });
+
+    // Ordenar de mayor a menor prioridad (los más importantes primero)
+    return filtered.sort((a, b) => {
+      const wA = getLeadPriorityWeight(a);
+      const wB = getLeadPriorityWeight(b);
+      if (wA !== wB) return wB - wA;
+      // Desempate por ID o timestamp
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
   }, [leads, filterTab, searchQuery]);
 
   const handleSave = () => {
@@ -246,6 +298,35 @@ export default function ViewCRM({
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      {/* Banner de Acción Inmediata si hay clientes esperando */}
+      {attentionCount > 0 && (
+        <div className="bg-gradient-to-r from-red-500 via-orange-500 to-[#FF6B00] p-4 md:p-5 rounded-[28px] text-white shadow-xl shadow-orange-500/20 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in duration-500">
+          <div className="flex items-center space-x-3 text-left">
+            <div className="h-12 w-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
+              <Zap size={24} className="text-white animate-bounce" />
+            </div>
+            <div>
+              <h3 className="text-sm md:text-base font-black uppercase tracking-tight">
+                🔥 {attentionCount} {attentionCount === 1 ? 'cliente requiere' : 'clientes requieren'} que le hables ahora
+              </h3>
+              <p className="text-xs text-white/90 font-medium">
+                Pide información, motor o requiere intervención manual. Haz clic en "Chatear" para responderles de inmediato.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setFilterTab('attention')}
+            className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all whitespace-nowrap shadow-md active:scale-95 ${
+              filterTab === 'attention'
+                ? 'bg-white text-slate-900 shadow-white/30 ring-2 ring-white'
+                : 'bg-slate-900 hover:bg-black text-[#FF6B00]'
+            }`}
+          >
+            {filterTab === 'attention' ? 'Mostrando Cola Prioritaria ✓' : 'Ver Cola Prioritaria →'}
+          </button>
+        </div>
+      )}
+
       {/* Header & KPI Summary Cards */}
       <div className="space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -257,7 +338,7 @@ export default function ViewCRM({
               </span>
             </div>
             <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1.5 italic">
-              Monitorea a quiénes debes hablarles y accede directamente al chat
+              Ordenados por prioridad de atención · Envía información y cotizaciones al instante
             </p>
           </div>
 
@@ -269,7 +350,7 @@ export default function ViewCRM({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por nombre, teléfono, mensaje..."
+                placeholder="Buscar por nombre, teléfono, motor, zona..."
                 className="pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs outline-none w-72 md:w-80 shadow-sm focus:border-[#FF6B00] focus:ring-2 focus:ring-orange-100 transition-all italic font-medium"
               />
               {searchQuery && (
@@ -307,7 +388,7 @@ export default function ViewCRM({
               filterTab === 'attention'
                 ? 'bg-red-500 text-white border-red-500 shadow-xl shadow-red-200 scale-[1.02]'
                 : attentionCount > 0
-                ? 'bg-white border-red-200 hover:border-red-400 shadow-sm hover:shadow-md'
+                ? 'bg-white border-red-200 hover:border-red-400 shadow-sm hover:shadow-md ring-2 ring-red-100'
                 : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
             }`}
           >
@@ -315,7 +396,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'attention' ? 'text-red-100' : 'text-red-500'
               }`}>
-                ⚠️ Por Hablarles
+                ⚠️ Por Hablarles Primero
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'attention' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-500'
@@ -332,14 +413,9 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'attention' ? 'text-red-100' : 'text-slate-400'
               }`}>
-                requieren atención
+                pendientes
               </span>
             </div>
-            {attentionCount > 0 && filterTab !== 'attention' && (
-              <span className="inline-block mt-2 text-[9px] font-black text-red-600 uppercase tracking-tight underline">
-                Ver lista prioritaria →
-              </span>
-            )}
           </button>
 
           {/* Card 2: Con datos capturados */}
@@ -355,7 +431,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'with_data' ? 'text-indigo-100' : 'text-slate-400'
               }`}>
-                📋 Con Datos
+                📋 Con Datos de Envío/Motor
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'with_data' ? 'bg-indigo-700 text-white' : 'bg-indigo-50 text-indigo-600'
@@ -372,7 +448,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'with_data' ? 'text-indigo-100' : 'text-slate-400'
               }`}>
-                leads calificados
+                listos para cotizar
               </span>
             </div>
           </button>
@@ -390,7 +466,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'bot' ? 'text-emerald-100' : 'text-slate-400'
               }`}>
-                🤖 En Gestión IA
+                🤖 En Gestión Automática
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'bot' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-600'
@@ -407,7 +483,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'bot' ? 'text-emerald-100' : 'text-slate-400'
               }`}>
-                respondiendo auto
+                atendidos por IA
               </span>
             </div>
           </button>
@@ -425,7 +501,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'sales' ? 'text-orange-100' : 'text-slate-400'
               }`}>
-                ⭐ Ventas / Oportunidades
+                ⭐ Oportunidades Clave
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'sales' ? 'bg-orange-600 text-white' : 'bg-orange-50 text-[#FF6B00]'
@@ -442,24 +518,24 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'sales' ? 'text-orange-100' : 'text-slate-400'
               }`}>
-                alta conversión
+                interesados/ventas
               </span>
             </div>
           </button>
         </div>
 
-        {/* Barra de Filtros secundarios */}
+        {/* Barra de Filtros rápidos */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1 flex items-center gap-1">
-            <Filter size={12} /> Filtro:
+            <Filter size={12} /> Vista:
           </span>
 
           {[
-            { id: 'all', label: `Todos (${totalCount})` },
             { id: 'attention', label: `🚨 Por Hablarles (${attentionCount})`, alert: attentionCount > 0 },
             { id: 'with_data', label: `📋 Con Datos (${withDataCount})` },
             { id: 'bot', label: `🤖 En IA (${botCount})` },
             { id: 'sales', label: `⭐ Oportunidades (${salesCount})` },
+            { id: 'all', label: `Todos (${totalCount})` },
           ].map(tab => (
             <button
               key={tab.id}
@@ -481,12 +557,12 @@ export default function ViewCRM({
               onClick={() => setFilterTab('all')}
               className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline ml-2"
             >
-              Restablecer
+              Ver todos
             </button>
           )}
 
           <div className="ml-auto text-[10px] font-bold text-slate-400">
-            Mostrando <span className="text-slate-800 font-black">{visibleLeads.length}</span> leads
+            Mostrando <span className="text-slate-800 font-black">{visibleLeads.length}</span> leads ordenados por prioridad
           </div>
         </div>
       </div>
@@ -497,11 +573,11 @@ export default function ViewCRM({
           <table className="w-full text-left min-w-[1000px]">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="px-6 py-5">LEAD / CLIENTE</th>
-                <th className="px-5 py-5">ATENCIÓN & ESTADO</th>
-                <th className="px-5 py-5">DATOS CAPTURADOS</th>
+                <th className="px-6 py-5">LEAD & MENSAJE RECIENTE</th>
+                <th className="px-5 py-5">ESTADO / ATENCIÓN</th>
+                <th className="px-5 py-5">MOTOR / PRODUCTO / DATOS</th>
                 <th className="px-4 py-5">SCORE IA</th>
-                <th className="px-6 py-5 text-right">ACCIONES RÁPIDAS</th>
+                <th className="px-6 py-5 text-right">ENVIAR INFORMACIÓN</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -509,15 +585,19 @@ export default function ViewCRM({
                 <tr>
                   <td colSpan={5} className="px-8 py-16 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center space-y-3">
-                      <div className="h-14 w-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-300 border border-slate-100">
-                        <UserCircle size={28} />
+                      <div className="h-14 w-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500 border border-emerald-100">
+                        <CheckCircle2 size={28} />
                       </div>
-                      <p className="text-sm font-bold text-slate-600">No se encontraron leads con este criterio</p>
-                      <p className="text-xs text-slate-400">Prueba cambiando el filtro o la búsqueda.</p>
+                      <p className="text-sm font-bold text-slate-700">
+                        {filterTab === 'attention' ? '¡Excelente! No tienes leads pendientes por hablarles.' : 'No se encontraron leads con este criterio.'}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {filterTab === 'attention' ? 'Todos los prospectos están siendo atendidos por la IA o al día.' : 'Prueba cambiando el filtro o la búsqueda.'}
+                      </p>
                       {filterTab !== 'all' && (
                         <button
                           onClick={() => { setFilterTab('all'); setSearchQuery(''); }}
-                          className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider"
+                          className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-black transition-all"
                         >
                           Ver todos los leads
                         </button>
@@ -529,6 +609,7 @@ export default function ViewCRM({
                 visibleLeads.map(lead => {
                   const leadNeedsAttention = needsAttention(lead);
                   const isSelected = sidebarLeadId === lead.id && showSidebar;
+                  const waUrl = getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id);
 
                   return (
                     <tr
@@ -536,16 +617,16 @@ export default function ViewCRM({
                       onClick={() => { setSidebarLeadId(lead.id); setShowSidebar(true); }}
                       className={`hover:bg-slate-50/90 transition-all group cursor-pointer ${
                         isSelected
-                          ? 'bg-orange-50/40 border-l-4 border-[#FF6B00]'
+                          ? 'bg-orange-50/50 border-l-4 border-[#FF6B00]'
                           : leadNeedsAttention
                           ? 'bg-red-50/30'
                           : ''
                       }`}
                     >
-                      {/* Columna: Lead / Contacto */}
+                      {/* Columna: Lead / Contacto + Mensaje */}
                       <td className="px-6 py-4">
-                        <div className="flex items-center space-x-3.5">
-                          <div className="relative shrink-0">
+                        <div className="flex items-start space-x-3.5">
+                          <div className="relative shrink-0 mt-0.5">
                             <div className={`h-11 w-11 rounded-[16px] flex items-center justify-center font-black text-xs shadow-sm ${
                               lead.priority === 'urgent'
                                 ? 'bg-red-600 text-white animate-pulse'
@@ -559,7 +640,7 @@ export default function ViewCRM({
                               <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white animate-ping" />
                             )}
                           </div>
-                          <div className="min-w-0 max-w-[240px]">
+                          <div className="min-w-0 max-w-[260px]">
                             <div className="flex items-center space-x-2">
                               <p className="text-sm font-black text-slate-800 leading-none group-hover:text-[#FF6B00] transition-colors truncate">
                                 {lead.nombre}
@@ -574,22 +655,22 @@ export default function ViewCRM({
                               <Phone size={10} className="text-slate-300 shrink-0" />
                               <span className="truncate">{lead.phone || lead.whatsapp_id || 'Sin teléfono'}</span>
                             </div>
-                            {/* Vista previa del último mensaje */}
-                            {lead.lastMessage && (
-                              <p className="text-[11px] text-slate-500 truncate mt-1 italic font-medium leading-tight">
-                                "{lead.lastMessage}"
-                              </p>
-                            )}
-                            {lead.handoff_reason && (
-                              <p className="text-[10px] text-red-600 font-bold italic truncate mt-0.5">
+
+                            {/* Motivo de Handoff o Último Mensaje */}
+                            {lead.handoff_reason ? (
+                              <p className="text-[10px] text-red-600 font-black italic truncate mt-1 bg-red-100/60 px-2 py-0.5 rounded-md w-fit">
                                 ⚠️ {lead.handoff_reason}
                               </p>
-                            )}
+                            ) : lead.lastMessage ? (
+                              <p className="text-[11px] text-slate-600 truncate mt-1 italic font-medium leading-tight">
+                                "{lead.lastMessage}"
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       </td>
 
-                      {/* Columna: Atención & Estado */}
+                      {/* Columna: Estado & Atención */}
                       <td className="px-5 py-4">
                         <div className="flex flex-col space-y-1.5">
                           {/* Badge de necesidad de intervención */}
@@ -619,30 +700,28 @@ export default function ViewCRM({
                         </div>
                       </td>
 
-                      {/* Columna: Datos Capturados */}
+                      {/* Columna: Motor / Producto / Datos Capturados */}
                       <td className="px-5 py-4">
-                        <div className="max-w-[200px] space-y-1">
-                          {tieneDatos(lead) ? (
-                            <div className="flex flex-wrap gap-1">
-                              {lead.motor && lead.motor !== 'N/A' && (
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[9px] font-bold rounded-md truncate max-w-[180px]">
-                                  🔧 {lead.motor}
-                                </span>
-                              )}
-                              {lead.zona && lead.zona !== 'N/A' && (
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[9px] font-bold rounded-md truncate max-w-[180px]">
-                                  📍 {lead.zona}
-                                </span>
-                              )}
-                              {lead.nit && lead.nit !== 'N/A' && (
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[9px] font-bold rounded-md">
-                                  📄 NIT: {lead.nit}
-                                </span>
-                              )}
+                        <div className="max-w-[220px] space-y-1">
+                          {lead.motor && lead.motor !== 'N/A' && (
+                            <div className="flex items-center space-x-1 text-[11px] font-black text-slate-800 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-lg truncate">
+                              <Tag size={11} className="text-[#FF6B00] shrink-0" />
+                              <span className="truncate">{lead.motor}</span>
                             </div>
-                          ) : (
+                          )}
+                          {lead.zona && lead.zona !== 'N/A' && (
+                            <div className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md truncate">
+                              📍 {lead.zona}
+                            </div>
+                          )}
+                          {lead.falla && lead.falla !== 'N/A' && (
+                            <div className="text-[10px] font-medium text-slate-500 truncate italic">
+                              Necesidad: {lead.falla}
+                            </div>
+                          )}
+                          {!lead.motor && !lead.zona && !lead.falla && (
                             <span className="text-[10px] font-bold text-slate-300 italic">
-                              Sin datos aún
+                              Sin datos específicos aún
                             </span>
                           )}
                         </div>
@@ -666,21 +745,35 @@ export default function ViewCRM({
                         </div>
                       </td>
 
-                      {/* Columna: Acciones Rápidas */}
+                      {/* Columna: Acciones Rápidas - Enviar Información */}
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end space-x-2">
-                          {/* BOTÓN PRINCIPAL: ABRIR CHAT DIRECTO */}
+                          {/* BOTÓN 1: CHATEAR DIRECTO EN ONE CONTROL */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               if (onOpenConversation) onOpenConversation(lead.id);
                             }}
-                            title="Abrir chat directo con este lead"
+                            title="Abrir chat en el panel para mandar información"
                             className="px-3.5 py-2 rounded-xl bg-slate-900 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white font-black text-[10px] uppercase tracking-wider flex items-center space-x-1.5 shadow-sm transition-all active:scale-95 group/btn"
                           >
                             <MessageSquare size={13} className="group-hover/btn:scale-110 transition-transform" />
-                            <span>Chat</span>
+                            <span>Chatear</span>
                           </button>
+
+                          {/* BOTÓN 2: WHATSAPP DIRECTO */}
+                          {waUrl && (
+                            <a
+                              href={waUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Abrir WhatsApp directamente"
+                              className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
+                            >
+                              <ExternalLink size={13} />
+                            </a>
+                          )}
 
                           {/* Botón Editar */}
                           <button
@@ -701,7 +794,7 @@ export default function ViewCRM({
                               setSidebarLeadId(lead.id);
                               setShowSidebar(true);
                             }}
-                            title="Ver detalles"
+                            title="Ver detalles completos"
                             className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
                           >
                             <UserCircle size={14} />
