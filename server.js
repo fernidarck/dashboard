@@ -350,6 +350,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN lead_alertado INTEGER DEFAULT 0"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
@@ -2280,6 +2281,22 @@ app.post('/api/leads/update-contact', async (req, res) => {
     values.push(id);
     await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...values);
     console.log(`✏️ Contacto ${id} actualizado: ${updates.join(", ")}`);
+
+    // 🔔 RED DE SEGURIDAD: avisar apenas el lead esté calificado (nombre + zona/dirección),
+    // aunque el bot no cierre con #PEDIDO_LISTO. Se avisa UNA sola vez por lead.
+    try {
+      const l = await db.get("SELECT nombre, phone, zona, direccion, motor, falla, channel_phone, lead_alertado FROM leads WHERE id = ?", id);
+      const GENERIC = ['', 'cliente', 'cliente nuevo', 'agente'];
+      const tieneNombre = l && l.nombre && !GENERIC.includes(String(l.nombre).trim().toLowerCase());
+      const tieneUbicacion = l && (l.zona || l.direccion);
+      if (tieneNombre && tieneUbicacion && !l.lead_alertado) {
+        await db.run("UPDATE leads SET lead_alertado = 1 WHERE id = ?", id);
+        const alerta = `🔔 *LEAD LISTO PARA CONTACTAR*\n\n👤 ${l.nombre}\n📱 ${l.phone || ''}\n📍 ${l.zona || l.direccion}${l.motor && l.motor !== 'N/A' ? `\n⚙️ ${l.motor}` : ''}${l.falla && l.falla !== 'N/A' ? `\n🔧 ${l.falla}` : ''}\n\n👉 Ya tenés sus datos. Entrá al dashboard y contactalo con la cotización.`;
+        await notificarDueno(alerta, l.channel_phone || null);
+        console.log(`🔔 Lead ${id} calificado — alerta enviada al dueño`);
+      }
+    } catch (e) { console.error('⚠️ No se pudo evaluar/avisar lead calificado:', e.message); }
+
     res.json({ success: true, leadId: id });
   } catch (err) {
     res.status(500).json({ error: err.message });

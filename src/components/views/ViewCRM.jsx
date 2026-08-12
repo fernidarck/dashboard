@@ -43,7 +43,10 @@ function ClientSidebarPanel({ lead, onClose, onToggleBot, onArchive, onDeleteMes
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Datos Capturados por IA</label>
           <div className="space-y-3">
             {[
+              { l: 'Zona', v: lead.zona, i: Database },
               { l: 'Dirección', v: lead.direccion, i: Database },
+              { l: 'Motor / Producto', v: lead.motor, i: Tag },
+              { l: 'Falla / Necesidad', v: lead.falla, i: Tag },
               { l: 'NIT/Factura', v: lead.nit, i: Tag },
               { l: 'Email', v: lead.email, i: MessageSquare },
               { l: 'Notas', v: lead.notas, i: Pencil }
@@ -53,7 +56,7 @@ function ClientSidebarPanel({ lead, onClose, onToggleBot, onArchive, onDeleteMes
                   <d.i size={12} className="text-slate-300 group-hover:text-[#FF6B00] transition-colors" />
                   <span className="text-[9px] font-black text-slate-400 uppercase">{d.l}</span>
                 </div>
-                <span className="text-[11px] font-black text-slate-800 truncate pl-5">{d.v || '—'}</span>
+                <span className="text-[11px] font-black text-slate-800 truncate pl-5">{(d.v && d.v !== 'N/A') ? d.v : '—'}</span>
               </div>
             ))}
           </div>
