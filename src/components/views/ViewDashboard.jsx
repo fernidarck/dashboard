@@ -17,26 +17,28 @@ function LeadRow({ lead, onOpenConversation }) {
   const detalle = [necesidad, zona].filter(Boolean).join(' · ');
 
   return (
-    <div className="group flex items-center gap-4 py-3.5 border-b border-slate-100 last:border-0">
-      <div className="h-9 w-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs shrink-0">
+    <div className="group flex items-center gap-3.5 py-3 border-b border-slate-100 last:border-0">
+      <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+        isUrgent ? 'bg-orange-50 text-[#FF6B00]' : 'bg-slate-100 text-slate-500'
+      }`}>
         {lead.nombre?.[0]?.toUpperCase() || '?'}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-slate-900 truncate">{lead.nombre || 'Cliente'}</p>
-          {isUrgent && <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">Urgente</span>}
+          {isUrgent && <span className="text-[9px] font-bold uppercase tracking-wide text-[#FF6B00] bg-orange-50 rounded px-1.5 py-0.5">Urgente</span>}
         </div>
         <p className="text-[12px] text-slate-400 truncate">{detalle || lead.phone || '—'}</p>
       </div>
-      <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-0.5 shrink-0">
         <button onClick={() => onOpenConversation(lead.id)} title="Abrir chat"
-          className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
-          <ArrowRight size={15} />
+          className="p-2 rounded-lg text-slate-400 hover:text-[#FF6B00] hover:bg-orange-50 transition-colors">
+          <ArrowRight size={16} />
         </button>
         {waUrl && (
           <a href={waUrl} target="_blank" rel="noreferrer" title="WhatsApp"
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors">
-            <ArrowUpRight size={15} />
+            className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+            <ArrowUpRight size={16} />
           </a>
         )}
       </div>
@@ -48,15 +50,14 @@ function ConvRow({ lead, onOpenConversation }) {
   const isUrgent = lead.priority === 'urgent' || !!lead.handoff_reason;
   return (
     <button onClick={() => onOpenConversation(lead.id)}
-      className="w-full flex items-center gap-3 py-3 border-b border-slate-100 last:border-0 text-left hover:bg-slate-50/60 -mx-2 px-2 rounded-lg transition-colors">
-      <div className="h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-[11px] shrink-0">
+      className="w-full flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0 text-left hover:bg-slate-50/70 -mx-2 px-2 rounded-lg transition-colors">
+      <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 ${
+        isUrgent ? 'bg-red-50 text-red-500' : lead.botActive ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+      }`}>
         {lead.nombre?.[0]?.toUpperCase() || '?'}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="text-[13px] font-semibold text-slate-800 truncate">{lead.nombre || 'Cliente'}</p>
-          {isUrgent && <span className="h-1.5 w-1.5 rounded-full bg-slate-900 shrink-0" />}
-        </div>
+        <p className="text-[13px] font-semibold text-slate-800 truncate">{lead.nombre || 'Cliente'}</p>
         <p className="text-[11px] text-slate-400 truncate">{lead.lastMessage || 'Sin mensajes'}</p>
       </div>
       <span className="text-[10px] text-slate-300 shrink-0">{lead.time || ''}</span>
@@ -96,14 +97,14 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
   const botMessages = stats.botMessages || 0;
 
   const kpis = [
-    { label: 'Por hablar',     value: porHablar.length,     onClick: onOpenLeads },
-    { label: 'En seguimiento', value: enSeguimiento.length,  onClick: onOpenLeads },
-    { label: 'Pedidos',        value: pedidosCount },
-    { label: 'Ventas',         value: ventas.length },
+    { label: 'Por hablar',     value: porHablar.length,     color: 'text-[#FF6B00]', dot: 'bg-[#FF6B00]', onClick: onOpenLeads },
+    { label: 'En seguimiento', value: enSeguimiento.length,  color: 'text-blue-500',  dot: 'bg-blue-500',  onClick: onOpenLeads },
+    { label: 'Pedidos',        value: pedidosCount,         color: 'text-violet-500',dot: 'bg-violet-500' },
+    { label: 'Ventas',         value: ventas.length,        color: 'text-emerald-500',dot: 'bg-emerald-500' },
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500">
+    <div className="max-w-6xl mx-auto space-y-9 animate-in fade-in duration-500">
 
       {/* HEADER */}
       <div className="flex items-baseline justify-between flex-wrap gap-2 pt-1">
@@ -112,44 +113,50 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
           <p className="text-xs text-slate-400 mt-0.5">OneControl · Guatemala</p>
         </div>
         {porHablar.length > 0 && (
-          <button onClick={onOpenLeads} className="text-xs font-medium text-slate-500 hover:text-slate-900 flex items-center gap-1.5 transition-colors">
+          <button onClick={onOpenLeads} className="text-xs font-semibold text-[#FF6B00] hover:text-[#c95400] flex items-center gap-1.5 transition-colors">
             {porHablar.length} por contactar <ArrowRight size={13} />
           </button>
         )}
       </div>
 
-      {/* KPIs — minimalistas, sin color */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-slate-100 border border-slate-100 rounded-2xl overflow-hidden">
+      {/* KPIs — minimal con acento de color */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {kpis.map((k, i) => (
           <button key={i} onClick={k.onClick}
-            className={`bg-white p-5 text-left transition-colors ${k.onClick ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'}`}>
-            <p className="text-3xl font-semibold text-slate-900 tabular-nums leading-none">{k.value}</p>
-            <p className="text-[11px] text-slate-400 mt-2 uppercase tracking-wide">{k.label}</p>
+            className={`bg-white border border-slate-200 rounded-2xl p-5 text-left transition-all ${k.onClick ? 'hover:border-slate-300 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className={`h-1.5 w-1.5 rounded-full ${k.dot}`} />
+              <p className="text-[11px] text-slate-400 uppercase tracking-wide">{k.label}</p>
+            </div>
+            <p className={`text-3xl font-semibold ${k.color} tabular-nums leading-none`}>{k.value}</p>
           </button>
         ))}
       </div>
 
       {/* MAIN */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-9">
 
         {/* A quién hablarle */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold text-slate-900">A quién hablarle</h3>
+            <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+              A quién hablarle
+              <span className="text-[10px] font-bold text-[#FF6B00] bg-orange-50 rounded-full px-2 py-0.5">{porHablar.length}</span>
+            </h3>
             {porHablar.length > 0 && (
-              <button onClick={onOpenLeads} className="text-[11px] text-slate-400 hover:text-slate-900 flex items-center gap-1 transition-colors">
+              <button onClick={onOpenLeads} className="text-[11px] text-slate-400 hover:text-[#FF6B00] flex items-center gap-1 transition-colors">
                 Ver todos <ArrowRight size={11} />
               </button>
             )}
           </div>
 
           {porHablar.length === 0 ? (
-            <div className="py-16 text-center">
-              <p className="text-sm text-slate-500">Todo al día. Ningún lead pendiente.</p>
+            <div className="py-16 text-center bg-white border border-slate-100 rounded-2xl">
+              <p className="text-sm text-slate-600 font-medium">Todo al día. Ningún lead pendiente.</p>
               <p className="text-xs text-slate-400 mt-1">Aparecen los que hicieron pedido, mostraron interés o dieron sus datos.</p>
             </div>
           ) : (
-            <div>
+            <div className="bg-white border border-slate-200 rounded-2xl px-4">
               {porHablar.slice(0, 9).map(lead => (
                 <LeadRow key={lead.id} lead={lead} onOpenConversation={onOpenConversation} />
               ))}
@@ -158,30 +165,34 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
         </div>
 
         {/* Conversaciones + IA */}
-        <div className="space-y-8">
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-900 mb-1">Conversaciones</h3>
-            {recentConvs.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">Sin conversaciones recientes</p>
-            ) : recentConvs.map(lead => (
-              <ConvRow key={lead.id} lead={lead} onOpenConversation={onOpenConversation} />
-            ))}
+        <div className="space-y-7">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+              Conversaciones <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse" />
+            </h3>
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-1">
+              {recentConvs.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Sin conversaciones recientes</p>
+              ) : recentConvs.map(lead => (
+                <ConvRow key={lead.id} lead={lead} onOpenConversation={onOpenConversation} />
+              ))}
+            </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-6">
-            <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-3">Impacto de la IA</p>
+          <div className="bg-slate-900 rounded-2xl p-5">
+            <p className="text-[11px] font-semibold text-[#FF6B00] uppercase tracking-wide mb-3">Impacto de la IA</p>
             <div className="flex items-end gap-8">
               <div>
-                <p className="text-2xl font-semibold text-slate-900 tabular-nums leading-none">{botMessages}</p>
+                <p className="text-2xl font-semibold text-white tabular-nums leading-none">{botMessages}</p>
                 <p className="text-[10px] text-slate-400 mt-1.5">mensajes automáticos</p>
               </div>
               <div>
-                <p className="text-2xl font-semibold text-slate-900 tabular-nums leading-none">{Math.max(1, Math.round((botMessages * 5) / 60))}h</p>
+                <p className="text-2xl font-semibold text-white tabular-nums leading-none">{Math.max(1, Math.round((botMessages * 5) / 60))}h</p>
                 <p className="text-[10px] text-slate-400 mt-1.5">tiempo ahorrado</p>
               </div>
             </div>
             {onConfigureAgent && (
-              <button onClick={onConfigureAgent} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-900 flex items-center gap-1.5 transition-colors">
+              <button onClick={onConfigureAgent} className="mt-4 text-xs font-semibold text-[#FF6B00] hover:text-orange-300 flex items-center gap-1.5 transition-colors">
                 Configurar agente <ArrowRight size={12} />
               </button>
             )}
