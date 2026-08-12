@@ -340,6 +340,7 @@ export default function App() {
               <ViewConversaciones
                 leads={leads}
                 messages={messages}
+                products={products}
                 selectedChatId={selectedChatId}
                 selectedLead={selectedLead}
                 onSelectChat={setSelectedChatId}

@@ -475,6 +475,22 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
   }
 }
 
+// Enviar texto por YCloud
+async function sendTextViaYCloud(toPhone, text, channelPhone = null) {
+  try {
+    if (!toPhone || !text) return;
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    if (!apiKey || !fromNum) return;
+    await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({ from: fromNum, to: toPhone, type: 'text', text: { body: text } })
+    });
+  } catch(e) { console.error('❌ Error enviando texto via YCloud:', e.message); }
+}
+
 // Helper para normalizar textos para comparación
 const normalize = (text) => {
   return String(text || "")
@@ -677,339 +693,231 @@ app.put('/api/leads/:id', async (req, res) => {
   }
 });
 
-// Endpoint Webhook para n8n (Recibir mensajes de WhatsApp)
-app.post('/api/webhook/whatsapp', async (req, res) => {
+// Helper para extraer y normalizar datos de cualquier webhook (n8n, YCloud, WhatsApp directo)
+function parseWebhookPayload(data) {
+  // 1. Detectar si es un evento crudo de YCloud
+  const isYCloudEvent = !!data.whatsappMessage || !!data.type?.startsWith?.('whatsapp.');
+  const yMsg = data.whatsappMessage || {};
+
+  // 2. Detectar si es un mensaje enviado por el humano desde su propio teléfono (Echo / Outbound)
+  const isEcho = data.is_echo === true ||
+    data.from_me === true ||
+    data.fromMe === true ||
+    data.type === 'whatsapp.smb.message.echoes' ||
+    data.event === 'whatsapp.smb.message.echoes' ||
+    data.event_type === 'whatsapp.smb.message.echoes' ||
+    data.sender === 'agent' ||
+    data.sender === 'user' ||
+    data.sender === 'human' ||
+    data.sender === 'me' ||
+    data.sender === 'business' ||
+    data.direction === 'outbound';
+
+  let clientPhoneRaw = null;
+  let channelPhoneRaw = null;
+
+  if (isEcho) {
+    // Si fue enviado desde el teléfono del negocio:
+    // El cliente es el destinatario (to / recipient)
+    clientPhoneRaw = data.phone || data.to || data.customer || data.customer_phone || data.recipient || yMsg.to || yMsg.recipient;
+    channelPhoneRaw = data.channel_phone || data.business_phone || data.from || yMsg.from;
+  } else {
+    // Si fue enviado por el cliente:
+    // El cliente es el remitente (from / phone)
+    clientPhoneRaw = data.phone || data.from || data.customer || data.customer_phone || data.sender_phone || yMsg.from || yMsg.customer?.phoneNumber;
+    channelPhoneRaw = data.channel_phone || data.business_phone || data.to || yMsg.to;
+  }
+
+  // Extraer texto
+  const mensajePrincipal = data.mensaje || data.message || data.text || data.body || data.texto || 
+    data.client_message || data.agent_message || data.respuesta_cliente || data.mensaje_cliente || 
+    data.texto_cliente || yMsg.text?.body || data.data?.message?.conversation || 
+    data.data?.message?.extendedTextMessage?.text || '';
+
+  const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output || '';
+
+  // Extraer media
+  const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.file_url || 
+    yMsg.image?.link || yMsg.document?.link || yMsg.video?.link || yMsg.audio?.link || null;
+  const mediaType = data.media_type || data.mediaType || yMsg.type || (mediaUrl ? 'image' : null);
+
+  const sender = isEcho ? 'agent' : (data.sender || 'client');
+  const nombre = data.nombre || data.name || yMsg.customer?.name || null;
+
+  return {
+    isEcho,
+    clientPhoneRaw,
+    channelPhoneRaw,
+    mensajePrincipal,
+    mensajeSecundario,
+    mediaUrl,
+    mediaType,
+    sender,
+    nombre,
+    raw: data
+  };
+}
+
+// Endpoint unificado para procesar webhooks de mensajes
+async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') {
   try {
-    const data = req.body;
-    const phone = data.phone;
-    const mensajePrincipal = data.message || data.text;
-    const mensajeSecundario = data.bot_response; // Si n8n ya tiene la respuesta de la IA
-    const senderPrincipal = data.sender || 'client';
-    const mediaUrl = data.mediaUrl;
-    const mediaType = data.mediaType;
-    const channel_phone = data.channel_phone || data.business_phone || data.to || null;
+    const data = req.body || {};
+    console.log(`🔍 [${sourceName}] CUERPO RECIBIDO:`, JSON.stringify(data, null, 2));
 
-    if (!phone) return res.status(400).json({ error: "Falta phone" });
+    const parsed = parseWebhookPayload(data);
+    if (!parsed.clientPhoneRaw) {
+      console.log(`⚠️ [${sourceName}] No se pudo determinar el teléfono del cliente`);
+      return res.status(400).json({ error: "Falta el teléfono del cliente (phone/to/from)" });
+    }
 
-    // Normalize target/channel phone if provided
+    const cleanPhone = String(parsed.clientPhoneRaw).replace(/\D/g, '');
     let cleanChannelPhone = null;
-    if (channel_phone) {
-      cleanChannelPhone = String(channel_phone).replace(/\D/g, '');
+    if (parsed.channelPhoneRaw) {
+      cleanChannelPhone = String(parsed.channelPhoneRaw).replace(/\D/g, '');
     } else {
-      // Fallback: look at default channel
       const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
-      if (defaultChan) {
-        cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
-      }
-    }
-
-    // Buscar lead por teléfono (normalizado) y canal
-    const cleanPhone = String(phone).replace(/\D/g, '');
-    let existingLead;
-    if (cleanChannelPhone) {
-      existingLead = await db.get(
-        "SELECT id, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
-        cleanPhone, cleanChannelPhone
-      );
-    } else {
-      existingLead = await db.get(
-        "SELECT id, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
-        cleanPhone
-      );
-    }
-
-    let leadId;
-    if (!existingLead) {
-      const result = await db.run(
-        "INSERT INTO leads (nombre, phone, origen, botActive, estado, channel_phone) VALUES (?, ?, 'WhatsApp (n8n)', 1, 'Nuevo', ?)",
-        data.name || 'Cliente WhatsApp', phone, cleanChannelPhone
-      );
-      leadId = result.lastID;
-    } else {
-      leadId = existingLead.id;
+      if (defaultChan) cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
     }
 
     const now = new Date();
     const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-    const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
+    const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + 
+                 guateTime.getUTCMinutes().toString().padStart(2, '0') + 
+                 (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
 
-    console.log(`📩 Procesando Webhook - Lead ID: ${leadId} (Canal: ${cleanChannelPhone})`);
+    console.log(`📨 [${sourceName}] Procesando mensaje:`, {
+      sender: parsed.sender,
+      isEcho: parsed.isEcho,
+      clientPhone: cleanPhone,
+      channelPhone: cleanChannelPhone,
+      text: parsed.mensajePrincipal?.slice?.(0, 50),
+      mediaUrl: parsed.mediaUrl
+    });
 
-    // ── DETECCIÓN AUTOMÁTICA DE HANDOFF ────────────────────────────────────
-    const handoffReason = data.handoff_reason || await detectHandoff(mensajePrincipal);
-    if (handoffReason) {
-      // No re-disparar si el bot ya está inactivo
-      const leadState = await db.get("SELECT botActive FROM leads WHERE id = ?", leadId);
-      if (leadState && leadState.botActive === 0) {
-        console.log(`ℹ️ Lead ${leadId}: handoff detectado pero bot ya está inactivo — ignorado`);
-      } else {
-        console.log(`🚨 HANDOFF DETECTADO para lead ${leadId}: "${handoffReason}"`);
-        await db.run(
-          "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
-          handoffReason, leadId
-        );
-      }
-    }
-    // ────────────────────────────────────────────────────────────────────────
-    
-    if (mensajePrincipal || mediaUrl) {
-      await saveSmartMessage(leadId, senderPrincipal, mensajePrincipal, time, mediaUrl, mediaType);
-    }
-
-    if (mensajeSecundario && normalize(mensajeSecundario) !== normalize(mensajePrincipal)) {
-      await saveSmartMessage(leadId, 'bot', mensajeSecundario, time);
-    }
-
-    res.json({ success: true, action: existingLead ? "updated" : "created", handoff: handoffReason || null });
-  } catch (err) {
-    console.error("❌ Error procesando webhook:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/webhook/setup-all-ycloud', async (req, res) => {
-  try {
-    const channels = await db.all("SELECT phone, api_key FROM whatsapp_channels WHERE active = 1");
-    const results = [];
-
-    for (const channel of channels) {
-      const apiKey = channel.api_key;
-      const phone = channel.phone;
-      if (!apiKey || apiKey.trim() === '') {
-        results.push({ phone, status: "ignored (empty api key)" });
-        continue;
-      }
-
-      console.log(`🔧 Configurando webhook YCloud para canal ${phone}...`);
-      
-      // 1. Obtener webhooks existentes para verificar si ya está configurado
-      const getRes = await fetch("https://api.ycloud.com/v2/webhookEndpoints", {
-        headers: { "X-API-Key": apiKey, "Accept": "application/json" }
-      });
-
-      if (!getRes.ok) {
-        results.push({ phone, status: `error fetching: ${getRes.status} ${await getRes.text()}` });
-        continue;
-      }
-
-      const getJson = await getRes.json();
-      const targetUrl = "https://appn8n-n8n.83aqlq.easypanel.host/webhook/21228c18-514c-4039-9afb-ac40c3635f7c";
-      const existing = getJson.items?.find(item => item.url === targetUrl);
-
-      if (existing) {
-        if (existing.status === 'active') {
-          results.push({ phone, status: "already active" });
-          continue;
-        } else {
-          // Reactivar si está deshabilitado
-          const patchRes = await fetch(`https://api.ycloud.com/v2/webhookEndpoints/${existing.id}`, {
-            method: 'PATCH',
-            headers: {
-              "X-API-Key": apiKey,
-              "Content-Type": "application/json",
-              "Accept": "application/json"
-            },
-            body: JSON.stringify({ status: 'active' })
-          });
-          results.push({ phone, status: `reactivated: ${patchRes.status}` });
-          continue;
-        }
-      }
-
-      // 2. Crear nuevo webhook endpoint
-      const postRes = await fetch("https://api.ycloud.com/v2/webhookEndpoints", {
-        method: 'POST',
-        headers: {
-          "X-API-Key": apiKey,
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify({
-          url: targetUrl,
-          enabledEvents: [
-            "whatsapp.inbound_message.received",
-            "whatsapp.smb.message.echoes",
-            "contact.attributes_changed"
-          ],
-          eventProperties: [
-            {
-              event: "contact.attributes_changed",
-              properties: ["tags"]
-            }
-          ],
-          status: "active"
-        })
-      });
-
-      if (postRes.ok) {
-        results.push({ phone, status: "created successfully" });
-      } else {
-        results.push({ phone, status: `failed creating: ${postRes.status} ${await postRes.text()}` });
-      }
-    }
-
-    res.json({ success: true, results });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/webhook/n8n', async (req, res) => {
-  const data = req.body;
-  console.log("🔍 CUERPO RECIBIDO DESDE N8N:", JSON.stringify(data, null, 2));
-
-  if (!data.phone) {
-    return res.status(400).json({ error: "Falta el campo 'phone'" });
-  }
-
-  const nombre = data.nombre || "Cliente Nuevo";
-  const email = data.email || "N/A";
-  const score = data.score || 50;
-  const estado = data.etiqueta || "Nuevo";
-  const origen = "WhatsApp (n8n)";
-  const now = new Date();
-  const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-  const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
-  const motor = data.motor || "N/A";
-  const falla = data.falla || "N/A";
-  const zona = data.zona || "N/A";
-  const channel_phone = req.body.channel_phone || req.body.business_phone || req.body.to || null;
-
-  try {
-    const cleanPhone = String(data.phone).replace(/\D/g, '');
-    const mensajePrincipal = data.mensaje || data.respuesta_cliente || data.mensaje_cliente || data.texto_cliente || data.client_message;
-    const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output;
-
-    // Normalize target/channel phone if provided
-    let cleanChannelPhone = null;
-    if (channel_phone) {
-      cleanChannelPhone = String(channel_phone).replace(/\D/g, '');
-    } else {
-      // Fallback: look at default channel
-      const defaultChan = await db.get("SELECT phone FROM whatsapp_channels LIMIT 1");
-      if (defaultChan) {
-        cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
-      }
-    }
-
-    console.log(`📨 WEBHOOK N8N recibido:`, JSON.stringify({ phone: data.phone, channel_phone: cleanChannelPhone, mensaje: mensajePrincipal?.slice?.(0,50), respuesta_bot: mensajeSecundario?.slice?.(0,50), media_url: data.media_url, mediaUrl: data.mediaUrl }));
-    console.log(`🔍 Buscando contacto para número normalizado: ${cleanPhone} y canal ${cleanChannelPhone}`);
-    
+    // Buscar lead existente
     let existingLead;
     if (cleanChannelPhone) {
       existingLead = await db.get(
-        "SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
+        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
         cleanPhone, cleanChannelPhone
       );
-    } else {
+    }
+    if (!existingLead) {
       existingLead = await db.get(
-        "SELECT id, nombre, estado, score FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
         cleanPhone
       );
     }
-    
-    let currentEstado = data.etiqueta || (existingLead ? existingLead.estado : "Nuevo");
-    const STATUS_SCORES = { 'Nuevo': 10, 'Interesado': 40, 'Cita Agendada': 75, 'Venta': 100, 'Post-Venta': 100, 'Perdido': 0, 'Intervención Requerida': 85 };
-    
-    let detectedEstado = detectStatus(mensajePrincipal, currentEstado);
-    detectedEstado = detectStatus(mensajeSecundario, detectedEstado);
-    
-    const finalEstado = detectedEstado;
-    const finalScore = STATUS_SCORES[finalEstado] || data.score || (existingLead ? existingLead.score : 10);
 
     let leadId;
-
     if (existingLead) {
-      console.log(`   ✅ Lead existente encontrado: ID ${existingLead.id}`);
-      const updates = ["estado = ?", "score = ?"];
-      const params = [finalEstado, finalScore];
+      leadId = existingLead.id;
+      const updates = [];
+      const params = [];
 
-      // Renombrar si el lead tiene nombre genérico y llega uno real
+      // Renombrar si llega un nombre real
       const GENERIC_NAMES = ['agente', 'cliente', 'cliente nuevo', ''];
-      if (data.nombre && !GENERIC_NAMES.includes(String(data.nombre).trim().toLowerCase())
+      if (parsed.nombre && !GENERIC_NAMES.includes(String(parsed.nombre).trim().toLowerCase())
           && GENERIC_NAMES.includes(String(existingLead.nombre || '').trim().toLowerCase())) {
         updates.push("nombre = ?");
-        params.push(data.nombre);
-        console.log(`   ✏️ Renombrando lead ${existingLead.id}: "${existingLead.nombre}" → "${data.nombre}"`);
+        params.push(parsed.nombre);
+        console.log(`   ✏️ Renombrando lead ${leadId}: "${existingLead.nombre}" → "${parsed.nombre}"`);
       }
 
-      if (data.bot_apagado !== undefined) {
-        updates.push("botActive = ?");
-        params.push(data.bot_apagado ? 0 : 1);
+      // Si el mensaje fue enviado por el humano desde su teléfono:
+      // Apagar bot para este lead, resolver handoff y mover a En Seguimiento
+      if (parsed.isEcho) {
+        updates.push("botActive = 0");
+        updates.push("priority = 'normal'");
+        updates.push("handoff_reason = NULL");
+        if (existingLead.estado === 'Nuevo' || existingLead.estado === 'Intervención Requerida') {
+          updates.push("estado = 'En Seguimiento'");
+        }
+        console.log(`📱 [Echo Teléfono] Mensaje enviado por el humano desde el celular para lead ${leadId}. Bot apagado y handoff resuelto.`);
+      } else {
+        // Mensaje del cliente
+        if (data.bot_apagado !== undefined) {
+          updates.push("botActive = ?");
+          params.push(data.bot_apagado ? 0 : 1);
+        }
+        if (data.etiqueta) {
+          updates.push("estado = ?");
+          params.push(data.etiqueta);
+        }
       }
-      
-      params.push(existingLead.id);
-      await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
-      leadId = existingLead.id;
+
+      if (updates.length > 0) {
+        params.push(leadId);
+        await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
+      }
     } else {
-      console.log("   🆕 Creando nuevo lead...");
-      const result = await db.run(`INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        nombre, data.phone, email, finalScore, finalEstado, origen, 1, motor, falla, zona, data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone);
-      leadId = result.lastID;
-    }
-
-    const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.file_url;
-    const mediaType = data.media_type || (mediaUrl ? 'image' : null);
-    const senderPrincipal = data.sender || 'client';
-    // Si viene media SIN respuesta_bot, la imagen pertenece al mensaje principal (cliente o agente)
-    const mediaEsDelPrincipal = mediaUrl && !mensajeSecundario;
-
-    // Mensaje del cliente/agente (adjunta su imagen si la mandó)
-    if (mensajePrincipal || mediaEsDelPrincipal) {
-      await saveSmartMessage(
-        leadId, senderPrincipal, mensajePrincipal || '', time,
-        mediaEsDelPrincipal ? mediaUrl : null,
-        mediaEsDelPrincipal ? mediaType : null
+      // Crear nuevo lead
+      const initialEstado = parsed.isEcho ? 'En Seguimiento' : (data.etiqueta || 'Nuevo');
+      const initialBotActive = parsed.isEcho ? 0 : 1;
+      const result = await db.run(
+        `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        parsed.nombre || 'Cliente WhatsApp', data.phone || parsed.clientPhoneRaw, data.email || 'N/A', 
+        data.score || 50, initialEstado, `WhatsApp (${sourceName})`, initialBotActive, 
+        data.motor || 'N/A', data.falla || 'N/A', data.zona || 'N/A', 
+        data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone
       );
+      leadId = result.lastID;
+      console.log(`🆕 [${sourceName}] Creado nuevo lead ID ${leadId} (${cleanPhone})`);
     }
-    // Respuesta del bot (con su imagen si trae respuesta_bot + media)
-    if (mensajeSecundario) {
-      const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(mensajeSecundario || '');
-      const botImageFinal = mediaUrl || botImageUrl;
+
+    // Guardar mensaje principal (cliente o agente desde el teléfono)
+    if (parsed.mensajePrincipal || parsed.mediaUrl) {
+      await saveSmartMessage(leadId, parsed.sender, parsed.mensajePrincipal || '', time, parsed.mediaUrl, parsed.mediaType);
+      console.log(`💾 [${sourceName}] Mensaje guardado para lead ${leadId} (sender: ${parsed.sender}): "${parsed.mensajePrincipal?.slice?.(0, 60)}"`);
+    }
+
+    // Guardar respuesta del bot si viene en el payload
+    if (parsed.mensajeSecundario && !parsed.isEcho) {
+      const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(parsed.mensajeSecundario || '');
+      const botImageFinal = parsed.mediaUrl || botImageUrl;
       if (cleanBot) await saveSmartMessage(leadId, 'bot', cleanBot, time);
       if (botImageFinal) await saveSmartMessage(leadId, 'bot', '', time, botImageFinal, 'image');
     }
 
-    // 🙋 Solicitud de humano: el cliente quiere hablar con una persona
-    if (data.solicita_humano || data.etiqueta === 'SOLICITA_HUMANO') {
+    // Detección de Handoff automática en mensajes del cliente
+    if (!parsed.isEcho && (data.solicita_humano || data.etiqueta === 'SOLICITA_HUMANO' || await detectHandoff(parsed.mensajePrincipal))) {
+      const handoffReason = data.handoff_reason || (data.solicita_humano ? 'Cliente pidió hablar con un humano' : await detectHandoff(parsed.mensajePrincipal));
       await db.run(
-        "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = 'Cliente pidió hablar con un humano', estado = 'Intervención Requerida' WHERE id = ?",
-        leadId
+        "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
+        handoffReason, leadId
       );
       try {
         const l = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", leadId);
-        const alerta = `🙋 *SOLICITUD DE AYUDA*\n\nUn cliente quiere hablar con una persona.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ${l?.phone || data.phone || ''}${mensajePrincipal ? `\n💬 "${String(mensajePrincipal).slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
+        const alerta = `🙋 *SOLICITUD DE AYUDA*\n\nUn cliente necesita que le respondas.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ${l?.phone || cleanPhone}\n📝 ${handoffReason}${parsed.mensajePrincipal ? `\n💬 "${String(parsed.mensajePrincipal).slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
         await notificarDueno(alerta, l?.channel_phone || cleanChannelPhone);
-      } catch (e) { console.error('⚠️ No se pudo notificar solicitud de humano:', e.message); }
-      console.log(`🙋 Solicitud de humano para lead ${leadId}`);
+      } catch (e) { console.error('⚠️ Error notificando handoff:', e.message); }
+      console.log(`🚨 [${sourceName}] Handoff activado para lead ${leadId}`);
     }
 
-    // Auto-crear pedido cuando el bot cierra venta (#PEDIDO_LISTO)
-    if (data.etiqueta === 'PEDIDO_LISTO') {
-      const lead = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", leadId);
-      const producto = data.pedido_producto || 'Ver conversación';
-      const guateDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-      const timestamp = guateDate.getUTCFullYear() + '-' +
-        String(guateDate.getUTCMonth() + 1).padStart(2, '0') + '-' +
-        String(guateDate.getUTCDate()).padStart(2, '0') + ' ' +
-        String(guateDate.getUTCHours()).padStart(2, '0') + ':' +
-        String(guateDate.getUTCMinutes()).padStart(2, '0');
-      const pedidoResult = await db.run(
-        "INSERT INTO pedidos (cliente, phone, producto, cantidad, notas, estado, timestamp) VALUES (?, ?, ?, ?, ?, 'Nuevo', ?)",
-        lead?.nombre || nombre, lead?.phone || data.phone, producto, '1', mensajeSecundario?.slice(0, 200) || '', timestamp
-      );
-      console.log(`🛒 Pedido auto-creado #${pedidoResult.lastID} para lead ${leadId}: ${producto}`);
-      await notificarDueno(
-        `🛒 *NUEVO PEDIDO #${pedidoResult.lastID}*\n👤 ${lead?.nombre || nombre}\n📦 ${producto}\n📱 ${lead?.phone || data.phone}\n\nRevisa el dashboard para gestionar el pedido.`,
-        lead?.channel_phone || cleanChannelPhone
-      );
-    }
-
-    res.json({ success: true, action: existingLead ? "updated" : "created" });
+    res.json({ success: true, leadId, action: existingLead ? "updated" : "created", sender: parsed.sender });
   } catch (err) {
-    console.error("❌ Error webhook n8n:", err);
+    console.error(`❌ Error en webhook ${sourceName}:`, err);
     res.status(500).json({ error: err.message });
   }
+}
+
+// Endpoint Webhook para n8n (Recibir mensajes de WhatsApp)
+app.post('/api/webhook/whatsapp', async (req, res) => {
+  await processIncomingMessageWebhook(req, res, 'WhatsApp');
+});
+
+// Endpoint Webhook para n8n
+app.post('/api/webhook/n8n', async (req, res) => {
+  await processIncomingMessageWebhook(req, res, 'n8n');
+});
+
+// Endpoint Webhook directo para YCloud (recibe tanto mensajes del cliente como echoes del teléfono)
+app.post('/api/webhook/ycloud', async (req, res) => {
+  await processIncomingMessageWebhook(req, res, 'YCloud');
+});
+app.post('/webhook/ycloud', async (req, res) => {
+  await processIncomingMessageWebhook(req, res, 'YCloud');
 });
 
 // Endpoint dedicado para activar Handoff (n8n puede llamar esto directamente)
