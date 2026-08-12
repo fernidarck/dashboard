@@ -467,14 +467,13 @@ const normalize = (text) => {
 function detectStatus(text, currentStatus) {
   if (!text) return currentStatus;
   const t = normalize(text);
-  if (t.includes('precio') || t.includes('cotizar') || t.includes('cuanto') || t.includes('costo') || t.includes('valor')) {
+  if (t.includes('precio') || t.includes('cotizar') || t.includes('cuanto') || t.includes('costo') || t.includes('valor') || t.includes('pago') || t.includes('transferencia') || t.includes('deposito') || t.includes('comprobante')) {
+    if (currentStatus === 'Venta' || currentStatus === 'En Seguimiento' || currentStatus === 'Cita Agendada') return currentStatus;
     return 'Interesado';
   }
   if (t.includes('agendar') || t.includes('cita') || t.includes('servicio') || t.includes('reunion') || t.includes('programar')) {
+    if (currentStatus === 'Venta') return currentStatus;
     return 'Cita Agendada';
-  }
-  if (t.includes('comprado') || t.includes('pago') || t.includes('transferencia') || t.includes('comprobante') || t.includes('deposito')) {
-    return 'Venta';
   }
   return currentStatus;
 }

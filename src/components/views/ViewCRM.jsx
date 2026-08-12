@@ -4,7 +4,7 @@ import {
   Power, Database, MessageSquare, Tag, Bot, AlertTriangle,
   Flame, CheckCircle2, Clock, Sparkles, Send, ArrowRight,
   Filter, MessageCircle, ExternalLink, Zap, Check, CheckCheck,
-  Copy, MapPin, Wrench, XCircle, Trophy, ThumbsDown, UserX
+  Copy, MapPin, Wrench, XCircle, Trophy, ThumbsDown, RotateCcw
 } from 'lucide-react';
 
 function getCleanWhatsAppUrl(phone) {
@@ -26,7 +26,7 @@ function ClientSidebarPanel({
 }) {
   if (!lead) return null;
 
-  const isFollowedUp = lead.estado === 'En Seguimiento' || lead.estado === 'Venta' || lead.estado === 'Cita Agendada' || lead.estado === 'Post-Venta' || lead.estado === 'Perdido';
+  const isFollowedUp = lead.estado === 'En Seguimiento' || lead.estado === 'Interesado' || lead.estado === 'Cita Agendada' || lead.estado === 'Venta' || lead.estado === 'Post-Venta' || lead.estado === 'Perdido';
   const needsAttention = !isFollowedUp && (lead.priority === 'urgent' || !lead.botActive || lead.estado === 'Intervención Requerida' || !!lead.handoff_reason);
   const waUrl = getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id);
 
@@ -35,7 +35,7 @@ function ClientSidebarPanel({
       <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
         <div>
           <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Ficha del Lead</h3>
-          <p className="text-[10px] font-bold text-slate-400">Detalles & Resultados de Seguimiento</p>
+          <p className="text-[10px] font-bold text-slate-400">Detalles & Control de Cierre</p>
         </div>
         <button onClick={onClose} className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-slate-600 transition-colors">
           <X size={18} />
@@ -51,7 +51,7 @@ function ClientSidebarPanel({
                 ? 'bg-emerald-600 text-white'
                 : lead.estado === 'Perdido'
                 ? 'bg-slate-400 text-white'
-                : lead.estado === 'En Seguimiento'
+                : lead.estado === 'En Seguimiento' || lead.estado === 'Interesado'
                 ? 'bg-blue-600 text-white'
                 : lead.priority === 'urgent' && !isFollowedUp
                 ? 'bg-red-600 text-white animate-pulse'
@@ -103,17 +103,17 @@ function ClientSidebarPanel({
           </div>
         </div>
 
-        {/* 🎯 SECCIÓN: RESULTADO DE SEGUIMIENTO RÁPIDO */}
+        {/* 🎯 SECCIÓN: MOVER DE ETAPA / RESULTADO */}
         <div className="space-y-2.5 bg-slate-50/80 p-4 rounded-3xl border border-slate-200">
           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
-            Resultado del Seguimiento:
+            Mover Etapa del Cliente:
           </label>
           <div className="grid grid-cols-2 gap-2">
             {/* Opción 1: En Seguimiento */}
             <button
               onClick={() => onMarkFollowUp(lead, 'En Seguimiento')}
               className={`py-2 px-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border ${
-                lead.estado === 'En Seguimiento'
+                lead.estado === 'En Seguimiento' || lead.estado === 'Interesado'
                   ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-200'
                   : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
               }`}
@@ -122,7 +122,7 @@ function ClientSidebarPanel({
               <span>En Seguimiento</span>
             </button>
 
-            {/* Opción 2: Venta Cerrada */}
+            {/* Opción 2: Cerrado / Venta */}
             <button
               onClick={() => onMarkFollowUp(lead, 'Venta')}
               className={`py-2 px-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border ${
@@ -132,7 +132,7 @@ function ClientSidebarPanel({
               }`}
             >
               <Trophy size={13} />
-              <span>Compró / Venta</span>
+              <span>Cerró Venta ✓</span>
             </button>
 
             {/* Opción 3: Cita Agendada */}
@@ -314,24 +314,34 @@ export default function ViewCRM({
   // Calificado = con datos capturados de producto/zona/falla/nit
   const tieneDatos = (l) => [l.zona, l.direccion, l.motor, l.falla, l.nit].some(v => v && v !== 'N/A' && String(v).trim());
 
-  // ¿Ya se le dio seguimiento / está atendido / cerrado?
-  const isFollowedUp = (l) => l.estado === 'En Seguimiento' || l.estado === 'Venta' || l.estado === 'Cita Agendada' || l.estado === 'Post-Venta' || l.estado === 'Perdido';
+  // ¿Ya está resuelto o en seguimiento activo?
+  // En Seguimiento = los que están en proceso de cotización / interesados / citas
+  const isEnSeguimiento = (l) => l.estado === 'En Seguimiento' || l.estado === 'Interesado' || l.estado === 'Cita Agendada';
+  
+  // Cerrados = estrictamente los que ya cerraron la venta (compraron)
+  const isVentaCerrada = (l) => l.estado === 'Venta';
 
-  // 🎯 UNIFICADO: Por Hablarles (Clientes pendientes que piden ayuda O que ya tienen datos listos para cotizar)
+  // No compró = los que se descartaron / perdidos
+  const isPerdido = (l) => l.estado === 'Perdido';
+
+  // ¿Ya se le dio seguimiento o está resuelto?
+  const isFollowedUp = (l) => isEnSeguimiento(l) || isVentaCerrada(l) || isPerdido(l) || l.estado === 'Post-Venta';
+
+  // 🎯 UNIFICADO: Por Hablarles (Nuevos o con datos pendientes que NO han pasado a seguimiento ni cerrado)
   const isPorHablar = (l) => {
     if (isFollowedUp(l)) return false;
-    return l.priority === 'urgent' || !l.botActive || l.estado === 'Intervención Requerida' || !!l.handoff_reason || tieneDatos(l);
+    return l.priority === 'urgent' || !l.botActive || l.estado === 'Intervención Requerida' || !!l.handoff_reason || tieneDatos(l) || l.estado === 'Nuevo';
   };
 
   // Conteos
   const porHablarCount = useMemo(() => leads.filter(l => !l.archived && isPorHablar(l)).length, [leads]);
-  const followUpCount = useMemo(() => leads.filter(l => !l.archived && l.estado === 'En Seguimiento').length, [leads]);
-  const salesCount = useMemo(() => leads.filter(l => !l.archived && l.estado === 'Venta').length, [leads]);
-  const lostCount = useMemo(() => leads.filter(l => !l.archived && l.estado === 'Perdido').length, [leads]);
+  const followUpCount = useMemo(() => leads.filter(l => !l.archived && isEnSeguimiento(l)).length, [leads]);
+  const salesCount = useMemo(() => leads.filter(l => !l.archived && isVentaCerrada(l)).length, [leads]);
+  const lostCount = useMemo(() => leads.filter(l => !l.archived && isPerdido(l)).length, [leads]);
   const botCount = useMemo(() => leads.filter(l => !l.archived && l.botActive && !isPorHablar(l) && !isFollowedUp(l)).length, [leads]);
   const totalCount = useMemo(() => leads.filter(l => !l.archived).length, [leads]);
 
-  // Tab activo: por defecto empieza en 'por_hablar' (Urgentes + Con datos unificados)
+  // Tab activo: por defecto empieza en 'por_hablar'
   const [filterTab, setFilterTab] = useState(() => (leads.some(l => !l.archived && isPorHablar(l)) ? 'por_hablar' : 'all'));
 
   // Si cambian los leads y hay pendientes
@@ -346,7 +356,7 @@ export default function ViewCRM({
     const updated = {
       ...lead,
       estado: targetEstado,
-      score: targetEstado === 'Venta' ? 100 : targetEstado === 'Perdido' ? 0 : lead.score || 50,
+      score: targetEstado === 'Venta' ? 100 : targetEstado === 'Perdido' ? 0 : targetEstado === 'En Seguimiento' || targetEstado === 'Interesado' ? 60 : lead.score || 50,
       priority: targetEstado === 'Intervención Requerida' ? 'urgent' : 'normal',
       handoff_reason: targetEstado === 'Intervención Requerida' ? lead.handoff_reason : null
     };
@@ -357,20 +367,20 @@ export default function ViewCRM({
   // 1º: Urgentes / Intervención requerida explícita (100)
   // 2º: Con datos capturados listos para cotizar motor/zona (90)
   // 3º: Modo manual sin atender (80)
-  // 4º: En Seguimiento activo (60)
-  // 5º: Ventas (50)
+  // 4º: En Seguimiento activo / Interesados (60)
+  // 5º: Ventas Cerradas (50)
   // 6º: IA Activa general (20)
-  // 7º: Perdidos / No compró (10)
+  // 7º: No Compraron / Perdidos (10)
   const getLeadPriorityWeight = (l) => {
     if (isPorHablar(l)) {
       if (l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason) return 100;
       if (tieneDatos(l)) return 90;
       return 80;
     }
-    if (l.estado === 'En Seguimiento') return 60;
-    if (l.estado === 'Venta' || l.estado === 'Cita Agendada') return 50;
+    if (isEnSeguimiento(l)) return 60;
+    if (isVentaCerrada(l)) return 50;
     if (l.botActive) return 20;
-    if (l.estado === 'Perdido') return 10;
+    if (isPerdido(l)) return 10;
     return 0;
   };
 
@@ -381,9 +391,9 @@ export default function ViewCRM({
 
       // Filtro por tab unificado
       if (filterTab === 'por_hablar' && !isPorHablar(lead)) return false;
-      if (filterTab === 'follow_up' && lead.estado !== 'En Seguimiento') return false;
-      if (filterTab === 'sales' && lead.estado !== 'Venta') return false;
-      if (filterTab === 'lost' && lead.estado !== 'Perdido') return false;
+      if (filterTab === 'follow_up' && !isEnSeguimiento(lead)) return false;
+      if (filterTab === 'sales' && !isVentaCerrada(lead)) return false;
+      if (filterTab === 'lost' && !isPerdido(lead)) return false;
       if (filterTab === 'bot' && (!lead.botActive || isPorHablar(lead) || isFollowedUp(lead))) return false;
 
       // Filtro por búsqueda de texto
@@ -432,7 +442,7 @@ export default function ViewCRM({
                 🔥 {porHablarCount} {porHablarCount === 1 ? 'lead listo' : 'leads listos'} para enviar información o cotización
               </h3>
               <p className="text-xs text-white/90 font-medium">
-                Al enviarles la información, márcalos como <span className="underline font-bold">"✓ En Seguimiento"</span>, <span className="underline font-bold">"🏆 Venta"</span> o <span className="underline font-bold">"✕ No Compró"</span> para mantener tu embudo al día.
+                Al enviarles la información, márcalos como <span className="underline font-bold">"✓ En Seguimiento"</span>. Cuando compren, pásalos a <span className="underline font-bold">"🏆 Cerró Venta"</span> o <span className="underline font-bold">"✕ No Compró"</span>.
               </p>
             </div>
           </div>
@@ -460,7 +470,7 @@ export default function ViewCRM({
               </span>
             </div>
             <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1.5 italic">
-              Bandeja unificada con datos de motor y zona · Control de ventas y cierres
+              Embudo de Ventas: Por Hablarles → En Seguimiento → Cerrados / Ventas
             </p>
           </div>
 
@@ -518,7 +528,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'por_hablar' ? 'text-orange-100' : 'text-[#FF6B00]'
               }`}>
-                🔥 Por Hablarles
+                🔥 1. Por Hablarles
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'por_hablar' ? 'bg-orange-700 text-white' : 'bg-orange-50 text-[#FF6B00]'
@@ -535,12 +545,12 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'por_hablar' ? 'text-orange-100' : 'text-slate-400'
               }`}>
-                listos p/ cotizar
+                nuevos/con datos
               </span>
             </div>
           </button>
 
-          {/* Card 2: En Seguimiento (Ya atendidos) */}
+          {/* Card 2: En Seguimiento (Interesados / En Negociación) */}
           <button
             onClick={() => setFilterTab(filterTab === 'follow_up' ? 'all' : 'follow_up')}
             className={`p-4 rounded-3xl border text-left transition-all relative overflow-hidden ${
@@ -553,7 +563,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'follow_up' ? 'text-blue-100' : 'text-blue-600'
               }`}>
-                🔄 En Seguimiento
+                🔄 2. En Seguimiento
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'follow_up' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-600'
@@ -570,12 +580,12 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'follow_up' ? 'text-blue-100' : 'text-slate-400'
               }`}>
-                en proceso
+                interesados/en trato
               </span>
             </div>
           </button>
 
-          {/* Card 3: Ventas / Compraron */}
+          {/* Card 3: Cerrados / Ventas (Solo los que ya compraron) */}
           <button
             onClick={() => setFilterTab(filterTab === 'sales' ? 'all' : 'sales')}
             className={`p-4 rounded-3xl border text-left transition-all relative overflow-hidden ${
@@ -588,7 +598,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'sales' ? 'text-emerald-100' : 'text-emerald-600'
               }`}>
-                🏆 Ventas Cerradas
+                🏆 3. Cerrados / Ventas
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'sales' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-600'
@@ -605,7 +615,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'sales' ? 'text-emerald-100' : 'text-slate-400'
               }`}>
-                compraron
+                ventas cerradas
               </span>
             </div>
           </button>
@@ -623,7 +633,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'lost' ? 'text-slate-300' : 'text-slate-500'
               }`}>
-                ❌ No Compraron
+                ❌ 4. No Compraron
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'lost' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500'
@@ -658,7 +668,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'bot' ? 'text-indigo-100' : 'text-slate-400'
               }`}>
-                🤖 En IA
+                🤖 En IA Automática
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'bot' ? 'bg-indigo-700 text-white' : 'bg-indigo-50 text-indigo-600'
@@ -675,7 +685,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'bot' ? 'text-indigo-100' : 'text-slate-400'
               }`}>
-                automáticos
+                chateando auto
               </span>
             </div>
           </button>
@@ -684,13 +694,13 @@ export default function ViewCRM({
         {/* Barra de Filtros rápidos */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1 flex items-center gap-1">
-            <Filter size={12} /> Pestaña:
+            <Filter size={12} /> Etapa:
           </span>
 
           {[
             { id: 'por_hablar', label: `🔥 Por Hablarles (${porHablarCount})`, alert: porHablarCount > 0 },
-            { id: 'follow_up', label: `🔄 En Seguimiento (${followUpCount})` },
-            { id: 'sales', label: `🏆 Ventas (${salesCount})` },
+            { id: 'follow_up', label: `🔄 En Seguimiento / Interesados (${followUpCount})` },
+            { id: 'sales', label: `🏆 Cerrados / Ventas (${salesCount})` },
             { id: 'lost', label: `❌ No Compraron (${lostCount})` },
             { id: 'bot', label: `🤖 En IA (${botCount})` },
             { id: 'all', label: `Todos (${totalCount})` },
@@ -733,8 +743,8 @@ export default function ViewCRM({
               <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <th className="px-6 py-5">LEAD / CONTACTO</th>
                 <th className="px-5 py-5">¿QUÉ NECESITA? (MOTOR / ZONA / DETALLES)</th>
-                <th className="px-4 py-5">ESTADO DEL LEAD</th>
-                <th className="px-6 py-5 text-right">ACCIONES / RESULTADOS</th>
+                <th className="px-4 py-5">ETAPA ACTUAL</th>
+                <th className="px-6 py-5 text-right">ACCIONES / CAMBIO DE ETAPA</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -750,12 +760,14 @@ export default function ViewCRM({
                           ? '¡Excelente! No tienes leads pendientes por enviarles información.'
                           : filterTab === 'follow_up'
                           ? 'No tienes clientes en seguimiento actualmente.'
+                          : filterTab === 'sales'
+                          ? 'Aún no has marcado ventas cerradas. Cuando un cliente en seguimiento compre, márcalo como "Cerró Venta".'
                           : filterTab === 'lost'
-                          ? 'No hay registros de clientes que no hayan comprado.'
+                          ? 'No hay registros de clientes descartados.'
                           : 'No se encontraron leads con este criterio.'}
                       </p>
                       <p className="text-xs text-slate-400">
-                        Prueba cambiando el filtro o buscando por nombre/teléfono.
+                        Prueba cambiando la etapa o buscando por nombre/teléfono.
                       </p>
                       {filterTab !== 'all' && (
                         <button
@@ -785,7 +797,7 @@ export default function ViewCRM({
                           ? 'bg-emerald-50/20'
                           : lead.estado === 'Perdido'
                           ? 'bg-slate-50/60 opacity-80'
-                          : lead.estado === 'En Seguimiento'
+                          : isEnSeguimiento(lead)
                           ? 'bg-blue-50/20'
                           : leadIsPorHablar
                           ? 'bg-orange-50/20'
@@ -805,7 +817,7 @@ export default function ViewCRM({
                                 ? 'bg-red-600 text-white animate-pulse'
                                 : leadIsPorHablar
                                 ? 'bg-[#FF6B00] text-white'
-                                : lead.estado === 'En Seguimiento'
+                                : isEnSeguimiento(lead)
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-slate-900 text-[#FF6B00]'
                             }`}>
@@ -814,9 +826,14 @@ export default function ViewCRM({
                             {leadIsPorHablar && (
                               <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white animate-ping" />
                             )}
-                            {lead.estado === 'En Seguimiento' && (
-                              <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-emerald-500 rounded-full text-white text-[8px] flex items-center justify-center border border-white">
+                            {isEnSeguimiento(lead) && (
+                              <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-blue-500 rounded-full text-white text-[8px] flex items-center justify-center border border-white">
                                 <Check size={10} />
+                              </span>
+                            )}
+                            {lead.estado === 'Venta' && (
+                              <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-emerald-500 rounded-full text-white text-[8px] flex items-center justify-center border border-white">
+                                ✓
                               </span>
                             )}
                           </div>
@@ -886,7 +903,7 @@ export default function ViewCRM({
                         </div>
                       </td>
 
-                      {/* Columna 3: Estado & Selector Rápido */}
+                      {/* Columna 3: Etapa Actual & Selector */}
                       <td className="px-4 py-4">
                         <div className="flex flex-col space-y-1.5">
                           {/* Selector de Estado en vivo */}
@@ -899,27 +916,23 @@ export default function ViewCRM({
                                 ? 'bg-emerald-500 text-white border-emerald-600'
                                 : lead.estado === 'Perdido'
                                 ? 'bg-slate-200 text-slate-700 border-slate-300'
-                                : lead.estado === 'En Seguimiento'
+                                : isEnSeguimiento(lead)
                                 ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                : lead.estado === 'Cita Agendada'
-                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                : lead.estado === 'Interesado'
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
                                 : leadIsPorHablar
                                 ? 'bg-orange-500 text-white border-orange-600'
                                 : 'bg-slate-50 text-slate-700 border-slate-200'
                             }`}
                           >
-                            <option value="Nuevo">⏳ Nuevo / Pendiente</option>
-                            <option value="En Seguimiento">🔄 En Seguimiento</option>
-                            <option value="Interesado">⭐ Interesado</option>
-                            <option value="Cita Agendada">📅 Cita / Visita</option>
-                            <option value="Venta">🏆 Venta Cerrada (Compró)</option>
-                            <option value="Perdido">❌ No Compró (Perdido)</option>
+                            <option value="Nuevo">⏳ 1. Por Hablarles (Nuevo)</option>
+                            <option value="En Seguimiento">🔄 2. En Seguimiento</option>
+                            <option value="Interesado">⭐ 2. Interesado (Cotizando)</option>
+                            <option value="Cita Agendada">📅 2. Cita / Visita</option>
+                            <option value="Venta">🏆 3. Cerró Venta (Compró)</option>
+                            <option value="Perdido">❌ 4. No Compró (Perdido)</option>
                             <option value="Post-Venta">🛠️ Post-Venta</option>
                           </select>
 
-                          {/* Mini indicador IA o Urgente */}
+                          {/* Mini indicador */}
                           <div className="flex items-center space-x-1 text-[9px] font-bold text-slate-400">
                             <span>Score: {lead.score || 0}%</span>
                             <span>·</span>
@@ -944,7 +957,7 @@ export default function ViewCRM({
                               <Check size={12} className="stroke-[3]" />
                               <span>Atendido</span>
                             </button>
-                          ) : lead.estado === 'En Seguimiento' ? (
+                          ) : isEnSeguimiento(lead) ? (
                             <div className="flex items-center space-x-1">
                               {/* Botón rápido Venta */}
                               <button
@@ -952,10 +965,10 @@ export default function ViewCRM({
                                   e.stopPropagation();
                                   handleMarkFollowUp(lead, 'Venta');
                                 }}
-                                title="Marcar que compró (Venta cerrada)"
+                                title="Marcar que compró (Cerrar Venta)"
                                 className="px-2 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 font-black text-[9px] uppercase tracking-wider border border-emerald-200 transition-all active:scale-95"
                               >
-                                🏆 Venta
+                                🏆 Compró
                               </button>
 
                               {/* Botón rápido No Compró */}
@@ -970,6 +983,17 @@ export default function ViewCRM({
                                 ✕ No compró
                               </button>
                             </div>
+                          ) : lead.estado === 'Venta' ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkFollowUp(lead, 'En Seguimiento');
+                              }}
+                              title="Regresar a seguimiento si solo estaba interesado"
+                              className="px-2 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-black text-[9px] uppercase tracking-wider border border-blue-200 transition-all"
+                            >
+                              🔄 A Seguimiento
+                            </button>
                           ) : null}
 
                           {/* BOTÓN CHAT */}
@@ -1055,7 +1079,7 @@ export default function ViewCRM({
             <div className="p-8 border-b border-slate-50 flex justify-between items-center sticky top-0 bg-white z-10">
               <div>
                 <h3 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Gestionar Lead</h3>
-                <p className="text-[10px] font-bold text-slate-400">Actualiza la información de contacto y estado</p>
+                <p className="text-[10px] font-bold text-slate-400">Actualiza la información de contacto y etapa</p>
               </div>
               <button onClick={() => setEditingLead(null)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800">
                 <X size={20} />
@@ -1079,20 +1103,19 @@ export default function ViewCRM({
                   </div>
                 ))}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-3">Estado del Lead</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-3">Etapa del Embudo</label>
                   <select
                     value={editingLead.estado || 'Nuevo'}
                     onChange={e => setEditingLead({ ...editingLead, estado: e.target.value })}
                     className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all"
                   >
-                    <option value="Nuevo">Nuevo</option>
-                    <option value="En Seguimiento">En Seguimiento (Ya Atendido)</option>
-                    <option value="Interesado">Interesado</option>
-                    <option value="Cita Agendada">Cita Agendada</option>
-                    <option value="Venta">Venta Cerrada (Compró)</option>
-                    <option value="Perdido">No Compró (Perdido)</option>
-                    <option value="Post-Venta">Post-Venta</option>
-                    <option value="Intervención Requerida">Intervención Requerida</option>
+                    <option value="Nuevo">1. Por Hablarles (Nuevo)</option>
+                    <option value="En Seguimiento">2. En Seguimiento (En Negociación)</option>
+                    <option value="Interesado">2. Interesado (Cotizando)</option>
+                    <option value="Cita Agendada">2. Cita / Visita Agendada</option>
+                    <option value="Venta">3. Cerró Venta (Compró)</option>
+                    <option value="Perdido">4. No Compró (Perdido)</option>
+                    <option value="Post-Venta">🛠️ Post-Venta</option>
                   </select>
                 </div>
               </div>
