@@ -328,9 +328,11 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <ViewDashboard
                 leads={leads}
+                pedidos={pedidos}
                 agenda={agenda}
                 stats={stats}
                 onOpenConversation={(id) => { setActiveTab('conversaciones'); setSelectedChatId(id); }}
+                onOpenLeads={() => setActiveTab('crm')}
                 onConfigureAgent={() => setActiveTab('cerebro')}
               />
             )}
@@ -350,6 +352,7 @@ export default function App() {
             {activeTab === 'crm' && (
               <ViewCRM
                 leads={leads}
+                pedidos={pedidos}
                 onUpdateLead={updateLead}
                 onToggleBot={handleToggleBot}
                 onArchive={archiveLead}

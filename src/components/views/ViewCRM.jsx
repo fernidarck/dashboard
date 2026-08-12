@@ -298,6 +298,7 @@ function ClientSidebarPanel({
 
 export default function ViewCRM({
   leads = [],
+  pedidos = [],
   onUpdateLead,
   onToggleBot,
   onArchive,
@@ -314,26 +315,29 @@ export default function ViewCRM({
   // Calificado = con datos capturados de producto/zona/falla/nit
   const tieneDatos = (l) => [l.zona, l.direccion, l.motor, l.falla, l.nit].some(v => v && v !== 'N/A' && String(v).trim());
 
-  // ¿Ya está resuelto o en seguimiento activo?
-  // En Seguimiento = los que están en proceso de cotización / interesados / citas
-  const isEnSeguimiento = (l) => l.estado === 'En Seguimiento' || l.estado === 'Interesado' || l.estado === 'Cita Agendada';
-  
-  // Cerrados = estrictamente los que ya cerraron la venta (compraron)
+  // ¿Este lead ya hizo un pedido? (cruzando con la lista de pedidos por teléfono)
+  const cleanPh = (p) => String(p || '').replace(/\D/g, '');
+  const pedidoPhones = useMemo(() => new Set((pedidos || []).map(p => cleanPh(p.phone)).filter(Boolean)), [pedidos]);
+  const hizoPedido = (l) => pedidoPhones.has(cleanPh(l.phone));
+
+  // EN SEGUIMIENTO = SOLO los que el usuario movió a mano ("En Seguimiento" o "Cita/Visita")
+  const isEnSeguimiento = (l) => l.estado === 'En Seguimiento' || l.estado === 'Cita Agendada';
+
+  // Cerrados = ya cerraron la venta
   const isVentaCerrada = (l) => l.estado === 'Venta';
-
-  // No compró = los que se descartaron / perdidos
+  // Perdidos / descartados
   const isPerdido = (l) => l.estado === 'Perdido';
-
-  // ¿Ya se le dio seguimiento o está resuelto?
+  // ¿Ya se está trabajando o está cerrado?
   const isFollowedUp = (l) => isEnSeguimiento(l) || isVentaCerrada(l) || isPerdido(l) || l.estado === 'Post-Venta';
 
-  // Prospecto REAL = dio ubicación / necesidad / datos de factura (más que solo preguntar precio)
+  // Prospecto REAL = dio ubicación / necesidad / factura (más que solo preguntar precio)
   const esProspecto = (l) => [l.zona, l.direccion, l.falla, l.nit].some(v => v && v !== 'N/A' && v !== 'null' && String(v).trim());
-  // 🎯 "Por Hablarles" = prospectos reales o los que piden un humano.
-  // Los que SOLO preguntaron precio (sin dar más info) NO entran acá.
+  // 🎯 "Por Hablarles" = los que valen la pena: hicieron pedido, mostraron INTERÉS alto (score),
+  // dieron información concreta, o piden un humano. Los que SOLO preguntaron precio NO entran.
   const isPorHablar = (l) => {
     if (isFollowedUp(l)) return false;
-    return esProspecto(l) || l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason;
+    return hizoPedido(l) || esProspecto(l) || (Number(l.score) || 0) >= 60
+      || l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason;
   };
 
   // Conteos
