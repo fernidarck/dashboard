@@ -103,8 +103,13 @@ export default function ViewCRM({ leads, onUpdateLead, onToggleBot, onArchive, o
   const [sidebarLeadId, setSidebarLeadId] = useState(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
+  const [showAll, setShowAll] = useState(false);
 
   const sidebarLead = leads.find(l => l.id === sidebarLeadId);
+
+  // "Lead calificado" = ya dio información concreta (no solo escribió "hola")
+  const tieneDatos = (l) => [l.zona, l.direccion, l.motor, l.falla, l.nit].some(v => v && v !== 'N/A' && String(v).trim());
+  const visibleLeads = leads.filter(l => !l.archived && (showAll || tieneDatos(l)));
 
   const handleSave = () => {
     onUpdateLead(editingLead);
@@ -116,9 +121,17 @@ export default function ViewCRM({ leads, onUpdateLead, onToggleBot, onArchive, o
       <div className="flex justify-between items-start">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Base de Clientes</h2>
-          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Control total de datos, estados y seguimiento</p>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">
+            {showAll ? 'Todos los contactos' : 'Leads con datos capturados'} · {visibleLeads.length}
+          </p>
         </div>
-        <div className="flex space-x-4">
+        <div className="flex space-x-4 items-center">
+          <button
+            onClick={() => setShowAll(!showAll)}
+            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${showAll ? 'bg-white text-slate-400 border-slate-200' : 'bg-[#FF6B00] text-white border-[#FF6B00] shadow-lg shadow-orange-100'}`}
+          >
+            {showAll ? 'Ver solo con datos' : 'Ver todos'}
+          </button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input type="text" placeholder="Buscar cliente..." className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none w-64 shadow-sm italic" />
@@ -147,7 +160,7 @@ export default function ViewCRM({ leads, onUpdateLead, onToggleBot, onArchive, o
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {leads.filter(l => !l.archived).map(lead => (
+              {visibleLeads.map(lead => (
                 <tr
                   key={lead.id}
                   onClick={() => { setSidebarLeadId(lead.id); setShowSidebar(true); }}
