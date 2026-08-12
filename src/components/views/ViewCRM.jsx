@@ -3,7 +3,7 @@ import {
   Search, X, UserCircle, Phone, Pencil, Trash2, Archive,
   Power, Database, MessageSquare, Tag, Bot, AlertTriangle,
   Flame, CheckCircle2, Clock, Sparkles, Send, ArrowRight,
-  Filter, MessageCircle, ExternalLink, Zap, Copy
+  Filter, MessageCircle, ExternalLink, Zap, Check, CheckCheck
 } from 'lucide-react';
 
 function getCleanWhatsAppUrl(phone) {
@@ -20,11 +20,13 @@ function ClientSidebarPanel({
   onArchive,
   onDeleteMessages,
   onEditLead,
-  onOpenConversation
+  onOpenConversation,
+  onMarkFollowUp
 }) {
   if (!lead) return null;
 
-  const needsAttention = lead.priority === 'urgent' || !lead.botActive || lead.estado === 'Intervención Requerida' || !!lead.handoff_reason;
+  const isFollowedUp = lead.estado === 'En Seguimiento' || lead.estado === 'Venta' || lead.estado === 'Cita Agendada' || lead.estado === 'Post-Venta';
+  const needsAttention = !isFollowedUp && (lead.priority === 'urgent' || !lead.botActive || lead.estado === 'Intervención Requerida' || !!lead.handoff_reason);
   const waUrl = getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id);
 
   return (
@@ -32,7 +34,7 @@ function ClientSidebarPanel({
       <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
         <div>
           <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Ficha del Lead</h3>
-          <p className="text-[10px] font-bold text-slate-400">Detalles & Acceso Inmediato</p>
+          <p className="text-[10px] font-bold text-slate-400">Detalles & Seguimiento</p>
         </div>
         <button onClick={onClose} className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-slate-600 transition-colors">
           <X size={18} />
@@ -44,17 +46,24 @@ function ClientSidebarPanel({
         <div className="text-center bg-slate-50/80 p-6 rounded-3xl border border-slate-100">
           <div className="relative inline-block mb-3">
             <div className={`h-20 w-20 rounded-[28px] flex items-center justify-center font-black text-2xl mx-auto border-4 border-white shadow-xl ${
-              lead.priority === 'urgent'
+              lead.priority === 'urgent' && !isFollowedUp
                 ? 'bg-red-600 text-white animate-pulse'
+                : isFollowedUp
+                ? 'bg-blue-600 text-white'
                 : !lead.botActive
                 ? 'bg-amber-500 text-white'
                 : 'bg-slate-900 text-[#FF6B00]'
             }`}>
-              {lead.priority === 'urgent' ? '!' : (lead.nombre?.[0] || '?')}
+              {lead.priority === 'urgent' && !isFollowedUp ? '!' : (lead.nombre?.[0] || '?')}
             </div>
             {needsAttention && (
               <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
                 !
+              </span>
+            )}
+            {isFollowedUp && (
+              <span className="absolute -bottom-1 -right-1 h-6 w-6 bg-emerald-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md border-2 border-white">
+                <Check size={12} />
               </span>
             )}
           </div>
@@ -66,6 +75,19 @@ function ClientSidebarPanel({
 
           {/* Botones de acción directa */}
           <div className="mt-4 space-y-2">
+            {/* Botón para marcar seguimiento */}
+            <button
+              onClick={() => onMarkFollowUp(lead, lead.estado === 'En Seguimiento' ? 'Nuevo' : 'En Seguimiento')}
+              className={`w-full py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-all active:scale-95 shadow-sm border ${
+                lead.estado === 'En Seguimiento'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-200 shadow-md'
+              }`}
+            >
+              <CheckCheck size={16} />
+              <span>{lead.estado === 'En Seguimiento' ? '✓ En Seguimiento (Cambiar)' : 'Marcar como Atendido'}</span>
+            </button>
+
             <button
               onClick={() => onOpenConversation && onOpenConversation(lead.id)}
               className="w-full py-3 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 shadow-lg shadow-orange-200 transition-all active:scale-95 group"
@@ -89,18 +111,28 @@ function ClientSidebarPanel({
           </div>
         </div>
 
-        {/* Alerta si requiere hablarle */}
-        {needsAttention && (
+        {/* Alerta si requiere hablarle o Estado de Seguimiento */}
+        {needsAttention ? (
           <div className="p-4 rounded-2xl bg-red-50 border border-red-200 space-y-1.5">
             <div className="flex items-center space-x-2 text-red-700 font-black text-[11px] uppercase tracking-wider">
               <AlertTriangle size={15} className="animate-bounce shrink-0" />
               <span>Acción Requerida: Hablarle al cliente</span>
             </div>
             <p className="text-[11px] text-red-600 font-medium leading-snug">
-              {lead.handoff_reason || (lead.priority === 'urgent' ? 'Lead marcado urgente para atención inmediata.' : 'Modo manual activo. El asesor debe enviar información.')}
+              {lead.handoff_reason || (lead.priority === 'urgent' ? 'Lead marcado urgente para atención inmediata.' : 'Modo manual activo. Envía información y marca como atendido.')}
             </p>
           </div>
-        )}
+        ) : isFollowedUp ? (
+          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 space-y-1">
+            <div className="flex items-center space-x-2 text-blue-800 font-black text-[11px] uppercase tracking-wider">
+              <CheckCircle2 size={15} className="text-blue-600 shrink-0" />
+              <span>Estado: {lead.estado}</span>
+            </div>
+            <p className="text-[11px] text-blue-600 font-medium leading-snug">
+              Este cliente ya tiene seguimiento activo y no se mezcla con los nuevos.
+            </p>
+          </div>
+        ) : null}
 
         {/* Score e IA Toggle */}
         <div className="grid grid-cols-2 gap-3">
@@ -223,13 +255,17 @@ export default function ViewCRM({
   // Calificado = con datos capturados
   const tieneDatos = (l) => [l.zona, l.direccion, l.motor, l.falla, l.nit].some(v => v && v !== 'N/A' && String(v).trim());
 
-  // Requiere atención = Urgente, Bot apagado, o Estado Intervención / Handoff
-  const needsAttention = (l) => l.priority === 'urgent' || !l.botActive || l.estado === 'Intervención Requerida' || !!l.handoff_reason;
+  // ¿Ya se le dio seguimiento / está atendido?
+  const isFollowedUp = (l) => l.estado === 'En Seguimiento' || l.estado === 'Venta' || l.estado === 'Cita Agendada' || l.estado === 'Post-Venta';
 
-  // Conteo de atención
+  // Requiere atención = NO ha sido atendido/seguido y (es urgente, bot apagado, o pide intervención)
+  const needsAttention = (l) => !isFollowedUp(l) && (l.priority === 'urgent' || !l.botActive || l.estado === 'Intervención Requerida' || !!l.handoff_reason);
+
+  // Conteos
   const attentionCount = useMemo(() => leads.filter(l => !l.archived && needsAttention(l)).length, [leads]);
+  const followUpCount = useMemo(() => leads.filter(l => !l.archived && l.estado === 'En Seguimiento').length, [leads]);
   const withDataCount = useMemo(() => leads.filter(l => !l.archived && tieneDatos(l)).length, [leads]);
-  const botCount = useMemo(() => leads.filter(l => !l.archived && l.botActive && l.priority !== 'urgent').length, [leads]);
+  const botCount = useMemo(() => leads.filter(l => !l.archived && l.botActive && !needsAttention(l)).length, [leads]);
   const salesCount = useMemo(() => leads.filter(l => !l.archived && (l.estado === 'Venta' || l.estado === 'Interesado' || l.estado === 'Cita Agendada')).length, [leads]);
   const totalCount = useMemo(() => leads.filter(l => !l.archived).length, [leads]);
 
@@ -243,10 +279,29 @@ export default function ViewCRM({
     }
   }, [attentionCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Peso de prioridad para ordenar: Los más importantes SIEMPRE primero
+  // Acción rápida: Marcar como Atendido / En Seguimiento
+  const handleMarkFollowUp = async (lead, targetEstado = 'En Seguimiento') => {
+    const updated = {
+      ...lead,
+      estado: targetEstado,
+      priority: targetEstado === 'Intervención Requerida' ? 'urgent' : 'normal',
+      handoff_reason: targetEstado === 'Intervención Requerida' ? lead.handoff_reason : null
+    };
+    await onUpdateLead(updated);
+  };
+
+  // Peso de prioridad para ordenar:
+  // 1º: Nuevos y Urgentes que requieren hablarles (100)
+  // 2º: Con datos sin atender (80)
+  // 3º: En Seguimiento activo (60)
+  // 4º: Interesados / Ventas (50)
+  // 5º: IA Activa general (20)
   const getLeadPriorityWeight = (l) => {
-    if (l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason) return 100;
-    if (!l.botActive) return 80;
+    if (needsAttention(l)) {
+      if (l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason) return 100;
+      return 90; // Bot apagado / Manual
+    }
+    if (l.estado === 'En Seguimiento') return 70;
     if (tieneDatos(l) && (l.estado === 'Interesado' || l.estado === 'Cita Agendada' || (l.score || 0) >= 50)) return 60;
     if (tieneDatos(l)) return 40;
     if (l.botActive) return 20;
@@ -260,8 +315,9 @@ export default function ViewCRM({
 
       // Filtro por tab
       if (filterTab === 'attention' && !needsAttention(lead)) return false;
+      if (filterTab === 'follow_up' && lead.estado !== 'En Seguimiento') return false;
       if (filterTab === 'with_data' && !tieneDatos(lead)) return false;
-      if (filterTab === 'bot' && (!lead.botActive || lead.priority === 'urgent')) return false;
+      if (filterTab === 'bot' && (!lead.botActive || needsAttention(lead))) return false;
       if (filterTab === 'sales' && !(lead.estado === 'Venta' || lead.estado === 'Interesado' || lead.estado === 'Cita Agendada')) return false;
 
       // Filtro por búsqueda de texto
@@ -273,7 +329,8 @@ export default function ViewCRM({
         const matchMotor = (lead.motor || '').toLowerCase().includes(q);
         const matchZona = (lead.zona || '').toLowerCase().includes(q);
         const matchTags = (lead.etiquetas || '').toLowerCase().includes(q);
-        if (!matchName && !matchPhone && !matchMsg && !matchMotor && !matchZona && !matchTags) {
+        const matchEstado = (lead.estado || '').toLowerCase().includes(q);
+        if (!matchName && !matchPhone && !matchMsg && !matchMotor && !matchZona && !matchTags && !matchEstado) {
           return false;
         }
       }
@@ -307,10 +364,10 @@ export default function ViewCRM({
             </div>
             <div>
               <h3 className="text-sm md:text-base font-black uppercase tracking-tight">
-                🔥 {attentionCount} {attentionCount === 1 ? 'cliente requiere' : 'clientes requieren'} que le hables ahora
+                🔥 {attentionCount} {attentionCount === 1 ? 'cliente nuevo/pendiente' : 'clientes nuevos/pendientes'} por hablarles
               </h3>
               <p className="text-xs text-white/90 font-medium">
-                Pide información, motor o requiere intervención manual. Haz clic en "Chatear" para responderles de inmediato.
+                Cuando les envíes información, haz clic en <span className="underline font-bold">"✓ Marcar Atendido"</span> para pasarlos a Seguimiento y no confundirte.
               </p>
             </div>
           </div>
@@ -322,7 +379,7 @@ export default function ViewCRM({
                 : 'bg-slate-900 hover:bg-black text-[#FF6B00]'
             }`}
           >
-            {filterTab === 'attention' ? 'Mostrando Cola Prioritaria ✓' : 'Ver Cola Prioritaria →'}
+            {filterTab === 'attention' ? 'Mostrando Nuevos Pendientes ✓' : 'Ver Pendientes →'}
           </button>
         </div>
       )}
@@ -338,7 +395,7 @@ export default function ViewCRM({
               </span>
             </div>
             <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1.5 italic">
-              Ordenados por prioridad de atención · Envía información y cotizaciones al instante
+              Gestiona nuevos prospectos y lleva el control de seguimiento con 1 clic
             </p>
           </div>
 
@@ -350,7 +407,7 @@ export default function ViewCRM({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por nombre, teléfono, motor, zona..."
+                placeholder="Buscar por nombre, teléfono, motor, estado..."
                 className="pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs outline-none w-72 md:w-80 shadow-sm focus:border-[#FF6B00] focus:ring-2 focus:ring-orange-100 transition-all italic font-medium"
               />
               {searchQuery && (
@@ -380,7 +437,7 @@ export default function ViewCRM({
         </div>
 
         {/* Tarjetas KPI de Estado Rápido / Filtros Interactivos */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
           {/* Card 1: Por hablarles / Requieren atención */}
           <button
             onClick={() => setFilterTab(filterTab === 'attention' ? 'all' : 'attention')}
@@ -396,7 +453,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'attention' ? 'text-red-100' : 'text-red-500'
               }`}>
-                ⚠️ Por Hablarles Primero
+                🚨 Por Hablarles
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'attention' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-500'
@@ -413,12 +470,47 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'attention' ? 'text-red-100' : 'text-slate-400'
               }`}>
-                pendientes
+                sin atender
               </span>
             </div>
           </button>
 
-          {/* Card 2: Con datos capturados */}
+          {/* Card 2: En Seguimiento (Ya atendidos) */}
+          <button
+            onClick={() => setFilterTab(filterTab === 'follow_up' ? 'all' : 'follow_up')}
+            className={`p-4 rounded-3xl border text-left transition-all relative overflow-hidden ${
+              filterTab === 'follow_up'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xl shadow-blue-200 scale-[1.02]'
+                : 'bg-white border-slate-200 hover:border-blue-300 shadow-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${
+                filterTab === 'follow_up' ? 'text-blue-100' : 'text-blue-600'
+              }`}>
+                🔄 En Seguimiento
+              </span>
+              <div className={`p-1.5 rounded-xl ${
+                filterTab === 'follow_up' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-600'
+              }`}>
+                <CheckCheck size={16} />
+              </div>
+            </div>
+            <div className="flex items-baseline space-x-2">
+              <span className={`text-2xl font-black tracking-tight ${
+                filterTab === 'follow_up' ? 'text-white' : 'text-slate-800'
+              }`}>
+                {followUpCount}
+              </span>
+              <span className={`text-[10px] font-bold ${
+                filterTab === 'follow_up' ? 'text-blue-100' : 'text-slate-400'
+              }`}>
+                ya atendidos
+              </span>
+            </div>
+          </button>
+
+          {/* Card 3: Con datos capturados */}
           <button
             onClick={() => setFilterTab(filterTab === 'with_data' ? 'all' : 'with_data')}
             className={`p-4 rounded-3xl border text-left transition-all relative overflow-hidden ${
@@ -431,7 +523,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'with_data' ? 'text-indigo-100' : 'text-slate-400'
               }`}>
-                📋 Con Datos de Envío/Motor
+                📋 Con Datos
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'with_data' ? 'bg-indigo-700 text-white' : 'bg-indigo-50 text-indigo-600'
@@ -448,12 +540,12 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'with_data' ? 'text-indigo-100' : 'text-slate-400'
               }`}>
-                listos para cotizar
+                calificados
               </span>
             </div>
           </button>
 
-          {/* Card 3: En Gestión IA */}
+          {/* Card 4: En Gestión IA */}
           <button
             onClick={() => setFilterTab(filterTab === 'bot' ? 'all' : 'bot')}
             className={`p-4 rounded-3xl border text-left transition-all relative overflow-hidden ${
@@ -466,7 +558,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'bot' ? 'text-emerald-100' : 'text-slate-400'
               }`}>
-                🤖 En Gestión Automática
+                🤖 En IA
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'bot' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-600'
@@ -483,12 +575,12 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'bot' ? 'text-emerald-100' : 'text-slate-400'
               }`}>
-                atendidos por IA
+                automáticos
               </span>
             </div>
           </button>
 
-          {/* Card 4: Interesados / Ventas */}
+          {/* Card 5: Interesados / Ventas */}
           <button
             onClick={() => setFilterTab(filterTab === 'sales' ? 'all' : 'sales')}
             className={`p-4 rounded-3xl border text-left transition-all relative overflow-hidden ${
@@ -501,7 +593,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-black uppercase tracking-wider ${
                 filterTab === 'sales' ? 'text-orange-100' : 'text-slate-400'
               }`}>
-                ⭐ Oportunidades Clave
+                ⭐ Ventas
               </span>
               <div className={`p-1.5 rounded-xl ${
                 filterTab === 'sales' ? 'bg-orange-600 text-white' : 'bg-orange-50 text-[#FF6B00]'
@@ -518,7 +610,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'sales' ? 'text-orange-100' : 'text-slate-400'
               }`}>
-                interesados/ventas
+                cierres
               </span>
             </div>
           </button>
@@ -532,9 +624,10 @@ export default function ViewCRM({
 
           {[
             { id: 'attention', label: `🚨 Por Hablarles (${attentionCount})`, alert: attentionCount > 0 },
+            { id: 'follow_up', label: `🔄 En Seguimiento (${followUpCount})` },
             { id: 'with_data', label: `📋 Con Datos (${withDataCount})` },
             { id: 'bot', label: `🤖 En IA (${botCount})` },
-            { id: 'sales', label: `⭐ Oportunidades (${salesCount})` },
+            { id: 'sales', label: `⭐ Ventas/Cierres (${salesCount})` },
             { id: 'all', label: `Todos (${totalCount})` },
           ].map(tab => (
             <button
@@ -562,7 +655,7 @@ export default function ViewCRM({
           )}
 
           <div className="ml-auto text-[10px] font-bold text-slate-400">
-            Mostrando <span className="text-slate-800 font-black">{visibleLeads.length}</span> leads ordenados por prioridad
+            Mostrando <span className="text-slate-800 font-black">{visibleLeads.length}</span> leads
           </div>
         </div>
       </div>
@@ -574,10 +667,10 @@ export default function ViewCRM({
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <th className="px-6 py-5">LEAD & MENSAJE RECIENTE</th>
-                <th className="px-5 py-5">ESTADO / ATENCIÓN</th>
+                <th className="px-5 py-5">ESTADO / SEGUIMIENTO</th>
                 <th className="px-5 py-5">MOTOR / PRODUCTO / DATOS</th>
                 <th className="px-4 py-5">SCORE IA</th>
-                <th className="px-6 py-5 text-right">ENVIAR INFORMACIÓN</th>
+                <th className="px-6 py-5 text-right">ACCIONES RÁPIDAS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -589,10 +682,10 @@ export default function ViewCRM({
                         <CheckCircle2 size={28} />
                       </div>
                       <p className="text-sm font-bold text-slate-700">
-                        {filterTab === 'attention' ? '¡Excelente! No tienes leads pendientes por hablarles.' : 'No se encontraron leads con este criterio.'}
+                        {filterTab === 'attention' ? '¡Excelente! No tienes nuevos leads pendientes por hablarles.' : 'No se encontraron leads con este criterio.'}
                       </p>
                       <p className="text-xs text-slate-400">
-                        {filterTab === 'attention' ? 'Todos los prospectos están siendo atendidos por la IA o al día.' : 'Prueba cambiando el filtro o la búsqueda.'}
+                        {filterTab === 'attention' ? 'Todos los prospectos ya tienen seguimiento o están en atención automática.' : 'Prueba cambiando el filtro o la búsqueda.'}
                       </p>
                       {filterTab !== 'all' && (
                         <button
@@ -608,6 +701,7 @@ export default function ViewCRM({
               ) : (
                 visibleLeads.map(lead => {
                   const leadNeedsAttention = needsAttention(lead);
+                  const leadIsFollowedUp = isFollowedUp(lead);
                   const isSelected = sidebarLeadId === lead.id && showSidebar;
                   const waUrl = getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id);
 
@@ -620,6 +714,8 @@ export default function ViewCRM({
                           ? 'bg-orange-50/50 border-l-4 border-[#FF6B00]'
                           : leadNeedsAttention
                           ? 'bg-red-50/30'
+                          : lead.estado === 'En Seguimiento'
+                          ? 'bg-blue-50/20'
                           : ''
                       }`}
                     >
@@ -628,26 +724,33 @@ export default function ViewCRM({
                         <div className="flex items-start space-x-3.5">
                           <div className="relative shrink-0 mt-0.5">
                             <div className={`h-11 w-11 rounded-[16px] flex items-center justify-center font-black text-xs shadow-sm ${
-                              lead.priority === 'urgent'
+                              leadNeedsAttention
                                 ? 'bg-red-600 text-white animate-pulse'
+                                : lead.estado === 'En Seguimiento'
+                                ? 'bg-blue-600 text-white'
                                 : !lead.botActive
                                 ? 'bg-amber-500 text-white'
                                 : 'bg-slate-900 text-[#FF6B00]'
                             }`}>
-                              {lead.priority === 'urgent' ? '!' : (lead.nombre?.[0] || '?')}
+                              {leadNeedsAttention ? '!' : (lead.nombre?.[0] || '?')}
                             </div>
                             {leadNeedsAttention && (
                               <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white animate-ping" />
                             )}
+                            {lead.estado === 'En Seguimiento' && (
+                              <span className="absolute -bottom-1 -right-1 h-4 w-4 bg-emerald-500 rounded-full text-white text-[8px] flex items-center justify-center border border-white">
+                                <Check size={10} />
+                              </span>
+                            )}
                           </div>
-                          <div className="min-w-0 max-w-[260px]">
+                          <div className="min-w-0 max-w-[250px]">
                             <div className="flex items-center space-x-2">
                               <p className="text-sm font-black text-slate-800 leading-none group-hover:text-[#FF6B00] transition-colors truncate">
                                 {lead.nombre}
                               </p>
-                              {lead.priority === 'urgent' && (
+                              {lead.priority === 'urgent' && leadNeedsAttention && (
                                 <span className="px-1.5 py-0.5 bg-red-500 text-white text-[8px] font-black rounded-md uppercase">
-                                  Urgente
+                                  Nuevo
                                 </span>
                               )}
                             </div>
@@ -657,7 +760,7 @@ export default function ViewCRM({
                             </div>
 
                             {/* Motivo de Handoff o Último Mensaje */}
-                            {lead.handoff_reason ? (
+                            {lead.handoff_reason && leadNeedsAttention ? (
                               <p className="text-[10px] text-red-600 font-black italic truncate mt-1 bg-red-100/60 px-2 py-0.5 rounded-md w-fit">
                                 ⚠️ {lead.handoff_reason}
                               </p>
@@ -670,14 +773,19 @@ export default function ViewCRM({
                         </div>
                       </td>
 
-                      {/* Columna: Estado & Atención */}
+                      {/* Columna: Estado & Seguimiento */}
                       <td className="px-5 py-4">
                         <div className="flex flex-col space-y-1.5">
-                          {/* Badge de necesidad de intervención */}
+                          {/* Badge de necesidad de intervención vs Atendido */}
                           {leadNeedsAttention ? (
                             <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-500 text-white shadow-sm w-fit animate-pulse">
                               <AlertTriangle size={10} />
-                              <span>Requiere Hablarle</span>
+                              <span>Por Hablarle</span>
+                            </span>
+                          ) : lead.estado === 'En Seguimiento' ? (
+                            <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 w-fit">
+                              <CheckCheck size={11} className="text-blue-600" />
+                              <span>En Seguimiento</span>
                             </span>
                           ) : (
                             <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
@@ -686,17 +794,20 @@ export default function ViewCRM({
                             </span>
                           )}
 
-                          {/* Badge de Estado del Embudo */}
-                          <span className={`px-2.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider w-fit border ${
-                            lead.estado === 'Venta' ? 'bg-emerald-500 text-white border-emerald-500' :
-                            lead.estado === 'Cita Agendada' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                            lead.estado === 'Interesado' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                            lead.estado === 'Post-Venta' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                            lead.estado === 'Perdido' ? 'bg-slate-50 text-slate-400 border-slate-100' :
-                            'bg-slate-100 text-slate-600 border-slate-200'
-                          }`}>
-                            {lead.estado || 'Nuevo'}
-                          </span>
+                          {/* Badge de Estado del Embudo / Selector Rápido */}
+                          <div className="flex items-center space-x-1.5">
+                            <span className={`px-2.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider w-fit border ${
+                              lead.estado === 'Venta' ? 'bg-emerald-500 text-white border-emerald-500' :
+                              lead.estado === 'Cita Agendada' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                              lead.estado === 'Interesado' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                              lead.estado === 'En Seguimiento' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                              lead.estado === 'Post-Venta' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                              lead.estado === 'Perdido' ? 'bg-slate-50 text-slate-400 border-slate-100' :
+                              'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}>
+                              {lead.estado || 'Nuevo'}
+                            </span>
+                          </div>
                         </div>
                       </td>
 
@@ -745,9 +856,40 @@ export default function ViewCRM({
                         </div>
                       </td>
 
-                      {/* Columna: Acciones Rápidas - Enviar Información */}
+                      {/* Columna: Acciones Rápidas - Enviar Información & Marcar Seguimiento */}
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
+                        <div className="flex items-center justify-end space-x-1.5">
+                          {/* BOTÓN: MARCAR COMO ATENDIDO / EN SEGUIMIENTO CON 1 CLIC */}
+                          {leadNeedsAttention ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkFollowUp(lead, 'En Seguimiento');
+                              }}
+                              title="Marcar como atendido (ya se le dio seguimiento)"
+                              className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider flex items-center space-x-1 shadow-md shadow-emerald-200 transition-all active:scale-95"
+                            >
+                              <Check size={13} className="stroke-[3]" />
+                              <span>Atendido</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkFollowUp(lead, lead.estado === 'En Seguimiento' ? 'Nuevo' : 'En Seguimiento');
+                              }}
+                              title="Alternar estado de seguimiento"
+                              className={`px-2.5 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-wider flex items-center space-x-1 transition-all border ${
+                                lead.estado === 'En Seguimiento'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'
+                              }`}
+                            >
+                              <CheckCheck size={12} />
+                              <span>{lead.estado === 'En Seguimiento' ? 'Seguimiento' : 'Reabrir'}</span>
+                            </button>
+                          )}
+
                           {/* BOTÓN 1: CHATEAR DIRECTO EN ONE CONTROL */}
                           <button
                             onClick={(e) => {
@@ -755,10 +897,10 @@ export default function ViewCRM({
                               if (onOpenConversation) onOpenConversation(lead.id);
                             }}
                             title="Abrir chat en el panel para mandar información"
-                            className="px-3.5 py-2 rounded-xl bg-slate-900 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white font-black text-[10px] uppercase tracking-wider flex items-center space-x-1.5 shadow-sm transition-all active:scale-95 group/btn"
+                            className="px-3 py-2 rounded-xl bg-slate-900 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white font-black text-[10px] uppercase tracking-wider flex items-center space-x-1.5 shadow-sm transition-all active:scale-95 group/btn"
                           >
                             <MessageSquare size={13} className="group-hover/btn:scale-110 transition-transform" />
-                            <span>Chatear</span>
+                            <span>Chat</span>
                           </button>
 
                           {/* BOTÓN 2: WHATSAPP DIRECTO */}
@@ -819,6 +961,7 @@ export default function ViewCRM({
             onDeleteMessages={onDeleteMessages}
             onEditLead={(lead) => setEditingLead({ ...lead })}
             onOpenConversation={onOpenConversation}
+            onMarkFollowUp={handleMarkFollowUp}
           />
         )}
       </div>
@@ -861,6 +1004,7 @@ export default function ViewCRM({
                     className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all"
                   >
                     <option value="Nuevo">Nuevo</option>
+                    <option value="En Seguimiento">En Seguimiento (Ya Atendido)</option>
                     <option value="Interesado">Interesado</option>
                     <option value="Cita Agendada">Cita Agendada</option>
                     <option value="Venta">Venta Cerrada</option>
