@@ -327,10 +327,13 @@ export default function ViewCRM({
   // ¿Ya se le dio seguimiento o está resuelto?
   const isFollowedUp = (l) => isEnSeguimiento(l) || isVentaCerrada(l) || isPerdido(l) || l.estado === 'Post-Venta';
 
-  // 🎯 UNIFICADO: Por Hablarles (Nuevos o con datos pendientes que NO han pasado a seguimiento ni cerrado)
+  // Prospecto REAL = dio ubicación / necesidad / datos de factura (más que solo preguntar precio)
+  const esProspecto = (l) => [l.zona, l.direccion, l.falla, l.nit].some(v => v && v !== 'N/A' && v !== 'null' && String(v).trim());
+  // 🎯 "Por Hablarles" = prospectos reales o los que piden un humano.
+  // Los que SOLO preguntaron precio (sin dar más info) NO entran acá.
   const isPorHablar = (l) => {
     if (isFollowedUp(l)) return false;
-    return l.priority === 'urgent' || !l.botActive || l.estado === 'Intervención Requerida' || !!l.handoff_reason || tieneDatos(l) || l.estado === 'Nuevo';
+    return esProspecto(l) || l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason;
   };
 
   // Conteos
