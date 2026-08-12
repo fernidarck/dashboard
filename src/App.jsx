@@ -34,7 +34,7 @@ export default function App() {
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
     fetchChannels, fetchUsers,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
-    sendMessage, updatePedidoEstado, savePedido, deletePedido,
+    sendMessage, sendDocument, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
@@ -344,6 +344,7 @@ export default function App() {
                 selectedLead={selectedLead}
                 onSelectChat={setSelectedChatId}
                 onSendMessage={sendMessage}
+                onSendDocument={sendDocument}
                 onToggleBot={handleToggleBot}
                 messagesContainerRef={messagesContainerRef}
                 messagesEndRef={messagesEndRef}

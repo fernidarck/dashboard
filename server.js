@@ -454,6 +454,27 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
   }
 }
 
+// Enviar un documento (PDF, etc.) por YCloud
+async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf', caption = '', channelPhone = null) {
+  try {
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    const link = String(docUrl || '').replace(/^http:\/\//, 'https://'); // WhatsApp requiere https
+    const payload = { from: fromNum, to: toPhone, type: 'document', document: { link, filename: fileName } };
+    if (caption) payload.document.caption = caption;
+    const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) { const t = await r.text(); console.error(`❌ Error documento YCloud: ${r.status} ${t}`); }
+    else console.log(`📄 Documento enviado a ${toPhone} desde ${fromNum}: ${fileName}`);
+  } catch(e) {
+    console.error('❌ Error enviando documento via YCloud:', e.message);
+  }
+}
+
 // Helper para normalizar textos para comparación
 const normalize = (text) => {
   return String(text || "")
@@ -1849,6 +1870,32 @@ app.post('/api/messages/send', async (req, res) => {
     }
 
     res.json({ success: true, message: savedMessage });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 📎 Enviar un documento (PDF, etc.) desde el chat del dashboard
+app.post('/api/messages/send-document', productImagesUpload.single('file'), async (req, res) => {
+  try {
+    const { leadId, caption } = req.body;
+    if (!leadId || !req.file) return res.status(400).json({ error: "Falta leadId o archivo" });
+    const lead = await db.get("SELECT phone, channel_phone FROM leads WHERE id = ?", leadId);
+    if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
+    if (req.user && req.user.channel_phone) {
+      const a = String(lead.channel_phone || '').replace(/\D/g, '');
+      const b = String(req.user.channel_phone).replace(/\D/g, '');
+      if (a !== b) return res.status(403).json({ error: "Sin permiso para este lead" });
+    }
+    const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
+    const docUrl = `https://${req.get('host')}/uploads/${req.file.filename}`;
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const result = await db.run(
+      "INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+      leadId, 'agent', fileName, docUrl, 'document', time
+    );
+    if (lead.phone) sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
+    res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType: 'document' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

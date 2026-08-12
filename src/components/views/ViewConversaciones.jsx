@@ -1,23 +1,35 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Search, X, AlertTriangle, Bot, Power, Database,
-  MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft
+  MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft, Paperclip, FileText
 } from 'lucide-react';
 
 export default function ViewConversaciones({
   leads, messages, selectedChatId, selectedLead,
-  onSelectChat, onSendMessage, onToggleBot,
+  onSelectChat, onSendMessage, onSendDocument, onToggleBot,
   messagesContainerRef, messagesEndRef
 }) {
   const [messageText, setMessageText] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState(false);
+  const [sendingDoc, setSendingDoc] = useState(false);
+  const fileInputRef = useRef(null);
 
   const handleSend = async () => {
     if (!messageText.trim()) return;
     const text = messageText;
     setMessageText('');
     await onSendMessage(selectedChatId, text);
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !selectedChatId) return;
+    if (file.size > 15 * 1024 * 1024) { alert('El archivo es muy grande (máximo 15 MB).'); return; }
+    setSendingDoc(true);
+    try { await onSendDocument?.(selectedChatId, file); }
+    finally { setSendingDoc(false); }
   };
 
   return (
@@ -118,7 +130,13 @@ export default function ViewConversaciones({
                 {m.mediaUrl && m.mediaType === 'image' && (
                   <img src={m.mediaUrl} alt="imagen" className="w-full max-w-xs rounded-t-2xl object-cover cursor-pointer" onClick={() => window.open(m.mediaUrl, '_blank')} />
                 )}
-                {m.text && <p className="px-4 py-3">{m.text}</p>}
+                {m.mediaUrl && m.mediaType === 'document' && (
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 px-4 py-3 hover:opacity-90 transition-opacity">
+                    <FileText size={20} className="text-[#FF6B00] shrink-0" />
+                    <span className="underline break-all">{m.text || 'Documento'}</span>
+                  </a>
+                )}
+                {m.text && m.mediaType !== 'document' && <p className="px-4 py-3">{m.text}</p>}
                 <p className={`px-4 pb-2 text-[8px] font-bold uppercase tracking-widest ${m.sender === 'client' ? 'text-slate-300' : 'text-slate-500'}`}>
                   {m.timestamp || 'Ahora'}
                 </p>
@@ -138,6 +156,10 @@ export default function ViewConversaciones({
               placeholder="Escribe un mensaje..."
               className="flex-1 min-w-0 bg-transparent px-3 md:px-4 py-2 text-base md:text-xs outline-none"
             />
+            <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" onChange={handleFile} className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} disabled={sendingDoc} title="Adjuntar documento (PDF)" className="p-3 text-slate-400 hover:text-[#FF6B00] hover:bg-orange-50 rounded-xl transition-all shrink-0 disabled:opacity-50">
+              <Paperclip size={18} className={sendingDoc ? 'animate-pulse' : ''} />
+            </button>
             <button onClick={handleSend} className="p-3 bg-slate-900 text-[#FF6B00] rounded-xl hover:bg-[#FF6B00] hover:text-white transition-all"><SendHorizontal size={18} /></button>
           </div>
         </div>

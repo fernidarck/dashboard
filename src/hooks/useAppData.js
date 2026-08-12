@@ -435,6 +435,21 @@ export function useAppData(apiBase, authToken) {
     } catch { notify('❌ Error de red'); return false; }
   }, [apiFetch, apiBase, fetchMessages, fetchLeads, notify]);
 
+  const sendDocument = useCallback(async (leadId, file, caption = '') => {
+    try {
+      const fd = new FormData();
+      fd.append('leadId', leadId);
+      fd.append('file', file);
+      if (caption) fd.append('caption', caption);
+      notify('⏳ Enviando documento...', 1500);
+      const res = await apiFetch(`${apiBase}/api/messages/send-document`, { method: 'POST', body: fd });
+      if (!res.ok) { notify('❌ Error al enviar documento: ' + res.status); return false; }
+      await Promise.all([fetchMessages(leadId), fetchLeads()]);
+      notify('✅ Documento enviado', 2000);
+      return true;
+    } catch { notify('❌ Error de red'); return false; }
+  }, [apiFetch, apiBase, fetchMessages, fetchLeads, notify]);
+
   const updatePedidoEstado = useCallback(async (id, estado) => {
     try {
       await apiFetch(`${apiBase}/api/pedidos/status`, {
@@ -673,7 +688,7 @@ export function useAppData(apiBase, authToken) {
     fetchChannels, fetchUsers,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
-    sendMessage, updatePedidoEstado, savePedido, deletePedido,
+    sendMessage, sendDocument, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
