@@ -209,7 +209,7 @@ export default function App() {
                   </span>
                 )}
               </div>
-              <SidebarItem icon={Users}         label="Base de Clientes" id="crm" />
+              <SidebarItem icon={Users}         label="Leads"            id="crm" />
               <SidebarItem icon={Calendar}      label="Agenda IA"        id="agenda" />
               <SidebarItem icon={ShoppingBag}   label="Pedidos IA"       id="pedidos" />
             </div>
@@ -354,6 +354,7 @@ export default function App() {
                 onToggleBot={handleToggleBot}
                 onArchive={archiveLead}
                 onDeleteMessages={deleteMessages}
+                onOpenConversation={(id) => { setActiveTab('conversaciones'); setSelectedChatId(id); }}
               />
             )}
             {activeTab === 'agenda' && (
