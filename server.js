@@ -2246,6 +2246,32 @@ app.get('/api/products/context', async (_req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Endpoint para que n8n actualice datos del contacto (nombre, email, etc.)
+// 📇 Guarda el nombre del cliente en su contacto de YCloud (remarkName).
+// Aparece en el inbox de YCloud; en la app del teléfono depende de la sincronización de coexistencia.
+async function guardarNombreEnYcloud(channelPhone, clientPhone, nombre) {
+  try {
+    if (!nombre || !clientPhone) return;
+    const GEN = ['', 'cliente', 'cliente nuevo', 'agente'];
+    if (GEN.includes(String(nombre).trim().toLowerCase())) return;
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    if (!apiKey) return;
+    let clean = String(clientPhone).replace(/[^\d+]/g, '');
+    if (!clean.startsWith('+')) clean = '+' + clean;
+    const q = await fetch(`https://api.ycloud.com/v2/contact/contacts?filter.phoneNumber=${encodeURIComponent(clean)}&limit=1`,
+      { headers: { 'X-API-Key': apiKey, 'Accept': 'application/json' } });
+    const cj = await q.json();
+    const c = (cj.items || [])[0];
+    if (!c || !c.id) return;
+    await fetch(`https://api.ycloud.com/v2/contact/contacts/${c.id}`, {
+      method: 'PATCH',
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ remarkName: String(nombre).slice(0, 60) })
+    });
+    console.log(`📇 Nombre "${nombre}" guardado en el contacto YCloud ${clean}`);
+  } catch (e) { console.error('⚠️ No se pudo guardar nombre en YCloud:', e.message); }
+}
+
 app.post('/api/leads/update-contact', async (req, res) => {
   try {
     const { phone, leadId, nombre, email, motor, falla, zona, direccion, notas, nit, etiquetas, whatsapp_id, score, estado } = req.body;
@@ -2288,6 +2314,8 @@ app.post('/api/leads/update-contact', async (req, res) => {
       const GENERIC = ['', 'cliente', 'cliente nuevo', 'agente'];
       const tieneNombre = l && l.nombre && !GENERIC.includes(String(l.nombre).trim().toLowerCase());
       const tieneUbicacion = l && (l.zona || l.direccion);
+      // 📇 Si en esta actualización vino un nombre, guardarlo también en el contacto de YCloud
+      if (nombre && tieneNombre) { guardarNombreEnYcloud(l.channel_phone, l.phone, l.nombre); }
       if (tieneNombre && tieneUbicacion && !l.lead_alertado) {
         await db.run("UPDATE leads SET lead_alertado = 1 WHERE id = ?", id);
         const alerta = `🔔 *LEAD LISTO PARA CONTACTAR*\n\n👤 ${l.nombre}\n📱 ${l.phone || ''}\n📍 ${l.zona || l.direccion}${l.motor && l.motor !== 'N/A' ? `\n⚙️ ${l.motor}` : ''}${l.falla && l.falla !== 'N/A' ? `\n🔧 ${l.falla}` : ''}\n\n👉 Ya tenés sus datos. Entrá al dashboard y contactalo con la cotización.`;
