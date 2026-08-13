@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-14T06:42:24.312Z",
+  "updatedAt": "2026-08-13T01:17:59.384Z",
   "createdAt": "2026-04-30T19:09:51.921Z",
   "id": "5537mcUjW8GdaxF4",
   "name": "ycloud",
@@ -38,7 +38,7 @@
                 "conditions": [
                   {
                     "id": "luis-route",
-                    "leftValue": "={{ $json.body.whatsappInboundMessage.from }}",
+                    "leftValue": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}",
                     "rightValue": "+50255572346",
                     "operator": {
                       "type": "string",
@@ -62,7 +62,7 @@
                 "conditions": [
                   {
                     "id": "test-route",
-                    "leftValue": "={{ $json.body.whatsappInboundMessage.from }}",
+                    "leftValue": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}",
                     "rightValue": "+50234465443",
                     "operator": {
                       "type": "string",
@@ -128,42 +128,7 @@
       "credentials": {
         "openAiApi": {
           "id": "8Xn9MSXLwdbeAEv8",
-          "name": "OpenAi account 2"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "documentId": {
-          "__rl": true,
-          "value": "1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8",
-          "mode": "list",
-          "cachedResultName": "PRECIOS",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit?usp=drivesdk"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "gid=0",
-          "mode": "list",
-          "cachedResultName": "Hoja 1",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-        },
-        "options": {
-          "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-        }
-      },
-      "type": "n8n-nodes-base.googleSheetsTool",
-      "typeVersion": 4.6,
-      "position": [
-        -5040,
-        128
-      ],
-      "id": "2428263a-29c2-44b5-97af-a58244d0967c",
-      "name": "consultar precios2",
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "8ZUn5LRibZKCidxI",
-          "name": "Google Sheets account"
+          "name": "deepseek"
         }
       }
     },
@@ -347,11 +312,11 @@
         "operation": "analyze",
         "modelId": {
           "__rl": true,
-          "value": "deepseek-v4-pro",
+          "value": "gpt-4o-mini",
           "mode": "list",
-          "cachedResultName": "deepseek-v4-pro"
+          "cachedResultName": "gpt-4o-mini"
         },
-        "text": "=ROL: Analista técnico visual especializado en automatización (onecontrol.shop).\n\nOBJETIVO:\nAnalizar cualquier imagen recibida y generar un reporte técnico estructurado, útil para cotización o diagnóstico.\n\nREGLAS GENERALES:\n- Enfocarse únicamente en objetos, equipos, estructuras o productos.\n- Ignorar completamente personas, rostros, documentos o información sensible.\n- No identificar identidad de personas ni datos personales.\n- Si la imagen no contiene elementos relevantes (portones, motores, muebles u objetos técnicos), clasificar como \"OTRO\".\n* Si el portón NO tiene motor -> SERVICIO: VENTA DE AUTOMATIZACIÓN\n🔍 IMPORTANTE: Extrae también el MODELO ESPECÍFICO si es visible.\nBusca en la imagen:\n- Etiquetas con números/letras (ej. \"422\", \"844\", \"S2500\", \"LA400\")\n- Texto cerca del logo de la marca\n- Placas con código de modelo\n\nSi NO ves modelo claro, escribe \"MODELO: NO VISIBLE\"\n\nFORMATO ACTUALIZADO:\nSERVICIO_BUSQUEDA: [...]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA] | [MODELO] | [TIPO inicial] | [ESTADO]. DETALLE: [...]\n\nINSTRUCCIONES DE IDENTIFICACIÓN:\n\n1. MOTORES:\n- Detectar si hay motor de portón.\n- Identificar marca si es visible (Liftmaster, FAAC, PPA, Nice, Genius, etc.).\n- Identificar MODELO si es visible (números/códigos en etiquetas, ej: \"422\", \"LA400\", \"884\").\n- Tipo de mecanismo: Cremallera, Brazo/Pistón, Cadena.\n- DETERMINAR HIDRÁULICO vs ESTÁNDAR:\n  * HIDRÁULICO: pistón robusto + sistema visible de aceite + más grande + cuerpo metálico cilíndrico macizo\n  * ESTÁNDAR (electromecánico): brazo articulado + caja con motor eléctrico visible + más pequeño\n  * 🚨 Si NO podés determinar con CERTEZA si es hidráulico o estándar → pon \"REQUIERE_VERIFICACION\"\n- 🚨 NUNCA pongas \"ESTÁNDAR\" si no estás 100% seguro. Es preferible \"REQUIERE_VERIFICACION\"\n\nCLASIFICACIÓN DE SERVICIO:\n- Si es Cadena → MANTENIMIENTO MOTORES DE CADENA\n- Si es Cremallera → MANTENIMIENTO MOTORES DE CREMALLERA\n- Si es Brazo/Pistón ESTÁNDAR (CONFIRMADO) → MANTENIMIENTO MOTORES DE BRAZOS\n- Si es Brazo/Pistón HIDRÁULICO (CONFIRMADO) → MANTENIMIENTO DE EQUIPOS HIDRAULICOS\n- Si REQUIERE_VERIFICACION → REVISAR_TIPO_MOTOR\n\nFORMATO DE SALIDA (OBLIGATORIO):\nSERVICIO_BUSQUEDA: [Nombre de la CLASIFICACIÓN o REVISAR_TIPO_MOTOR]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA o SIN MARCA] | [MODELO o SIN MODELO] | [TIPO: HIDRÁULICO/ESTÁNDAR/REQUIERE_VERIFICACION] | [ESTADO]. DETALLE: [...]\n2. PORTONES:\n- Tipo: Corredizo, Abatible, Levadizo.\n- Estado: funcional, oxidado, descarrilado, golpeado, incompleto.\n- ¿TIENE MOTOR INSTALADO?: [SÍ/NO/NO SE VE].\n- INTENCIÓN PROBABLE: \n  * Si TIENE motor -> Mantenimiento o Reparación.\n  * Si NO tiene motor -> Automatización (Venta de motor nuevo).\n\n3. MUEBLES (si aplica):\n- Tipo de mueble (ej. Zapatera, estantería).\n- Material: melamina, metal, madera.\n- Estado: armado, desarmado, dañado.\n\n4. OTROS OBJETOS Y ACCESORIOS DE TIENDA:\n- Si no es portón/motor/mueble, identificar el objeto (ej. Electrocerradura, Control remoto, Sensor).\n- Describir el objeto principal de forma técnica y clara.\n- Para accesorios o muebles, la CLASIFICACIÓN DE SERVICIO debe ser el nombre común del producto.\n* Si el portón NO tiene motor -> SERVICIO: VENTA DE AUTOMATIZACIÓN\n5. ESTADO TÉCNICO GENERAL:\n- Nuevo\n- Usado\n- Dañado\n- Referencia (cuando el cliente solo muestra ejemplo)\n\nREGLAS CRÍTICAS:\n- No inventar marcas. Si no es visible, usar \"SIN MARCA\".\n- Si no se puede determinar el tipo, usar \"NO IDENTIFICABLE\".\n- NUNCA respondas que no puedes asistir con la solicitud si hay un producto en la imagen. Si el objeto no es un motor, descríbelo y asígnale su nombre comercial en SERVICIO_BUSQUEDA.\n- Priorizar precisión sobre suposición.\n\nFORMATO DE SALIDA (OBLIGATORIO):\nSERVICIO_BUSQUEDA: [Nombre de la CLASIFICACIÓN DE SERVICIO o nombre del producto detectado]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA] | [TIPO: HIDRÁULICO/ESTÁNDAR/NO IDENTIFICABLE] | [ESTADO]. DETALLE: [Descripción técnica clara y útil para diagnóstico o venta].",
+        "text": "=ROL: Analista visual de OneControl (portones automáticos, Guatemala). Tu trabajo es DESCRIBIR objetivamente lo que aparece en la foto. NO decidís qué quiere el cliente.\n\nREGLA #1 (LA MÁS IMPORTANTE): Solo DESCRIBÍS lo que ves. NUNCA adivines la intención del cliente (comprar, precio, mantenimiento, instalación, reparación, compatibilidad). Eso lo dice el CLIENTE con sus palabras, NO la foto. NUNCA asumas que quiere mantenimiento o instalación solo porque ves un motor o un portón.\n\nQUÉ IDENTIFICAR:\n- PRODUCTO: distinguí bien entre CONTROL REMOTO (mando chico de mano), MOTOR (equipo grande instalado en el portón), PORTÓN, REPUESTO, ACCESORIO (fotocelda, antena, sensor) o MUEBLE. NO confundas un control remoto con un motor.\n- MARCA: solo si es visible (LiftMaster, Chamberlain, FAAC, PPA, Nice, Genius, etc.). Si no se ve, \"SIN MARCA\".\n- MODELO: solo si ves el código en una etiqueta o placa (ej: \"81602\", \"422\", \"LA400\", \"893MAX\"). Si no, \"SIN MODELO\".\n- TIPO (solo si es MOTOR): cadena, cremallera, brazo/pistón. Si no estás seguro, \"NO IDENTIFICABLE\". Nunca inventes.\n- ESTADO: nuevo, usado, dañado, o \"referencia\" (si el cliente solo muestra un ejemplo).\n\nREGLAS:\n- No inventes marcas ni modelos: si no se ve, poné \"SIN MARCA\" / \"SIN MODELO\".\n- Si el cliente ya dijo el TIPO de portón (levadizo, abatible, corredizo, seccional, batiente), reportá EXACTAMENTE ese tipo. El cliente conoce su portón; no lo contradigas.\n- Ignorá personas, rostros, documentos y datos personales.\n- Si no hay un producto relevante, poné PRODUCTO: OTRO.\n- NUNCA digas que no podés ayudar si hay un objeto: describilo con su nombre comercial.\n- Priorizá precisión sobre suposición.\n\nFORMATO DE SALIDA (obligatorio, en una sola línea):\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA o SIN MARCA] | [MODELO o SIN MODELO] | [TIPO o NO IDENTIFICABLE] | [ESTADO]. DETALLE: [descripción corta y clara de lo que se ve].\n\nCONTEXTO — LO QUE DIJO EL CLIENTE: \"{{ $('Webhook').item.json.body.whatsappInboundMessage.image?.caption || '(sin texto en la foto)' }}\"\n",
         "inputType": "base64",
         "options": {}
       },
@@ -365,8 +330,8 @@
       "name": "Analyze image1",
       "credentials": {
         "openAiApi": {
-          "id": "8Xn9MSXLwdbeAEv8",
-          "name": "OpenAi account 2"
+          "id": "SBSBSZ4HYxCtdWiU",
+          "name": "openai-vision"
         }
       }
     },
@@ -402,8 +367,8 @@
     {
       "parameters": {
         "sessionIdType": "customKey",
-        "sessionKey": "reseteo_total_bull8",
-        "contextWindowLength": 10
+        "sessionKey": "={{ $(\"Edit Fields\").item.json.Numero_Telefono }}",
+        "contextWindowLength": 15
       },
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
@@ -499,42 +464,7 @@
       "credentials": {
         "openAiApi": {
           "id": "8Xn9MSXLwdbeAEv8",
-          "name": "OpenAi account 2"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "documentId": {
-          "__rl": true,
-          "value": "1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8",
-          "mode": "list",
-          "cachedResultName": "PRECIOS",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit?usp=drivesdk"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "gid=0",
-          "mode": "list",
-          "cachedResultName": "Hoja 1",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-        },
-        "options": {
-          "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-        }
-      },
-      "type": "n8n-nodes-base.googleSheetsTool",
-      "typeVersion": 4.6,
-      "position": [
-        -4896,
-        128
-      ],
-      "id": "c4ea71b5-2a06-4c95-a60d-45c4739c08c1",
-      "name": "fotos reales1",
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "8ZUn5LRibZKCidxI",
-          "name": "Google Sheets account"
+          "name": "deepseek"
         }
       }
     },
@@ -595,7 +525,7 @@
       "parameters": {
         "operation": "set",
         "key": "={{ $json.Numero_Telefono }}",
-        "value": "={{ JSON.stringify({ message: $json.Mensaje, sessionID: $json.ID, date_time: $now.toFormat(\"yyyy-MM-dd'T'HH:mm:ss.SSSZZ\") }) }}",
+        "value": "={{ $json.ID }}",
         "keyType": "string",
         "expire": true,
         "ttl": 300
@@ -879,8 +809,8 @@
     {
       "parameters": {
         "sessionIdType": "customKey",
-        "sessionKey": "{{ $json.remoteJid_final || $json.body?.data?.key?.remoteJid || \"sesion_provisional\" }}",
-        "contextWindowLength": 10
+        "sessionKey": "={{ $(\"Edit Fields\").item.json.Numero_Telefono + \"_vendedor\" }}",
+        "contextWindowLength": 15
       },
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
@@ -890,76 +820,6 @@
       ],
       "id": "40e75f63-c274-4662-a62d-16c858b3217c",
       "name": "Simple Memory3"
-    },
-    {
-      "parameters": {
-        "documentId": {
-          "__rl": true,
-          "value": "15hopLrE19x_9ndFB6z8m2gluNjsx81t08lxiC9gi3i8",
-          "mode": "list",
-          "cachedResultName": "SERVICIOS",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15hopLrE19x_9ndFB6z8m2gluNjsx81t08lxiC9gi3i8/edit?usp=drivesdk"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "gid=0",
-          "mode": "list",
-          "cachedResultName": "Hoja 1",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-        },
-        "options": {
-          "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-        }
-      },
-      "type": "n8n-nodes-base.googleSheetsTool",
-      "typeVersion": 4.6,
-      "position": [
-        -4256,
-        400
-      ],
-      "id": "dd268795-41c8-4ba2-b415-8cf57f488dab",
-      "name": "SERVICIOS",
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "8ZUn5LRibZKCidxI",
-          "name": "Google Sheets account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "documentId": {
-          "__rl": true,
-          "value": "1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8",
-          "mode": "list",
-          "cachedResultName": "PRECIOS",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit?usp=drivesdk"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "gid=0",
-          "mode": "list",
-          "cachedResultName": "Hoja 1",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-        },
-        "options": {
-          "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-        }
-      },
-      "type": "n8n-nodes-base.googleSheetsTool",
-      "typeVersion": 4.6,
-      "position": [
-        -3968,
-        272
-      ],
-      "id": "e4ac9e97-ea35-461b-866b-a7c0ac0b9859",
-      "name": "consultar precios",
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "8ZUn5LRibZKCidxI",
-          "name": "Google Sheets account"
-        }
-      }
     },
     {
       "parameters": {
@@ -1032,7 +892,7 @@
       "parameters": {
         "operation": "get",
         "propertyName": "bot_status",
-        "key": "=bot_off:{{ $json.body.whatsappInboundMessage.from.replace(/\\D/g, '') }}",
+        "key": "=bot_off:{{ $('Webhook').item.json.body.whatsappInboundMessage.from.replace(/\\D/g, '') }}",
         "options": {
           "dotNotation": false
         }
@@ -1215,7 +1075,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\n  \"tags\": [\"bot_desactivado\"],\n  \"customAttributes\": [\n    {\n      \"name\": \"estado_bot\",\n      \"value\": [\"off\"]\n    }\n  ]\n}",
+        "jsonBody": "{\n  \"tags\": [\"bot_desactivado\"]\n}",
         "options": {}
       },
       "id": "d8b04530-d24a-4bd7-8a14-4bded97600d3",
@@ -1235,7 +1095,7 @@
           "parameters": [
             {
               "name": "filter.phoneNumber",
-              "value": "={{ $json.body.whatsappMessage.to }}"
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}"
             },
             {
               "name": "limit",
@@ -1302,7 +1162,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.body.whatsappInboundMessage.audio.link }}",
+        "url": "={{ $('Webhook').item.json.body.whatsappInboundMessage.audio.link }}",
         "options": {
           "response": {
             "response": {
@@ -1336,14 +1196,14 @@
       "name": "Transcribir con Whisper",
       "credentials": {
         "openAiApi": {
-          "id": "8Xn9MSXLwdbeAEv8",
-          "name": "OpenAi account 2"
+          "id": "SBSBSZ4HYxCtdWiU",
+          "name": "openai-vision"
         }
       }
     },
     {
       "parameters": {
-        "url": "={{ $json.body.whatsappInboundMessage.image.link }}",
+        "url": "={{ $('Webhook').item.json.body.whatsappInboundMessage.image.link }}",
         "options": {
           "response": {
             "response": {
@@ -1610,11 +1470,27 @@
             },
             {
               "name": "mensaje",
-              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.text.body }}"
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.text?.body || $('Webhook').item.json.body.whatsappInboundMessage.image?.caption || '' }}"
             },
             {
               "name": "respuesta_bot",
               "value": "={{ $json.texto_limpio }}"
+            },
+            {
+              "name": "channel_phone",
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.to }}"
+            },
+            {
+              "name": "media_url",
+              "value": "={{ $json.mediaUrl || '' }}"
+            },
+            {
+              "name": "etiqueta",
+              "value": "={{ $json.es_pedido ? 'PEDIDO_LISTO' : '' }}"
+            },
+            {
+              "name": "solicita_humano",
+              "value": "={{ $json.solicita_humano ? 'si' : '' }}"
             }
           ]
         },
@@ -1691,7 +1567,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ $json.mensaje || $('Webhook').item.json.body.whatsappInboundMessage.text.body || 'Interesado en anuncio' }}",
+        "text": "={{ ($('Webhook').item.json.body.whatsappInboundMessage.referral?.body ? '[ANUNCIO de origen (usalo para saber que motor le interesa, NO lo muestres al cliente): ' + $('Webhook').item.json.body.whatsappInboundMessage.referral.body + '] ' : '') + ($('Restaurar campos').first().json.MensajeCombinado || ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') || 'Interesado en anuncio') }}",
         "options": {
           "systemMessage": "={{ `Eres ${$json.agent_nombre || 'el asistente'}, ${$json.agent_rol || 'asistente virtual'} de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.\n\n🚫 REGLA CRÍTICA SOBRE IMÁGENES:\n- JAMÁS inventes ni generes URLs de imágenes. NUNCA uses links de imgur, placeholder, ni ninguna URL que no hayas recibido textualmente en la información de referencia (RAG).\n- Si la base de datos RAG te entrega una URL de imagen (ejemplo: https://ycloud-dashboard... o https://drive.google.com/...), DEBES incluirla EXACTAMENTE como aparece usando este formato: [Ver Imagen](URL_EXACTA_DEL_RAG).\n- Si el RAG NO te entrega ninguna URL de imagen, entonces NO incluyas ningún link de imagen en tu respuesta. Simplemente describe el producto sin foto.\n- La URL que uses debe provenir EXCLUSIVAMENTE del texto de la sección 📚 INFORMACIÓN DE REFERENCIA.` + ($('Consultar Base RAG1').isExecuted && $('Consultar Base RAG1').item.json.found ? '\\n\\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión:\\n' + $('Consultar Base RAG1').item.json.context : '') }}"
         }
@@ -1787,7 +1663,7 @@
         "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.from }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.mediaUrl }}\",\n    \"caption\": \"{{ $json.texto_limpio }}\"\n  }\n}",
+        "jsonBody": "={{ JSON.stringify({ from: $('Webhook').item.json.body.whatsappInboundMessage.to, to: $('Webhook').item.json.body.whatsappInboundMessage.from, type: 'image', image: { link: $json.mediaUrl, caption: $json.texto_limpio || '' } }) }}",
         "options": {},
         "sendHeaders": true,
         "specifyHeaders": "keypair",
@@ -1845,7 +1721,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item.json;\nlet textoIA = item.output || \"\";\n\nlet etiqueta = \"FLUJO_NORMAL\";\nif (textoIA.includes(\"#VENTA_ESPECIALIZADA\") || textoIA.includes(\"#VENTA\")) etiqueta = \"VENTA_ESPECIALIZADA\";\nelse if (textoIA.includes(\"#BODEGA\")) etiqueta = \"BODEGA\";\nelse if (textoIA.includes(\"#SOPORTE\")) etiqueta = \"SOPORTE\";\nelse if (textoIA.includes(\"#FLUJO_NORMAL\")) etiqueta = \"FLUJO_NORMAL\";\n\nconst mediaRegex = /\\[\\[MEDIA:(https?:\\/\\/[^\\]]+)\\]\\]/;\nconst markdownRegex = /\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/;\n\nconst match = textoIA.match(mediaRegex) || textoIA.match(markdownRegex);\nlet hasMedia = !!match;\n\nconst extraerIdDrive = (url) => {\n    const m = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return m ? m[1] : null;\n};\n\nconst getImageUrl = (url) => {\n    if (!url) return null;\n    const driveId = extraerIdDrive(url);\n    let finalUrl = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : url;\n    \n    // Forzar HTTPS para el dashboard de ycloud y otras URLs de imágenes inseguras\n    if (finalUrl.startsWith('http://')) {\n        finalUrl = finalUrl.replace('http://', 'https://');\n    }\n    return finalUrl;\n};\n\nlet mediaUrl = match ? getImageUrl(match[1]) : null;\n\nlet respuestaLimpia = textoIA\n    .replace(mediaRegex, \"\")\n    .replace(markdownRegex, \"\")\n    .replace(/Puedes ver la imagen \\./gi, \"\")\n    .replace(/#PRODUCTO:.*$/gi, \"\")\n    .replace(/#VENTA_ESPECIALIZADA|#VENTA|#BODEGA|#SOPORTE|#FLUJO_NORMAL/gi, \"\")\n    .replace(/https:\\/\\/drive\\.google\\.com\\/[^\\s\\n]+/gi, \"\")\n    .replace(/\\s+\\[\\[MEDIA:.*?\\]\\]/gi, \"\")\n    .trim();\n\n// Limpiar dos puntos al final o seguidos de punto\nrespuestaLimpia = respuestaLimpia\n    .replace(/:\\s*\\./g, \".\")\n    .replace(/:\\s*$/g, \"\")\n    .trim();\n\nreturn {\n    ...item,\n    texto_limpio: respuestaLimpia,\n    respuesta_cliente: respuestaLimpia,\n    etiqueta_interna: etiqueta,\n    notificar_vip: etiqueta === \"VENTA_ESPECIALIZADA\" || etiqueta === \"SOPORTE\",\n    hasMedia: hasMedia,\n    mediaUrl: mediaUrl\n};"
+        "jsCode": "const item = $input.item.json;\nlet textoIA = item.output || \"\";\n\nlet etiqueta = \"FLUJO_NORMAL\";\nif (textoIA.includes(\"#VENTA_ESPECIALIZADA\") || textoIA.includes(\"#VENTA\")) etiqueta = \"VENTA_ESPECIALIZADA\";\nelse if (textoIA.includes(\"#BODEGA\")) etiqueta = \"BODEGA\";\nelse if (textoIA.includes(\"#SOPORTE\")) etiqueta = \"SOPORTE\";\nelse if (textoIA.includes(\"#FLUJO_NORMAL\")) etiqueta = \"FLUJO_NORMAL\";\n\nconst mediaRegex = /\\[\\[MEDIA:(https?:\\/\\/[^\\]]+)\\]\\]/;\nconst markdownRegex = /\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/;\n// URLs peladas de imagen (dashboard /uploads o extensiones de imagen)\nconst bareImgRegex = /https?:\\/\\/[^\\s\\n)]*(?:\\/uploads\\/[^\\s\\n)]+|\\.(?:jpg|jpeg|png|gif|webp))(?:\\?[^\\s\\n)]*)?/gi;\n\nconst match = textoIA.match(mediaRegex) || textoIA.match(markdownRegex);\nconst bareUrls = textoIA.match(bareImgRegex) || [];\nlet hasMedia = !!match || bareUrls.length > 0;\n\n// Detectar cierre de pedido y solicitud de humano\nconst esPedido = /#PEDIDO_LISTO/i.test(textoIA);\nconst solicitaHumano = /#SOLICITA_HUMANO/i.test(textoIA);\n\nconst extraerIdDrive = (url) => {\n    const m = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return m ? m[1] : null;\n};\n\nconst getImageUrl = (url) => {\n    if (!url) return null;\n    const driveId = extraerIdDrive(url);\n    let finalUrl = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : url;\n    if (finalUrl.startsWith('http://')) {\n        finalUrl = finalUrl.replace('http://', 'https://');\n    }\n    return finalUrl;\n};\n\nlet mediaUrl = match ? getImageUrl(match[1]) : (bareUrls[0] ? getImageUrl(bareUrls[0]) : null);\n\nlet respuestaLimpia = textoIA\n    .replace(mediaRegex, \"\")\n    .replace(markdownRegex, \"\")\n    .replace(bareImgRegex, \"\")\n    .replace(/Puedes ver la imagen \\./gi, \"\")\n    .replace(/#PRODUCTO:.*$/gi, \"\")\n    .replace(/#VENTA_ESPECIALIZADA|#VENTA|#BODEGA|#SOPORTE|#FLUJO_NORMAL|#PEDIDO_LISTO|#SOLICITA_HUMANO/gi, \"\")\n    .replace(/https:\\/\\/drive\\.google\\.com\\/[^\\s\\n]+/gi, \"\")\n    .replace(/\\s+\\[\\[MEDIA:.*?\\]\\]/gi, \"\")\n    .trim();\n\nrespuestaLimpia = respuestaLimpia\n    .replace(/:\\s*\\./g, \".\")\n    .replace(/:\\s*$/g, \"\")\n    .replace(/\\n{3,}/g, \"\\n\\n\")\n    .trim();\n\nreturn {\n    ...item,\n    texto_limpio: respuestaLimpia,\n    respuesta_cliente: respuestaLimpia,\n    etiqueta_interna: etiqueta,\n    notificar_vip: etiqueta === \"VENTA_ESPECIALIZADA\" || etiqueta === \"SOPORTE\",\n    hasMedia: hasMedia,\n    mediaUrl: mediaUrl,\n    es_pedido: esPedido,\n    solicita_humano: solicitaHumano\n};\n"
       },
       "id": "0f499358-3ac0-4c8a-b442-642a2ce192c4",
       "name": "LIMPIEZA Y ESTADOS V2",
@@ -1877,7 +1753,11 @@
             },
             {
               "name": "nombre",
-              "value": "Agente"
+              "value": "={{ $('Webhook').item.json.body.whatsappMessage.customerProfile?.name || 'Cliente' }}"
+            },
+            {
+              "name": "media_url",
+              "value": "={{ $('Webhook').item.json.body.whatsappMessage.image?.link || '' }}"
             }
           ]
         },
@@ -1903,7 +1783,7 @@
           "parameters": [
             {
               "name": "phone",
-              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.to }}"
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage ? $('Webhook').item.json.body.whatsappInboundMessage.to : $('Webhook').item.json.body.whatsappMessage.from }}"
             }
           ]
         },
@@ -1917,6 +1797,455 @@
       ],
       "id": "get-channel-key-node-id",
       "name": "Obtener API Key"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ycloud-dashboard.83aqlq.easypanel.host/api/webhook/n8n",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}"
+            },
+            {
+              "name": "channel_phone",
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.to }}"
+            },
+            {
+              "name": "nombre",
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.customerProfile?.name || 'Cliente' }}"
+            },
+            {
+              "name": "mensaje",
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.text?.body }}"
+            },
+            {
+              "name": "sender",
+              "value": "client"
+            },
+            {
+              "name": "media_url",
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.image?.link || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Guardar Mensaje Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -9264,
+        -68
+      ],
+      "id": "57373544-4df3-49de-98fe-b52e6d7b849e"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.ycloud.com/v2/whatsapp/inboundMessages/{{ $('Webhook').item.json.body.whatsappInboundMessage.id }}/typingIndicator",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $('Obtener API Key').item.json.api_key }}"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Marcar Leido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -9264,
+        92
+      ],
+      "onError": "continueRegularOutput",
+      "id": "2c5bccc2-af6f-48dd-95f7-11798fef511a"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.body.type }}",
+              "rightValue": "whatsapp.inbound_message.received",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.body.type }}",
+              "rightValue": "whatsapp.smb.message.echoes",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "solo-msg-filter-1",
+      "name": "Solo Mensajes Reales",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -10220,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "hasfoto2",
+              "leftValue": "={{ $json.foto2 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "hay-foto2-if",
+      "name": "¿Hay foto2?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -4052,
+        -152
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "buffer_id",
+        "key": "={{ $(\"Edit Fields\").item.json.Numero_Telefono }}",
+        "options": {}
+      },
+      "id": "buffer-get-1",
+      "name": "Buffer Get",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -6076,
+        -480
+      ],
+      "credentials": {
+        "redis": {
+          "id": "ZcShMGwetuFGtBFq",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "esult",
+              "leftValue": "={{ $json.latestId }}",
+              "rightValue": "={{ $('Edit Fields').first().json.ID }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "soy-ultimo-if",
+      "name": "¿Soy el último?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -5856,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "MensajeCombinado",
+              "value": "={{ $('Buf Leer Final').first().json.finalMsg || ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "Numero_Telefono",
+              "value": "={{ $('Edit Fields').first().json.Numero_Telefono }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "Nombre",
+              "value": "={{ $('Edit Fields').first().json.Nombre }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "Mensaje",
+              "value": "={{ $('Buf Leer Final').first().json.finalMsg || ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "Tipo_Mensaje",
+              "value": "={{ $('Edit Fields').first().json.Tipo_Mensaje }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "Instancia",
+              "value": "={{ $('Edit Fields').first().json.Instancia }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "ID",
+              "value": "={{ $('Edit Fields').first().json.ID }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "restaurar-set",
+      "name": "Restaurar campos",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -5636,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "bufPrev",
+        "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+        "options": {}
+      },
+      "id": "buf-leer-previo-x",
+      "name": "Buf Leer Previo",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -6536,
+        -480
+      ],
+      "credentials": {
+        "redis": {
+          "id": "ZcShMGwetuFGtBFq",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "combinado",
+              "value": "={{ ($json.bufPrev && String($json.bufPrev).length && $json.bufPrev !== 'null' ? $json.bufPrev + ' ' : '') + ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "combinar-mensajes-x",
+      "name": "Combinar Mensajes",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -6356,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+        "value": "={{ $json.combinado }}",
+        "keyType": "string",
+        "expire": true,
+        "ttl": 120
+      },
+      "id": "buf-guardar-x",
+      "name": "Buf Guardar",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -6176,
+        -480
+      ],
+      "credentials": {
+        "redis": {
+          "id": "ZcShMGwetuFGtBFq",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "=latest:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+        "value": "={{ $('Edit Fields').first().json.ID }}",
+        "keyType": "string",
+        "expire": true,
+        "ttl": 120
+      },
+      "id": "latest-guardar-x",
+      "name": "Latest Guardar",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -5996,
+        -480
+      ],
+      "credentials": {
+        "redis": {
+          "id": "ZcShMGwetuFGtBFq",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "latestId",
+        "key": "=latest:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+        "options": {}
+      },
+      "id": "latest-leer-x",
+      "name": "Latest Leer",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -5636,
+        -480
+      ],
+      "credentials": {
+        "redis": {
+          "id": "ZcShMGwetuFGtBFq",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "finalMsg",
+        "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+        "options": {}
+      },
+      "id": "buf-leer-final-x",
+      "name": "Buf Leer Final",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -5276,
+        -480
+      ],
+      "credentials": {
+        "redis": {
+          "id": "ZcShMGwetuFGtBFq",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}"
+      },
+      "id": "buf-borrar-x",
+      "name": "Buf Borrar",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -5096,
+        -480
+      ],
+      "credentials": {
+        "redis": {
+          "id": "ZcShMGwetuFGtBFq",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "create",
+        "givenName": "={{ $json.nombre_cliente && $json.nombre_cliente !== 'Sin nombre' && $json.nombre_cliente !== 'Cliente Nuevo' ? $json.nombre_cliente : ($('Webhook').item.json.body.whatsappInboundMessage.customerProfile.name || 'Cliente') }}",
+        "familyName": "[OneControl]",
+        "companyName": "OneControl CRM",
+        "jobTitle": "={{ $json.modelo_motor && $json.modelo_motor !== 'N/A' ? 'Interesado en ' + $json.modelo_motor : 'Cliente WhatsApp' }}",
+        "notes": "={{ 'Motor: ' + ($json.modelo_motor || 'N/A') + ' | Estado: ' + ($json.etiqueta_interna || 'Nuevo') + ' | Origen: WhatsApp' }}",
+        "phoneNumbersUi": {
+          "phoneNumbersValues": [
+            {
+              "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}",
+              "type": "mobile"
+            }
+          ]
+        },
+        "additionalFields": {}
+      },
+      "name": "Guardar en Google Contacts (Celular)",
+      "type": "n8n-nodes-base.googleContacts",
+      "typeVersion": 1,
+      "position": [
+        -4920,
+        -780
+      ],
+      "id": "99e1a2f3-78bc-4de5-9a8b-123456789abc",
+      "disabled": true,
+      "continueOnFail": true,
+      "notesInFlow": true,
+      "notes": "Sincroniza el nombre real del cliente en los contactos de Google para que WhatsApp en el teléfono muestre su nombre."
     }
   ],
   "connections": {
@@ -1939,17 +2268,6 @@
           {
             "node": "recepcionista",
             "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "consultar precios2": {
-      "ai_tool": [
-        [
-          {
-            "node": "recepcionista",
-            "type": "ai_tool",
             "index": 0
           }
         ]
@@ -2042,17 +2360,6 @@
         ]
       ]
     },
-    "Preparar Fotos (Estrategia)1": {
-      "main": [
-        [
-          {
-            "node": "¿Enviar Fotos?1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "¿Enviar Fotos?1": {
       "main": [
         [
@@ -2086,22 +2393,11 @@
         ]
       ]
     },
-    "fotos reales1": {
-      "ai_tool": [
-        [
-          {
-            "node": "recepcionista",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Edit Fields": {
       "main": [
         [
           {
-            "node": "Switch7",
+            "node": "Buf Leer Previo",
             "type": "main",
             "index": 0
           }
@@ -2112,7 +2408,7 @@
       "main": [
         [
           {
-            "node": "Redis8",
+            "node": "Wait1",
             "type": "main",
             "index": 0
           }
@@ -2170,7 +2466,7 @@
       "main": [
         [
           {
-            "node": "Redis8",
+            "node": "Latest Leer",
             "type": "main",
             "index": 0
           }
@@ -2203,21 +2499,21 @@
       "main": [
         [
           {
-            "node": "Redis1",
+            "node": "Merge1",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Redis1",
+            "node": "Merge1",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Redis1",
+            "node": "Merge1",
             "type": "main",
             "index": 0
           }
@@ -2239,30 +2535,8 @@
       "main": [
         [
           {
-            "node": "Obtener API Key",
+            "node": "Solo Mensajes Reales",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "SERVICIOS": {
-      "ai_tool": [
-        [
-          {
-            "node": "agente_vendedor",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "consultar precios": {
-      "ai_tool": [
-        [
-          {
-            "node": "agente_vendedor",
-            "type": "ai_tool",
             "index": 0
           }
         ]
@@ -2273,6 +2547,11 @@
         [
           {
             "node": "CHECK BOT STATUS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Guardar Mensaje Cliente",
             "type": "main",
             "index": 0
           }
@@ -2471,14 +2750,12 @@
       "main": [
         [
           {
-            "node": "Consultar Etiquetas YCloud1",
+            "node": "Switch Trabajador o Cliente",
             "type": "main",
             "index": 0
-          }
-        ],
-        [
+          },
           {
-            "node": "NOTIFICAR DASHBOARD HANDOFF",
+            "node": "Marcar Leido",
             "type": "main",
             "index": 0
           }
@@ -2517,6 +2794,11 @@
         [
           {
             "node": "recepcionista",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "agente_vendedor",
             "type": "ai_tool",
             "index": 0
           }
@@ -2564,6 +2846,11 @@
             "node": "HTTP Request2",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Guardar en Google Contacts (Celular)",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -2589,6 +2876,151 @@
           }
         ]
       ]
+    },
+    "Solo Mensajes Reales": {
+      "main": [
+        [
+          {
+            "node": "Obtener API Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Fotos (Estrategia)1": {
+      "main": [
+        [
+          {
+            "node": "¿Hay foto2?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay foto2?": {
+      "main": [
+        [
+          {
+            "node": "Espera Humana1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Buffer Get": {
+      "main": [
+        [
+          {
+            "node": "¿Soy el último?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Soy el último?": {
+      "main": [
+        [
+          {
+            "node": "Buf Leer Final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Restaurar campos": {
+      "main": [
+        [
+          {
+            "node": "Switch7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buf Leer Previo": {
+      "main": [
+        [
+          {
+            "node": "Combinar Mensajes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinar Mensajes": {
+      "main": [
+        [
+          {
+            "node": "Buf Guardar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buf Guardar": {
+      "main": [
+        [
+          {
+            "node": "Latest Guardar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Latest Guardar": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Latest Leer": {
+      "main": [
+        [
+          {
+            "node": "¿Soy el último?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buf Leer Final": {
+      "main": [
+        [
+          {
+            "node": "Buf Borrar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buf Borrar": {
+      "main": [
+        [
+          {
+            "node": "Restaurar campos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -2601,17 +3033,20 @@
     "saveDataErrorExecution": "all",
     "saveDataSuccessExecution": "all",
     "saveExecutionProgress": false,
-    "executionTimeout": 180
+    "executionTimeout": 180,
+    "errorWorkflow": "E7jAwkIeMIbwyC9e"
   },
   "staticData": null,
   "meta": {
     "templateCredsSetupCompleted": true
   },
+  "nodeGroups": [],
   "pinData": {},
-  "versionId": "8abbaae7-346e-4954-8ee7-d71305f1de61",
-  "activeVersionId": "8abbaae7-346e-4954-8ee7-d71305f1de61",
-  "versionCounter": 248,
+  "versionId": "73edac20-ebea-4160-a7d9-4127a9ddc10c",
+  "activeVersionId": "73edac20-ebea-4160-a7d9-4127a9ddc10c",
+  "versionCounter": 401,
   "triggerCount": 1,
+  "sourceWorkflowId": null,
   "shared": [
     {
       "updatedAt": "2026-04-30T19:09:51.925Z",
@@ -2627,15 +3062,16 @@
         "type": "personal",
         "icon": null,
         "description": null,
+        "customTelemetryTags": [],
         "creatorId": "caf1c75e-58c7-4567-8f88-e5caac8ad151"
       }
     }
   ],
   "tags": [],
   "activeVersion": {
-    "updatedAt": "2026-05-14T06:42:39.000Z",
-    "createdAt": "2026-05-14T06:42:24.315Z",
-    "versionId": "8abbaae7-346e-4954-8ee7-d71305f1de61",
+    "updatedAt": "2026-08-13T01:17:59.390Z",
+    "createdAt": "2026-08-13T01:17:59.390Z",
+    "versionId": "73edac20-ebea-4160-a7d9-4127a9ddc10c",
     "workflowId": "5537mcUjW8GdaxF4",
     "nodes": [
       {
@@ -2669,7 +3105,7 @@
                   "conditions": [
                     {
                       "id": "luis-route",
-                      "leftValue": "={{ $json.body.whatsappInboundMessage.from }}",
+                      "leftValue": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}",
                       "rightValue": "+50255572346",
                       "operator": {
                         "type": "string",
@@ -2693,7 +3129,7 @@
                   "conditions": [
                     {
                       "id": "test-route",
-                      "leftValue": "={{ $json.body.whatsappInboundMessage.from }}",
+                      "leftValue": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}",
                       "rightValue": "+50234465443",
                       "operator": {
                         "type": "string",
@@ -2740,9 +3176,9 @@
         "parameters": {
           "model": {
             "__rl": true,
-            "value": "gpt-4o",
+            "value": "deepseek-v4-pro",
             "mode": "list",
-            "cachedResultName": "gpt-4o"
+            "cachedResultName": "deepseek-v4-pro"
           },
           "options": {
             "temperature": 0.5
@@ -2759,42 +3195,7 @@
         "credentials": {
           "openAiApi": {
             "id": "8Xn9MSXLwdbeAEv8",
-            "name": "OpenAi account 2"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "documentId": {
-            "__rl": true,
-            "value": "1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8",
-            "mode": "list",
-            "cachedResultName": "PRECIOS",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit?usp=drivesdk"
-          },
-          "sheetName": {
-            "__rl": true,
-            "value": "gid=0",
-            "mode": "list",
-            "cachedResultName": "Hoja 1",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-          },
-          "options": {
-            "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-          }
-        },
-        "type": "n8n-nodes-base.googleSheetsTool",
-        "typeVersion": 4.6,
-        "position": [
-          -5040,
-          128
-        ],
-        "id": "2428263a-29c2-44b5-97af-a58244d0967c",
-        "name": "consultar precios2",
-        "credentials": {
-          "googleSheetsOAuth2Api": {
-            "id": "8ZUn5LRibZKCidxI",
-            "name": "Google Sheets account"
+            "name": "deepseek"
           }
         }
       },
@@ -2978,11 +3379,11 @@
           "operation": "analyze",
           "modelId": {
             "__rl": true,
-            "value": "gpt-4o",
+            "value": "gpt-4o-mini",
             "mode": "list",
-            "cachedResultName": "GPT-4O"
+            "cachedResultName": "gpt-4o-mini"
           },
-          "text": "=ROL: Analista técnico visual especializado en automatización (onecontrol.shop).\n\nOBJETIVO:\nAnalizar cualquier imagen recibida y generar un reporte técnico estructurado, útil para cotización o diagnóstico.\n\nREGLAS GENERALES:\n- Enfocarse únicamente en objetos, equipos, estructuras o productos.\n- Ignorar completamente personas, rostros, documentos o información sensible.\n- No identificar identidad de personas ni datos personales.\n- Si la imagen no contiene elementos relevantes (portones, motores, muebles u objetos técnicos), clasificar como \"OTRO\".\n* Si el portón NO tiene motor -> SERVICIO: VENTA DE AUTOMATIZACIÓN\n🔍 IMPORTANTE: Extrae también el MODELO ESPECÍFICO si es visible.\nBusca en la imagen:\n- Etiquetas con números/letras (ej. \"422\", \"844\", \"S2500\", \"LA400\")\n- Texto cerca del logo de la marca\n- Placas con código de modelo\n\nSi NO ves modelo claro, escribe \"MODELO: NO VISIBLE\"\n\nFORMATO ACTUALIZADO:\nSERVICIO_BUSQUEDA: [...]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA] | [MODELO] | [TIPO inicial] | [ESTADO]. DETALLE: [...]\n\nINSTRUCCIONES DE IDENTIFICACIÓN:\n\n1. MOTORES:\n- Detectar si hay motor de portón.\n- Identificar marca si es visible (Liftmaster, FAAC, PPA, Nice, Genius, etc.).\n- Identificar MODELO si es visible (números/códigos en etiquetas, ej: \"422\", \"LA400\", \"884\").\n- Tipo de mecanismo: Cremallera, Brazo/Pistón, Cadena.\n- DETERMINAR HIDRÁULICO vs ESTÁNDAR:\n  * HIDRÁULICO: pistón robusto + sistema visible de aceite + más grande + cuerpo metálico cilíndrico macizo\n  * ESTÁNDAR (electromecánico): brazo articulado + caja con motor eléctrico visible + más pequeño\n  * 🚨 Si NO podés determinar con CERTEZA si es hidráulico o estándar → pon \"REQUIERE_VERIFICACION\"\n- 🚨 NUNCA pongas \"ESTÁNDAR\" si no estás 100% seguro. Es preferible \"REQUIERE_VERIFICACION\"\n\nCLASIFICACIÓN DE SERVICIO:\n- Si es Cadena → MANTENIMIENTO MOTORES DE CADENA\n- Si es Cremallera → MANTENIMIENTO MOTORES DE CREMALLERA\n- Si es Brazo/Pistón ESTÁNDAR (CONFIRMADO) → MANTENIMIENTO MOTORES DE BRAZOS\n- Si es Brazo/Pistón HIDRÁULICO (CONFIRMADO) → MANTENIMIENTO DE EQUIPOS HIDRAULICOS\n- Si REQUIERE_VERIFICACION → REVISAR_TIPO_MOTOR\n\nFORMATO DE SALIDA (OBLIGATORIO):\nSERVICIO_BUSQUEDA: [Nombre de la CLASIFICACIÓN o REVISAR_TIPO_MOTOR]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA o SIN MARCA] | [MODELO o SIN MODELO] | [TIPO: HIDRÁULICO/ESTÁNDAR/REQUIERE_VERIFICACION] | [ESTADO]. DETALLE: [...]\n2. PORTONES:\n- Tipo: Corredizo, Abatible, Levadizo.\n- Estado: funcional, oxidado, descarrilado, golpeado, incompleto.\n- ¿TIENE MOTOR INSTALADO?: [SÍ/NO/NO SE VE].\n- INTENCIÓN PROBABLE: \n  * Si TIENE motor -> Mantenimiento o Reparación.\n  * Si NO tiene motor -> Automatización (Venta de motor nuevo).\n\n3. MUEBLES (si aplica):\n- Tipo de mueble (ej. Zapatera, estantería).\n- Material: melamina, metal, madera.\n- Estado: armado, desarmado, dañado.\n\n4. OTROS OBJETOS Y ACCESORIOS DE TIENDA:\n- Si no es portón/motor/mueble, identificar el objeto (ej. Electrocerradura, Control remoto, Sensor).\n- Describir el objeto principal de forma técnica y clara.\n- Para accesorios o muebles, la CLASIFICACIÓN DE SERVICIO debe ser el nombre común del producto.\n* Si el portón NO tiene motor -> SERVICIO: VENTA DE AUTOMATIZACIÓN\n5. ESTADO TÉCNICO GENERAL:\n- Nuevo\n- Usado\n- Dañado\n- Referencia (cuando el cliente solo muestra ejemplo)\n\nREGLAS CRÍTICAS:\n- No inventar marcas. Si no es visible, usar \"SIN MARCA\".\n- Si no se puede determinar el tipo, usar \"NO IDENTIFICABLE\".\n- NUNCA respondas que no puedes asistir con la solicitud si hay un producto en la imagen. Si el objeto no es un motor, descríbelo y asígnale su nombre comercial en SERVICIO_BUSQUEDA.\n- Priorizar precisión sobre suposición.\n\nFORMATO DE SALIDA (OBLIGATORIO):\nSERVICIO_BUSQUEDA: [Nombre de la CLASIFICACIÓN DE SERVICIO o nombre del producto detectado]\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA] | [TIPO: HIDRÁULICO/ESTÁNDAR/NO IDENTIFICABLE] | [ESTADO]. DETALLE: [Descripción técnica clara y útil para diagnóstico o venta].",
+          "text": "=ROL: Analista visual de OneControl (portones automáticos, Guatemala). Tu trabajo es DESCRIBIR objetivamente lo que aparece en la foto. NO decidís qué quiere el cliente.\n\nREGLA #1 (LA MÁS IMPORTANTE): Solo DESCRIBÍS lo que ves. NUNCA adivines la intención del cliente (comprar, precio, mantenimiento, instalación, reparación, compatibilidad). Eso lo dice el CLIENTE con sus palabras, NO la foto. NUNCA asumas que quiere mantenimiento o instalación solo porque ves un motor o un portón.\n\nQUÉ IDENTIFICAR:\n- PRODUCTO: distinguí bien entre CONTROL REMOTO (mando chico de mano), MOTOR (equipo grande instalado en el portón), PORTÓN, REPUESTO, ACCESORIO (fotocelda, antena, sensor) o MUEBLE. NO confundas un control remoto con un motor.\n- MARCA: solo si es visible (LiftMaster, Chamberlain, FAAC, PPA, Nice, Genius, etc.). Si no se ve, \"SIN MARCA\".\n- MODELO: solo si ves el código en una etiqueta o placa (ej: \"81602\", \"422\", \"LA400\", \"893MAX\"). Si no, \"SIN MODELO\".\n- TIPO (solo si es MOTOR): cadena, cremallera, brazo/pistón. Si no estás seguro, \"NO IDENTIFICABLE\". Nunca inventes.\n- ESTADO: nuevo, usado, dañado, o \"referencia\" (si el cliente solo muestra un ejemplo).\n\nREGLAS:\n- No inventes marcas ni modelos: si no se ve, poné \"SIN MARCA\" / \"SIN MODELO\".\n- Si el cliente ya dijo el TIPO de portón (levadizo, abatible, corredizo, seccional, batiente), reportá EXACTAMENTE ese tipo. El cliente conoce su portón; no lo contradigas.\n- Ignorá personas, rostros, documentos y datos personales.\n- Si no hay un producto relevante, poné PRODUCTO: OTRO.\n- NUNCA digas que no podés ayudar si hay un objeto: describilo con su nombre comercial.\n- Priorizá precisión sobre suposición.\n\nFORMATO DE SALIDA (obligatorio, en una sola línea):\nANALISIS_IMAGEN: [PRODUCTO] | [MARCA o SIN MARCA] | [MODELO o SIN MODELO] | [TIPO o NO IDENTIFICABLE] | [ESTADO]. DETALLE: [descripción corta y clara de lo que se ve].\n\nCONTEXTO — LO QUE DIJO EL CLIENTE: \"{{ $('Webhook').item.json.body.whatsappInboundMessage.image?.caption || '(sin texto en la foto)' }}\"\n",
           "inputType": "base64",
           "options": {}
         },
@@ -2996,8 +3397,8 @@
         "name": "Analyze image1",
         "credentials": {
           "openAiApi": {
-            "id": "8Xn9MSXLwdbeAEv8",
-            "name": "OpenAi account 2"
+            "id": "SBSBSZ4HYxCtdWiU",
+            "name": "openai-vision"
           }
         }
       },
@@ -3033,8 +3434,8 @@
       {
         "parameters": {
           "sessionIdType": "customKey",
-          "sessionKey": "reseteo_total_bull8",
-          "contextWindowLength": 10
+          "sessionKey": "={{ $(\"Edit Fields\").item.json.Numero_Telefono }}",
+          "contextWindowLength": 15
         },
         "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
         "typeVersion": 1.3,
@@ -3113,9 +3514,9 @@
         "parameters": {
           "model": {
             "__rl": true,
-            "value": "gpt-4o",
+            "value": "deepseek-v4-pro",
             "mode": "list",
-            "cachedResultName": "gpt-4o"
+            "cachedResultName": "deepseek-v4-pro"
           },
           "options": {}
         },
@@ -3130,42 +3531,7 @@
         "credentials": {
           "openAiApi": {
             "id": "8Xn9MSXLwdbeAEv8",
-            "name": "OpenAi account 2"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "documentId": {
-            "__rl": true,
-            "value": "1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8",
-            "mode": "list",
-            "cachedResultName": "PRECIOS",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit?usp=drivesdk"
-          },
-          "sheetName": {
-            "__rl": true,
-            "value": "gid=0",
-            "mode": "list",
-            "cachedResultName": "Hoja 1",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-          },
-          "options": {
-            "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-          }
-        },
-        "type": "n8n-nodes-base.googleSheetsTool",
-        "typeVersion": 4.6,
-        "position": [
-          -4896,
-          128
-        ],
-        "id": "c4ea71b5-2a06-4c95-a60d-45c4739c08c1",
-        "name": "fotos reales1",
-        "credentials": {
-          "googleSheetsOAuth2Api": {
-            "id": "8ZUn5LRibZKCidxI",
-            "name": "Google Sheets account"
+            "name": "deepseek"
           }
         }
       },
@@ -3226,7 +3592,7 @@
         "parameters": {
           "operation": "set",
           "key": "={{ $json.Numero_Telefono }}",
-          "value": "={{ JSON.stringify({ message: $json.Mensaje, sessionID: $json.ID, date_time: $now.toFormat(\"yyyy-MM-dd'T'HH:mm:ss.SSSZZ\") }) }}",
+          "value": "={{ $json.ID }}",
           "keyType": "string",
           "expire": true,
           "ttl": 300
@@ -3361,7 +3727,8 @@
       },
       {
         "parameters": {
-          "amount": 7
+          "amount": 7,
+          "unit": "seconds"
         },
         "type": "n8n-nodes-base.wait",
         "typeVersion": 1.1,
@@ -3509,8 +3876,8 @@
       {
         "parameters": {
           "sessionIdType": "customKey",
-          "sessionKey": "{{ $json.remoteJid_final || $json.body?.data?.key?.remoteJid || \"sesion_provisional\" }}",
-          "contextWindowLength": 10
+          "sessionKey": "={{ $(\"Edit Fields\").item.json.Numero_Telefono + \"_vendedor\" }}",
+          "contextWindowLength": 15
         },
         "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
         "typeVersion": 1.3,
@@ -3520,76 +3887,6 @@
         ],
         "id": "40e75f63-c274-4662-a62d-16c858b3217c",
         "name": "Simple Memory3"
-      },
-      {
-        "parameters": {
-          "documentId": {
-            "__rl": true,
-            "value": "15hopLrE19x_9ndFB6z8m2gluNjsx81t08lxiC9gi3i8",
-            "mode": "list",
-            "cachedResultName": "SERVICIOS",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15hopLrE19x_9ndFB6z8m2gluNjsx81t08lxiC9gi3i8/edit?usp=drivesdk"
-          },
-          "sheetName": {
-            "__rl": true,
-            "value": "gid=0",
-            "mode": "list",
-            "cachedResultName": "Hoja 1",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-          },
-          "options": {
-            "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-          }
-        },
-        "type": "n8n-nodes-base.googleSheetsTool",
-        "typeVersion": 4.6,
-        "position": [
-          -4256,
-          400
-        ],
-        "id": "dd268795-41c8-4ba2-b415-8cf57f488dab",
-        "name": "SERVICIOS",
-        "credentials": {
-          "googleSheetsOAuth2Api": {
-            "id": "8ZUn5LRibZKCidxI",
-            "name": "Google Sheets account"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "documentId": {
-            "__rl": true,
-            "value": "1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8",
-            "mode": "list",
-            "cachedResultName": "PRECIOS",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit?usp=drivesdk"
-          },
-          "sheetName": {
-            "__rl": true,
-            "value": "gid=0",
-            "mode": "list",
-            "cachedResultName": "Hoja 1",
-            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lfMB_W91hQG8ko9ektACZPkUNZdWza9Y5jEG4Oy-wW8/edit#gid=0"
-          },
-          "options": {
-            "returnFirstMatch": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_only_First_Matching_Row', ``, 'boolean') }}"
-          }
-        },
-        "type": "n8n-nodes-base.googleSheetsTool",
-        "typeVersion": 4.6,
-        "position": [
-          -3968,
-          272
-        ],
-        "id": "e4ac9e97-ea35-461b-866b-a7c0ac0b9859",
-        "name": "consultar precios",
-        "credentials": {
-          "googleSheetsOAuth2Api": {
-            "id": "8ZUn5LRibZKCidxI",
-            "name": "Google Sheets account"
-          }
-        }
       },
       {
         "parameters": {
@@ -3662,7 +3959,7 @@
         "parameters": {
           "operation": "get",
           "propertyName": "bot_status",
-          "key": "=bot_off:{{ $json.body.whatsappInboundMessage.from.replace(/\\D/g, '') }}",
+          "key": "=bot_off:{{ $('Webhook').item.json.body.whatsappInboundMessage.from.replace(/\\D/g, '') }}",
           "options": {
             "dotNotation": false
           }
@@ -3686,18 +3983,27 @@
       {
         "parameters": {
           "url": "https://api.ycloud.com/v2/contact/contacts",
-          "authentication": "genericCredentialType",
-          "genericAuthType": "httpHeaderAuth",
+          "authentication": "none",
           "sendQuery": true,
           "queryParameters": {
             "parameters": [
               {
                 "name": "filter",
-                "value": "=phoneNumber=\"{{ $('Webhook').item.json.body.whatsappInboundMessage.from }}\""
+                "value": "phoneNumber={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}"
               }
             ]
           },
-          "options": {}
+          "options": {},
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-API-Key",
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
+              }
+            ]
+          }
         },
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
@@ -3707,12 +4013,6 @@
         ],
         "id": "2b19efcf-fbdc-4b47-ac98-443e75e9d6c1",
         "name": "GET Contacto Cliente",
-        "credentials": {
-          "httpHeaderAuth": {
-            "id": "NphMGDjGcAx9asTH",
-            "name": "ycloud"
-          }
-        },
         "onError": "continueRegularOutput"
       },
       {
@@ -3808,7 +4108,7 @@
               },
               {
                 "name": "X-API-key",
-                "value": "a25aaba6428e12e4df6310296f675272"
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
               }
             ]
           },
@@ -3832,7 +4132,7 @@
             "parameters": [
               {
                 "name": "X-API-key",
-                "value": "a25aaba6428e12e4df6310296f675272"
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
               },
               {
                 "name": "accept",
@@ -3842,7 +4142,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "{\n  \"tags\": [\"bot_desactivado\"],\n  \"customAttributes\": [\n    {\n      \"name\": \"estado_bot\",\n      \"value\": [\"off\"]\n    }\n  ]\n}",
+          "jsonBody": "{\n  \"tags\": [\"bot_desactivado\"]\n}",
           "options": {}
         },
         "id": "d8b04530-d24a-4bd7-8a14-4bded97600d3",
@@ -3862,7 +4162,7 @@
             "parameters": [
               {
                 "name": "filter.phoneNumber",
-                "value": "={{ $json.body.whatsappMessage.to }}"
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}"
               },
               {
                 "name": "limit",
@@ -3879,7 +4179,7 @@
               },
               {
                 "name": "X-API-key",
-                "value": "a25aaba6428e12e4df6310296f675272"
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
               }
             ]
           },
@@ -3929,7 +4229,7 @@
       },
       {
         "parameters": {
-          "url": "={{ $json.body.whatsappInboundMessage.audio.link }}",
+          "url": "={{ $('Webhook').item.json.body.whatsappInboundMessage.audio.link }}",
           "options": {
             "response": {
               "response": {
@@ -3963,14 +4263,14 @@
         "name": "Transcribir con Whisper",
         "credentials": {
           "openAiApi": {
-            "id": "8Xn9MSXLwdbeAEv8",
-            "name": "OpenAi account 2"
+            "id": "SBSBSZ4HYxCtdWiU",
+            "name": "openai-vision"
           }
         }
       },
       {
         "parameters": {
-          "url": "={{ $json.body.whatsappInboundMessage.image.link }}",
+          "url": "={{ $('Webhook').item.json.body.whatsappInboundMessage.image.link }}",
           "options": {
             "response": {
               "response": {
@@ -3992,12 +4292,21 @@
         "parameters": {
           "method": "POST",
           "url": "https://api.ycloud.com/v2/whatsapp/messages",
-          "authentication": "genericCredentialType",
-          "genericAuthType": "httpHeaderAuth",
+          "authentication": "none",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={\n  \"from\": \"+50244315578\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto1 }}\"\n  }\n}",
-          "options": {}
+          "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto1 }}\"\n  }\n}",
+          "options": {},
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-API-Key",
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
+              }
+            ]
+          }
         },
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
@@ -4007,24 +4316,27 @@
         ],
         "id": "81c3ad81-9433-4821-b4f6-b06de847e21e",
         "name": "Enviar Foto 1 YCloud",
-        "credentials": {
-          "httpHeaderAuth": {
-            "id": "NphMGDjGcAx9asTH",
-            "name": "ycloud"
-          }
-        },
         "onError": "continueRegularOutput"
       },
       {
         "parameters": {
           "method": "POST",
           "url": "https://api.ycloud.com/v2/whatsapp/messages",
-          "authentication": "genericCredentialType",
-          "genericAuthType": "httpHeaderAuth",
+          "authentication": "none",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={\n  \"from\": \"+50244315578\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto2 }}\"\n  }\n}",
-          "options": {}
+          "jsonBody": "={\n  \"from\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.to }}\",\n  \"to\": \"{{ $json.remoteJid_fotos }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.foto2 }}\"\n  }\n}",
+          "options": {},
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-API-Key",
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
+              }
+            ]
+          }
         },
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
@@ -4034,12 +4346,6 @@
         ],
         "id": "3f8d79aa-0460-457e-a3d2-d562aeee05e2",
         "name": "Enviar Foto 2 YCloud",
-        "credentials": {
-          "httpHeaderAuth": {
-            "id": "NphMGDjGcAx9asTH",
-            "name": "ycloud"
-          }
-        },
         "onError": "continueRegularOutput"
       },
       {
@@ -4117,7 +4423,7 @@
           "toolDescription": "Vendedor especializado en SERVICIOS de Reach Portones. USAR ÚNICAMENTE cuando el cliente:\n- Pide cotización de automatización de portón (instalación de motor)\n- Solicita mantenimiento preventivo o correctivo\n- Pregunta por reparación de portón eléctrico o motor existente\n- Manda foto de un portón o motor para que se le cotice el servicio\nNO USAR para productos físicos sueltos (controles, repuestos, accesorios, muebles) — esos los cotiza la recepcionista directamente con sus propias herramientas de catálogo.\nEl vendedor analiza el caso técnico, consulta precios de servicios y arma la propuesta.",
           "text": "=MENSAJE DEL CLIENTE: {{ $fromAI('mensaje_cliente', 'Mensaje íntegro del cliente que pide producto/precio', 'string') }}\n\nPRODUCTO IDENTIFICADO: {{ $fromAI('producto', 'Producto o categoría que detectó la recepcionista (ej: control Genius, zapatera blanca)', 'string') }}",
           "options": {
-            "systemMessage": "=={{ `Eres el agente de ventas de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_ventas || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.` }}\n"
+            "systemMessage": "=={{ `Eres el agente de ventas de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_ventas || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español. IMPORTANTE: Si la base de datos te proporciona un enlace de Imagen, DEBES enviarlo en tu respuesta obligatoriamente usando Markdown: [Ver Imagen](URL_DE_LA_IMAGEN).` }}\n"
           }
         },
         "type": "@n8n/n8n-nodes-langchain.agentTool",
@@ -4131,7 +4437,7 @@
       },
       {
         "parameters": {
-          "url": "={{ 'https://ycloud-dashboard.83aqlq.easypanel.host/api/bot/status/' + $('Webhook').item.json.body.whatsappInboundMessage.from.replace('+', '') }}",
+          "url": "={{ 'https://ycloud-dashboard.83aqlq.easypanel.host/api/bot/status/' + $('Webhook').item.json.body.whatsappInboundMessage.from.replace('+', '') + '?channel_phone=' + $('Webhook').item.json.body.whatsappInboundMessage.to }}",
           "options": {
             "response": {
               "response": {
@@ -4231,11 +4537,27 @@
               },
               {
                 "name": "mensaje",
-                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.text.body }}"
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.text?.body || $('Webhook').item.json.body.whatsappInboundMessage.image?.caption || '' }}"
               },
               {
                 "name": "respuesta_bot",
                 "value": "={{ $json.texto_limpio }}"
+              },
+              {
+                "name": "channel_phone",
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.to }}"
+              },
+              {
+                "name": "media_url",
+                "value": "={{ $json.mediaUrl || '' }}"
+              },
+              {
+                "name": "etiqueta",
+                "value": "={{ $json.es_pedido ? 'PEDIDO_LISTO' : '' }}"
+              },
+              {
+                "name": "solicita_humano",
+                "value": "={{ $json.solicita_humano ? 'si' : '' }}"
               }
             ]
           },
@@ -4254,12 +4576,21 @@
         "parameters": {
           "method": "POST",
           "url": "https://api.ycloud.com/v2/whatsapp/messages",
-          "authentication": "genericCredentialType",
-          "genericAuthType": "httpHeaderAuth",
+          "authentication": "none",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ ({ \"from\": \"+50244315578\", \"to\": $('Webhook').item.json.body.whatsappInboundMessage.from, \"type\": \"text\", \"text\": { \"body\": $json.texto_limpio, \"preview_url\": true } }) }}",
-          "options": {}
+          "jsonBody": "={{ ({ \"from\": $('Webhook').item.json.body.whatsappInboundMessage.to, \"to\": $('Webhook').item.json.body.whatsappInboundMessage.from, \"type\": \"text\", \"text\": { \"body\": $json.texto_limpio, \"preview_url\": true } }) }}",
+          "options": {},
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-API-Key",
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
+              }
+            ]
+          }
         },
         "id": "92e3c409-5ae1-460a-af33-db025d6621f6",
         "name": "enviar cliente",
@@ -4269,12 +4600,6 @@
           -4320,
           -928
         ],
-        "credentials": {
-          "httpHeaderAuth": {
-            "id": "NphMGDjGcAx9asTH",
-            "name": "ycloud"
-          }
-        },
         "onError": "continueErrorOutput"
       },
       {
@@ -4309,7 +4634,7 @@
       {
         "parameters": {
           "promptType": "define",
-          "text": "={{ $json.mensaje || $('Webhook').item.json.body.whatsappInboundMessage.text.body || 'Interesado en anuncio' }}",
+          "text": "={{ ($('Webhook').item.json.body.whatsappInboundMessage.referral?.body ? '[ANUNCIO de origen (usalo para saber que motor le interesa, NO lo muestres al cliente): ' + $('Webhook').item.json.body.whatsappInboundMessage.referral.body + '] ' : '') + ($('Restaurar campos').first().json.MensajeCombinado || ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') || 'Interesado en anuncio') }}",
           "options": {
             "systemMessage": "={{ `Eres ${$json.agent_nombre || 'el asistente'}, ${$json.agent_rol || 'asistente virtual'} de ${$json.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${$json.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${$json.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.\n\n🚫 REGLA CRÍTICA SOBRE IMÁGENES:\n- JAMÁS inventes ni generes URLs de imágenes. NUNCA uses links de imgur, placeholder, ni ninguna URL que no hayas recibido textualmente en la información de referencia (RAG).\n- Si la base de datos RAG te entrega una URL de imagen (ejemplo: https://ycloud-dashboard... o https://drive.google.com/...), DEBES incluirla EXACTAMENTE como aparece usando este formato: [Ver Imagen](URL_EXACTA_DEL_RAG).\n- Si el RAG NO te entrega ninguna URL de imagen, entonces NO incluyas ningún link de imagen en tu respuesta. Simplemente describe el producto sin foto.\n- La URL que uses debe provenir EXCLUSIVAMENTE del texto de la sección 📚 INFORMACIÓN DE REFERENCIA.` + ($('Consultar Base RAG1').isExecuted && $('Consultar Base RAG1').item.json.found ? '\\n\\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión:\\n' + $('Consultar Base RAG1').item.json.context : '') }}"
           }
@@ -4402,12 +4727,21 @@
         "parameters": {
           "method": "POST",
           "url": "https://api.ycloud.com/v2/whatsapp/messages",
-          "authentication": "genericCredentialType",
-          "genericAuthType": "httpHeaderAuth",
+          "authentication": "none",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={\n  \"from\": \"+50244315578\",\n  \"to\": \"{{ $('Webhook').item.json.body.whatsappInboundMessage.from }}\",\n  \"type\": \"image\",\n  \"image\": {\n    \"link\": \"{{ $json.mediaUrl }}\",\n    \"caption\": \"{{ $json.texto_limpio }}\"\n  }\n}",
-          "options": {}
+          "jsonBody": "={{ JSON.stringify({ from: $('Webhook').item.json.body.whatsappInboundMessage.to, to: $('Webhook').item.json.body.whatsappInboundMessage.from, type: 'image', image: { link: $json.mediaUrl, caption: $json.texto_limpio || '' } }) }}",
+          "options": {},
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-API-Key",
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
+              }
+            ]
+          }
         },
         "id": "667402aa-e652-450f-ab08-c001e82f4c32",
         "name": "Enviar Foto Real",
@@ -4416,13 +4750,7 @@
         "position": [
           -4624,
           -1152
-        ],
-        "credentials": {
-          "httpHeaderAuth": {
-            "id": "NphMGDjGcAx9asTH",
-            "name": "ycloud"
-          }
-        }
+        ]
       },
       {
         "parameters": {
@@ -4460,7 +4788,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const item = $input.item.json;\nlet textoIA = item.output || \"\";\n\nlet etiqueta = \"FLUJO_NORMAL\";\nif (textoIA.includes(\"#VENTA_ESPECIALIZADA\") || textoIA.includes(\"#VENTA\")) etiqueta = \"VENTA_ESPECIALIZADA\";\nelse if (textoIA.includes(\"#BODEGA\")) etiqueta = \"BODEGA\";\nelse if (textoIA.includes(\"#SOPORTE\")) etiqueta = \"SOPORTE\";\nelse if (textoIA.includes(\"#FLUJO_NORMAL\")) etiqueta = \"FLUJO_NORMAL\";\n\nconst mediaRegex = /\\[\\[MEDIA:(https?:\\/\\/[^\\]]+)\\]\\]/;\nconst match = textoIA.match(mediaRegex);\nlet hasMedia = !!match;\nlet mediaUrl = match ? match[1] : null;\n\nlet respuestaLimpia = textoIA\n    .replace(mediaRegex, \"\")\n    .replace(/#PRODUCTO:.*$/gi, \"\")\n    .replace(/#VENTA_ESPECIALIZADA|#VENTA|#BODEGA|#SOPORTE|#FLUJO_NORMAL/gi, \"\")\n    .replace(/https:\\/\\/drive\\.google\\.com\\/[^\\s\\n]+/gi, \"\")\n    .replace(/\\s+\\[\\[MEDIA:.*?\\]\\]/gi, \"\")\n    .trim();\n\nreturn {\n    ...item,\n    texto_limpio: respuestaLimpia,\n    respuesta_cliente: respuestaLimpia,\n    etiqueta_interna: etiqueta,\n    notificar_vip: etiqueta === \"VENTA_ESPECIALIZADA\" || etiqueta === \"SOPORTE\",\n    hasMedia: hasMedia,\n    mediaUrl: mediaUrl\n};"
+          "jsCode": "const item = $input.item.json;\nlet textoIA = item.output || \"\";\n\nlet etiqueta = \"FLUJO_NORMAL\";\nif (textoIA.includes(\"#VENTA_ESPECIALIZADA\") || textoIA.includes(\"#VENTA\")) etiqueta = \"VENTA_ESPECIALIZADA\";\nelse if (textoIA.includes(\"#BODEGA\")) etiqueta = \"BODEGA\";\nelse if (textoIA.includes(\"#SOPORTE\")) etiqueta = \"SOPORTE\";\nelse if (textoIA.includes(\"#FLUJO_NORMAL\")) etiqueta = \"FLUJO_NORMAL\";\n\nconst mediaRegex = /\\[\\[MEDIA:(https?:\\/\\/[^\\]]+)\\]\\]/;\nconst markdownRegex = /\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+)\\)/;\n// URLs peladas de imagen (dashboard /uploads o extensiones de imagen)\nconst bareImgRegex = /https?:\\/\\/[^\\s\\n)]*(?:\\/uploads\\/[^\\s\\n)]+|\\.(?:jpg|jpeg|png|gif|webp))(?:\\?[^\\s\\n)]*)?/gi;\n\nconst match = textoIA.match(mediaRegex) || textoIA.match(markdownRegex);\nconst bareUrls = textoIA.match(bareImgRegex) || [];\nlet hasMedia = !!match || bareUrls.length > 0;\n\n// Detectar cierre de pedido y solicitud de humano\nconst esPedido = /#PEDIDO_LISTO/i.test(textoIA);\nconst solicitaHumano = /#SOLICITA_HUMANO/i.test(textoIA);\n\nconst extraerIdDrive = (url) => {\n    const m = url.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{25,})/);\n    return m ? m[1] : null;\n};\n\nconst getImageUrl = (url) => {\n    if (!url) return null;\n    const driveId = extraerIdDrive(url);\n    let finalUrl = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : url;\n    if (finalUrl.startsWith('http://')) {\n        finalUrl = finalUrl.replace('http://', 'https://');\n    }\n    return finalUrl;\n};\n\nlet mediaUrl = match ? getImageUrl(match[1]) : (bareUrls[0] ? getImageUrl(bareUrls[0]) : null);\n\nlet respuestaLimpia = textoIA\n    .replace(mediaRegex, \"\")\n    .replace(markdownRegex, \"\")\n    .replace(bareImgRegex, \"\")\n    .replace(/Puedes ver la imagen \\./gi, \"\")\n    .replace(/#PRODUCTO:.*$/gi, \"\")\n    .replace(/#VENTA_ESPECIALIZADA|#VENTA|#BODEGA|#SOPORTE|#FLUJO_NORMAL|#PEDIDO_LISTO|#SOLICITA_HUMANO/gi, \"\")\n    .replace(/https:\\/\\/drive\\.google\\.com\\/[^\\s\\n]+/gi, \"\")\n    .replace(/\\s+\\[\\[MEDIA:.*?\\]\\]/gi, \"\")\n    .trim();\n\nrespuestaLimpia = respuestaLimpia\n    .replace(/:\\s*\\./g, \".\")\n    .replace(/:\\s*$/g, \"\")\n    .replace(/\\n{3,}/g, \"\\n\\n\")\n    .trim();\n\nreturn {\n    ...item,\n    texto_limpio: respuestaLimpia,\n    respuesta_cliente: respuestaLimpia,\n    etiqueta_interna: etiqueta,\n    notificar_vip: etiqueta === \"VENTA_ESPECIALIZADA\" || etiqueta === \"SOPORTE\",\n    hasMedia: hasMedia,\n    mediaUrl: mediaUrl,\n    es_pedido: esPedido,\n    solicita_humano: solicitaHumano\n};\n"
         },
         "id": "0f499358-3ac0-4c8a-b442-642a2ce192c4",
         "name": "LIMPIEZA Y ESTADOS V2",
@@ -4470,6 +4798,489 @@
           -5168,
           -992
         ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://ycloud-dashboard.83aqlq.easypanel.host/api/webhook/n8n",
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "phone",
+                "value": "={{ $('Webhook').item.json.body.whatsappMessage.to }}"
+              },
+              {
+                "name": "sender",
+                "value": "agent"
+              },
+              {
+                "name": "mensaje",
+                "value": "={{ $('Webhook').item.json.body.whatsappMessage.text?.body || $('Webhook').item.json.body.whatsappMessage.image?.caption || 'Mensaje enviado por el agente' }}"
+              },
+              {
+                "name": "nombre",
+                "value": "={{ $('Webhook').item.json.body.whatsappMessage.customerProfile?.name || 'Cliente' }}"
+              },
+              {
+                "name": "media_url",
+                "value": "={{ $('Webhook').item.json.body.whatsappMessage.image?.link || '' }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -8500,
+          -112
+        ],
+        "id": "01c9a101-1e9a-4c22-921c-a99f36f9a765",
+        "name": "Guardar Mensaje Agente"
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "https://ycloud-dashboard.83aqlq.easypanel.host/api/bot/channel-key",
+          "authentication": "none",
+          "sendQuery": true,
+          "specifyQuery": "keypair",
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "phone",
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage ? $('Webhook').item.json.body.whatsappInboundMessage.to : $('Webhook').item.json.body.whatsappMessage.from }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -10000,
+          224
+        ],
+        "id": "get-channel-key-node-id",
+        "name": "Obtener API Key"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://ycloud-dashboard.83aqlq.easypanel.host/api/webhook/n8n",
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "phone",
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.from }}"
+              },
+              {
+                "name": "channel_phone",
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.to }}"
+              },
+              {
+                "name": "nombre",
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.customerProfile?.name || 'Cliente' }}"
+              },
+              {
+                "name": "mensaje",
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.text?.body }}"
+              },
+              {
+                "name": "sender",
+                "value": "client"
+              },
+              {
+                "name": "media_url",
+                "value": "={{ $('Webhook').item.json.body.whatsappInboundMessage.image?.link || '' }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "Guardar Mensaje Cliente",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -9264,
+          -68
+        ],
+        "id": "57373544-4df3-49de-98fe-b52e6d7b849e"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "=https://api.ycloud.com/v2/whatsapp/inboundMessages/{{ $('Webhook').item.json.body.whatsappInboundMessage.id }}/typingIndicator",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-API-Key",
+                "value": "={{ $('Obtener API Key').item.json.api_key }}"
+              },
+              {
+                "name": "accept",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "Marcar Leido",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -9264,
+          92
+        ],
+        "onError": "continueRegularOutput",
+        "id": "2c5bccc2-af6f-48dd-95f7-11798fef511a"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "c1",
+                "leftValue": "={{ $json.body.type }}",
+                "rightValue": "whatsapp.inbound_message.received",
+                "operator": {
+                  "type": "string",
+                  "operation": "contains"
+                }
+              },
+              {
+                "id": "c2",
+                "leftValue": "={{ $json.body.type }}",
+                "rightValue": "whatsapp.smb.message.echoes",
+                "operator": {
+                  "type": "string",
+                  "operation": "contains"
+                }
+              }
+            ],
+            "combinator": "or"
+          }
+        },
+        "id": "solo-msg-filter-1",
+        "name": "Solo Mensajes Reales",
+        "type": "n8n-nodes-base.filter",
+        "typeVersion": 2.2,
+        "position": [
+          -10220,
+          224
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "hasfoto2",
+                "leftValue": "={{ $json.foto2 }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "hay-foto2-if",
+        "name": "¿Hay foto2?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -4052,
+          -152
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "get",
+          "propertyName": "buffer_id",
+          "key": "={{ $(\"Edit Fields\").item.json.Numero_Telefono }}",
+          "options": {}
+        },
+        "id": "buffer-get-1",
+        "name": "Buffer Get",
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -6076,
+          -480
+        ],
+        "credentials": {
+          "redis": {
+            "id": "ZcShMGwetuFGtBFq",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "esult",
+                "leftValue": "={{ $json.latestId }}",
+                "rightValue": "={{ $('Edit Fields').first().json.ID }}",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "soy-ultimo-if",
+        "name": "¿Soy el último?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -5856,
+          -480
+        ]
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "a0",
+                "name": "MensajeCombinado",
+                "value": "={{ $('Buf Leer Final').first().json.finalMsg || ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') }}",
+                "type": "string"
+              },
+              {
+                "id": "a1",
+                "name": "Numero_Telefono",
+                "value": "={{ $('Edit Fields').first().json.Numero_Telefono }}",
+                "type": "string"
+              },
+              {
+                "id": "a2",
+                "name": "Nombre",
+                "value": "={{ $('Edit Fields').first().json.Nombre }}",
+                "type": "string"
+              },
+              {
+                "id": "a3",
+                "name": "Mensaje",
+                "value": "={{ $('Buf Leer Final').first().json.finalMsg || ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') }}",
+                "type": "string"
+              },
+              {
+                "id": "a4",
+                "name": "Tipo_Mensaje",
+                "value": "={{ $('Edit Fields').first().json.Tipo_Mensaje }}",
+                "type": "string"
+              },
+              {
+                "id": "a5",
+                "name": "Instancia",
+                "value": "={{ $('Edit Fields').first().json.Instancia }}",
+                "type": "string"
+              },
+              {
+                "id": "a6",
+                "name": "ID",
+                "value": "={{ $('Edit Fields').first().json.ID }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "restaurar-set",
+        "name": "Restaurar campos",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          -5636,
+          -480
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "get",
+          "propertyName": "bufPrev",
+          "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+          "options": {}
+        },
+        "id": "buf-leer-previo-x",
+        "name": "Buf Leer Previo",
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -6536,
+          -480
+        ],
+        "credentials": {
+          "redis": {
+            "id": "ZcShMGwetuFGtBFq",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "c1",
+                "name": "combinado",
+                "value": "={{ ($json.bufPrev && String($json.bufPrev).length && $json.bufPrev !== 'null' ? $json.bufPrev + ' ' : '') + ($('Edit Fields').first().json.Mensaje || $('Webhook').first().json.body.whatsappInboundMessage.text?.body || $('Webhook').first().json.body.whatsappInboundMessage.image?.caption || '') }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "combinar-mensajes-x",
+        "name": "Combinar Mensajes",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          -6356,
+          -480
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "set",
+          "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+          "value": "={{ $json.combinado }}",
+          "keyType": "string",
+          "expire": true,
+          "ttl": 120
+        },
+        "id": "buf-guardar-x",
+        "name": "Buf Guardar",
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -6176,
+          -480
+        ],
+        "credentials": {
+          "redis": {
+            "id": "ZcShMGwetuFGtBFq",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "set",
+          "key": "=latest:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+          "value": "={{ $('Edit Fields').first().json.ID }}",
+          "keyType": "string",
+          "expire": true,
+          "ttl": 120
+        },
+        "id": "latest-guardar-x",
+        "name": "Latest Guardar",
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -5996,
+          -480
+        ],
+        "credentials": {
+          "redis": {
+            "id": "ZcShMGwetuFGtBFq",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "get",
+          "propertyName": "latestId",
+          "key": "=latest:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+          "options": {}
+        },
+        "id": "latest-leer-x",
+        "name": "Latest Leer",
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -5636,
+          -480
+        ],
+        "credentials": {
+          "redis": {
+            "id": "ZcShMGwetuFGtBFq",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "get",
+          "propertyName": "finalMsg",
+          "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}",
+          "options": {}
+        },
+        "id": "buf-leer-final-x",
+        "name": "Buf Leer Final",
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -5276,
+          -480
+        ],
+        "credentials": {
+          "redis": {
+            "id": "ZcShMGwetuFGtBFq",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "delete",
+          "key": "=buf:{{ $('Edit Fields').first().json.Numero_Telefono }}"
+        },
+        "id": "buf-borrar-x",
+        "name": "Buf Borrar",
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -5096,
+          -480
+        ],
+        "credentials": {
+          "redis": {
+            "id": "ZcShMGwetuFGtBFq",
+            "name": "Redis account"
+          }
+        }
       }
     ],
     "connections": {
@@ -4492,17 +5303,6 @@
             {
               "node": "recepcionista",
               "type": "ai_languageModel",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "consultar precios2": {
-        "ai_tool": [
-          [
-            {
-              "node": "recepcionista",
-              "type": "ai_tool",
               "index": 0
             }
           ]
@@ -4595,17 +5395,6 @@
           ]
         ]
       },
-      "Preparar Fotos (Estrategia)1": {
-        "main": [
-          [
-            {
-              "node": "¿Enviar Fotos?1",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
       "¿Enviar Fotos?1": {
         "main": [
           [
@@ -4639,22 +5428,11 @@
           ]
         ]
       },
-      "fotos reales1": {
-        "ai_tool": [
-          [
-            {
-              "node": "recepcionista",
-              "type": "ai_tool",
-              "index": 0
-            }
-          ]
-        ]
-      },
       "Edit Fields": {
         "main": [
           [
             {
-              "node": "Switch7",
+              "node": "Buf Leer Previo",
               "type": "main",
               "index": 0
             }
@@ -4665,7 +5443,7 @@
         "main": [
           [
             {
-              "node": "Redis8",
+              "node": "Wait1",
               "type": "main",
               "index": 0
             }
@@ -4723,7 +5501,7 @@
         "main": [
           [
             {
-              "node": "Redis8",
+              "node": "Latest Leer",
               "type": "main",
               "index": 0
             }
@@ -4756,21 +5534,21 @@
         "main": [
           [
             {
-              "node": "Redis1",
+              "node": "Merge1",
               "type": "main",
               "index": 0
             }
           ],
           [
             {
-              "node": "Redis1",
+              "node": "Merge1",
               "type": "main",
               "index": 0
             }
           ],
           [
             {
-              "node": "Redis1",
+              "node": "Merge1",
               "type": "main",
               "index": 0
             }
@@ -4792,30 +5570,8 @@
         "main": [
           [
             {
-              "node": "CHECK BOT STATUS",
+              "node": "Solo Mensajes Reales",
               "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "SERVICIOS": {
-        "ai_tool": [
-          [
-            {
-              "node": "agente_vendedor",
-              "type": "ai_tool",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "consultar precios": {
-        "ai_tool": [
-          [
-            {
-              "node": "agente_vendedor",
-              "type": "ai_tool",
               "index": 0
             }
           ]
@@ -4825,7 +5581,12 @@
         "main": [
           [
             {
-              "node": "Consultar Etiquetas YCloud1",
+              "node": "CHECK BOT STATUS",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Guardar Mensaje Cliente",
               "type": "main",
               "index": 0
             }
@@ -5024,14 +5785,12 @@
         "main": [
           [
             {
-              "node": "Cliente o Agente",
+              "node": "Switch Trabajador o Cliente",
               "type": "main",
               "index": 0
-            }
-          ],
-          [
+            },
             {
-              "node": "NOTIFICAR DASHBOARD HANDOFF",
+              "node": "Marcar Leido",
               "type": "main",
               "index": 0
             }
@@ -5070,6 +5829,11 @@
           [
             {
               "node": "recepcionista",
+              "type": "ai_tool",
+              "index": 0
+            },
+            {
+              "node": "agente_vendedor",
               "type": "ai_tool",
               "index": 0
             }
@@ -5120,18 +5884,186 @@
             }
           ]
         ]
+      },
+      "desactivar_bot2": {
+        "main": [
+          [
+            {
+              "node": "Guardar Mensaje Agente",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Obtener API Key": {
+        "main": [
+          [
+            {
+              "node": "Cliente o Agente",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Solo Mensajes Reales": {
+        "main": [
+          [
+            {
+              "node": "Obtener API Key",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Preparar Fotos (Estrategia)1": {
+        "main": [
+          [
+            {
+              "node": "¿Hay foto2?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "¿Hay foto2?": {
+        "main": [
+          [
+            {
+              "node": "Espera Humana1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
+      },
+      "Buffer Get": {
+        "main": [
+          [
+            {
+              "node": "¿Soy el último?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "¿Soy el último?": {
+        "main": [
+          [
+            {
+              "node": "Buf Leer Final",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
+      },
+      "Restaurar campos": {
+        "main": [
+          [
+            {
+              "node": "Switch7",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Buf Leer Previo": {
+        "main": [
+          [
+            {
+              "node": "Combinar Mensajes",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Combinar Mensajes": {
+        "main": [
+          [
+            {
+              "node": "Buf Guardar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Buf Guardar": {
+        "main": [
+          [
+            {
+              "node": "Latest Guardar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Latest Guardar": {
+        "main": [
+          [
+            {
+              "node": "Wait1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Latest Leer": {
+        "main": [
+          [
+            {
+              "node": "¿Soy el último?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Buf Leer Final": {
+        "main": [
+          [
+            {
+              "node": "Buf Borrar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Buf Borrar": {
+        "main": [
+          [
+            {
+              "node": "Restaurar campos",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
       }
     },
+    "nodeGroups": [],
     "authors": "ferni padilla ",
-    "name": "Version 8abbaae7",
-    "description": "",
-    "autosaved": true,
+    "name": null,
+    "description": null,
+    "autosaved": false,
     "workflowPublishHistory": [
       {
-        "createdAt": "2026-05-14T06:42:39.206Z",
-        "id": 230,
+        "createdAt": "2026-08-13T01:17:59.606Z",
+        "id": 521,
         "workflowId": "5537mcUjW8GdaxF4",
-        "versionId": "8abbaae7-346e-4954-8ee7-d71305f1de61",
+        "versionId": "73edac20-ebea-4160-a7d9-4127a9ddc10c",
         "event": "activated",
         "userId": "caf1c75e-58c7-4567-8f88-e5caac8ad151"
       }
