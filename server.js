@@ -272,7 +272,7 @@ async function setup() {
       CREATE TABLE IF NOT EXISTS handoff_triggers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         keyword TEXT,
-        priority TEXT DEFAULT 'urgent'
+        priority TEXT DEFAULT 'normal'
       );
 
       CREATE TABLE IF NOT EXISTS knowledge_base (
@@ -355,6 +355,8 @@ async function setup() {
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN lead_alertado INTEGER DEFAULT 0"); } catch(e){}
+    // Normalizar prioridad: solo quedan urgentes los que pidieron humano / intervención (antes TODOS nacían urgent)
+    try { await db.exec("UPDATE leads SET priority = 'normal' WHERE priority = 'urgent' AND (handoff_reason IS NULL OR handoff_reason = '') AND estado <> 'Intervención Requerida'"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
@@ -700,7 +702,7 @@ app.post('/api/leads', async (req, res) => {
     const cleanChannelPhone = targetChannel ? String(targetChannel).replace(/\D/g, '') : '';
 
     const result = await db.run(
-      "INSERT INTO leads (nombre, phone, origen, botActive, email, channel_phone) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO leads (nombre, phone, origen, botActive, email, channel_phone, priority) VALUES (?, ?, ?, ?, ?, ?, 'normal')",
       nombre || 'Cliente Nuevo', phone, origen || 'Manual', botActive ?? 1, email || '', cleanChannelPhone
     );
     res.json({ id: result.lastID, success: true });
@@ -889,12 +891,13 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       const initialEstado = parsed.isEcho ? 'En Seguimiento' : (data.etiqueta || 'Nuevo');
       const initialBotActive = parsed.isEcho ? 0 : 1;
       const result = await db.run(
-        `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        parsed.nombre || 'Cliente WhatsApp', data.phone || parsed.clientPhoneRaw, data.email || 'N/A', 
-        data.score || 50, initialEstado, `WhatsApp (${sourceName})`, initialBotActive, 
-        data.motor || 'N/A', data.falla || 'N/A', data.zona || 'N/A', 
-        data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone
+        `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone, priority)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        parsed.nombre || 'Cliente WhatsApp', data.phone || parsed.clientPhoneRaw, data.email || 'N/A',
+        data.score || 50, initialEstado, `WhatsApp (${sourceName})`, initialBotActive,
+        data.motor || 'N/A', data.falla || 'N/A', data.zona || 'N/A',
+        data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone,
+        initialEstado === 'Intervención Requerida' ? 'urgent' : 'normal'
       );
       leadId = result.lastID;
       console.log(`🆕 [${sourceName}] Creado nuevo lead ID ${leadId} (${cleanPhone})`);
