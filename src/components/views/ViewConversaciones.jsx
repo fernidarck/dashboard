@@ -69,7 +69,7 @@ export default function ViewConversaciones({
   }, [products, catalogSearch]);
 
   // Acción rápida: Enviar producto del catálogo al cliente por WhatsApp
-  const handleSendProduct = async (product) => {
+  const handleSendProduct = async (product, specificImgUrl) => {
     if (!selectedChatId) return;
     
     let msg = `📦 *${product.nombre}*\n`;
@@ -79,7 +79,7 @@ export default function ViewConversaciones({
     if (product.descripcion) msg += `\n📝 ${product.descripcion}\n`;
     if (product.catalog_link) msg += `\n🔗 Ver más: ${product.catalog_link}\n`;
 
-    const productImg = Array.isArray(product.imagenes) && product.imagenes[0] ? product.imagenes[0] : product.imagen;
+    const productImg = specificImgUrl || (Array.isArray(product.imagenes) && product.imagenes[0] ? product.imagenes[0] : product.imagen);
     if (productImg) {
       msg += `\nENVIAR_IMAGEN: ${productImg}`;
     }
@@ -374,46 +374,85 @@ export default function ViewConversaciones({
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {filteredProducts.map(p => {
-                    const img = Array.isArray(p.imagenes) && p.imagenes[0] ? p.imagenes[0] : p.imagen;
+                    const metaImgs = Array.isArray(p.imagenes_meta) && p.imagenes_meta.length > 0
+                      ? p.imagenes_meta
+                      : Array.isArray(p.imagenes) && p.imagenes.length > 0
+                      ? p.imagenes.map(u => typeof u === 'string' ? { url: u, desc: '' } : u)
+                      : p.imagen ? [{ url: p.imagen, desc: '' }] : [];
+                    const mainImg = metaImgs[0]?.url;
+
                     return (
                       <div
                         key={p.id}
                         className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between hover:border-[#FF6B00] hover:shadow-md transition-all group"
                       >
-                        <div className="flex items-start space-x-3 mb-3">
-                          {img ? (
-                            <img src={img} alt={p.nombre} className="h-16 w-16 rounded-xl object-cover border border-slate-100 shrink-0" />
-                          ) : (
-                            <div className="h-16 w-16 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
-                              <ImageIcon size={20} />
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <span className="text-[9px] font-black text-[#FF6B00] uppercase tracking-wider block truncate">
-                              {p.categoria || 'General'}
-                            </span>
-                            <h4 className="text-xs font-black text-slate-800 leading-snug line-clamp-2">{p.nombre}</h4>
-                            <div className="mt-1 flex items-baseline space-x-2">
-                              <span className="text-sm font-black text-emerald-600">{p.precio || 'Consultar'}</span>
-                              {p.precio_oferta && (
-                                <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-1.5 py-0.2 rounded">
-                                  Oferta: {p.precio_oferta}
-                                </span>
-                              )}
+                        <div>
+                          <div className="flex items-start space-x-3 mb-3">
+                            {mainImg ? (
+                              <img src={mainImg} alt={p.nombre} className="h-16 w-16 rounded-xl object-cover border border-slate-100 shrink-0" />
+                            ) : (
+                              <div className="h-16 w-16 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                                <ImageIcon size={20} />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[9px] font-black text-[#FF6B00] uppercase tracking-wider block truncate">
+                                {p.categoria || 'General'}
+                              </span>
+                              <h4 className="text-xs font-black text-slate-800 leading-snug line-clamp-2">{p.nombre}</h4>
+                              <div className="mt-1 flex items-baseline space-x-2">
+                                <span className="text-sm font-black text-emerald-600">{p.precio ? `Q${p.precio}` : 'Consultar'}</span>
+                                {p.precio_oferta && (
+                                  <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+                                    🔥 Q{p.precio_oferta}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {p.descripcion && (
-                          <p className="text-[10px] text-slate-500 line-clamp-2 italic mb-3">
-                            {p.descripcion}
-                          </p>
-                        )}
+                          {p.descripcion && (
+                            <p className="text-[10px] text-slate-500 line-clamp-2 italic mb-2">
+                              {p.descripcion}
+                            </p>
+                          )}
+
+                          {/* Miniaturas de fotos adicionales con etiquetas */}
+                          {metaImgs.length > 1 && (
+                            <div className="mb-3 pt-2 border-t border-slate-50">
+                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider mb-1">
+                                Fotos disponibles ({metaImgs.length}):
+                              </p>
+                              <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                                {metaImgs.map((imgObj, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => handleSendProduct(p, imgObj.url)}
+                                    title={`Enviar ficha con esta foto: ${imgObj.desc || 'Foto ' + (idx + 1)}`}
+                                    className="relative group/thumb shrink-0 focus:outline-none"
+                                  >
+                                    <img
+                                      src={imgObj.url}
+                                      alt="foto"
+                                      className="h-10 w-10 rounded-lg object-cover border border-slate-200 hover:border-[#FF6B00] transition-colors"
+                                    />
+                                    {imgObj.desc && (
+                                      <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white text-[6px] font-bold px-1 rounded truncate max-w-[40px]">
+                                        {imgObj.desc}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
 
                         <button
                           type="button"
                           onClick={() => handleSendProduct(p)}
-                          className="w-full py-2.5 bg-slate-900 hover:bg-[#FF6B00] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all active:scale-95 shadow-sm"
+                          className="w-full py-2.5 bg-slate-900 hover:bg-[#FF6B00] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all active:scale-95 shadow-sm mt-2"
                         >
                           <SendHorizontal size={13} />
                           <span>Enviar Ficha por WhatsApp</span>

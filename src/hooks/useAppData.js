@@ -591,7 +591,8 @@ export function useAppData(apiBase, authToken) {
     } catch (err) { console.error(err); }
   }, [apiFetch, apiBase, fetchLearning]);
 
-  const uploadProductImage = useCallback(async (file, type, setNew, setEdit) => {
+  const uploadImageFile = useCallback(async (file) => {
+    if (!file) return null;
     const formData = new FormData();
     formData.append('image', file);
     setLoading(true);
@@ -602,21 +603,33 @@ export function useAppData(apiBase, authToken) {
       });
       const data = await res.json();
       if (data.success) {
-        const appendImg = (prev) => {
-          const imgs = Array.isArray(prev.imagenes) ? prev.imagenes : (prev.imagen ? [prev.imagen] : []);
-          if (imgs.length >= 5) { notify('⚠️ Máximo 5 imágenes por producto', 3000); return prev; }
-          const next = [...imgs, data.imageUrl];
-          return { ...prev, imagenes: next, imagen: next[0] };
-        };
-        if (type === 'new') setNew(appendImg);
-        else if (type === 'edit') setEdit(appendImg);
-        notify('✅ Imagen subida', 3000);
+        notify('✅ Imagen subida', 2500);
+        return data.imageUrl;
       } else {
         notify('❌ Error al subir imagen', 3000);
+        return null;
       }
-    } catch { notify('❌ Error de conexión', 3000); }
-    finally { setLoading(false); }
+    } catch {
+      notify('❌ Error de conexión', 3000);
+      return null;
+    } finally {
+      setLoading(false);
+    }
   }, [apiFetch, apiBase, notify]);
+
+  const uploadProductImage = useCallback(async (file, type, setNew, setEdit) => {
+    const imageUrl = await uploadImageFile(file);
+    if (!imageUrl) return;
+    const appendImg = (prev) => {
+      const existingMeta = Array.isArray(prev.imagenes_meta) ? prev.imagenes_meta : (Array.isArray(prev.imagenes) ? prev.imagenes.map(u => ({ url: u, desc: '' })) : (prev.imagen ? [{ url: prev.imagen, desc: '' }] : []));
+      if (existingMeta.length >= 5) { notify('⚠️ Máximo 5 imágenes por producto', 3000); return prev; }
+      const nextMeta = [...existingMeta, { url: imageUrl, desc: '' }];
+      const urls = nextMeta.map(m => m.url);
+      return { ...prev, imagenes_meta: nextMeta, imagenes: urls, imagen: urls[0] };
+    };
+    if (type === 'new') setNew(appendImg);
+    else if (type === 'edit') setEdit(appendImg);
+  }, [uploadImageFile, notify]);
 
   const uploadDocument = useCallback(async (file) => {
     const formData = new FormData();
@@ -693,7 +706,7 @@ export function useAppData(apiBase, authToken) {
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
-    uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
+    uploadProductImage, uploadDocument, uploadImageFile, runTestSearch, syncBrainConfig,
     saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     // Alerts
     playMessageAlert, notify,

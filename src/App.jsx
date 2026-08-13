@@ -39,7 +39,7 @@ export default function App() {
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
-    uploadProductImage, uploadDocument, runTestSearch, syncBrainConfig,
+    uploadProductImage, uploadDocument, uploadImageFile, runTestSearch, syncBrainConfig,
     saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     playMessageAlert,
   } = useAppData(API_BASE_URL, authToken);
@@ -419,6 +419,7 @@ export default function App() {
                 onDeleteProduct={deleteProduct}
                 onUploadDocument={uploadDocument}
                 onUploadProductImage={uploadProductImage}
+                onUploadImageFile={uploadImageFile}
                 onRunTestSearch={runTestSearch}
               />
             )}

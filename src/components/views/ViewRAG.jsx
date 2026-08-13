@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import {
-  Plus, X, Pencil, Trash2, Search, Zap, RefreshCw,
-  Sparkles, BookOpen, Tag, ShoppingBag, Link2
+  Plus, X, Pencil, Trash2, Search, RefreshCw,
+  Sparkles, BookOpen, Tag, ShoppingBag, Bot,
+  Info, Image as ImageIcon, ShieldAlert
 } from 'lucide-react';
 
 const CATEGORY_STYLES = {
@@ -13,20 +14,62 @@ const CATEGORY_STYLES = {
 };
 const CARD_CATEGORIES     = ['General', 'Precios', 'Soporte', 'Horarios', 'Técnico'];
 const PRODUCT_CATEGORIES  = ['Motores', 'Portones', 'Controles', 'Cámaras', 'Accesorios', 'Servicios'];
-const STOCK_OPTIONS       = ['En stock', 'Poco stock', 'Agotado'];
 const STOCK_STYLES        = {
   'En stock':   'bg-emerald-50 text-emerald-600 border-emerald-100',
   'Poco stock': 'bg-amber-50 text-amber-600 border-amber-100',
   'Agotado':    'bg-red-50 text-red-600 border-red-100',
 };
-const emptyCard    = { name: '', category: 'General', content: '' };
-const emptyProduct = { nombre: '', descripcion: '', precio: '', precio_oferta: '', categoria: 'Motores', stock: '', imagen: '', imagenes: [] };
+
+const emptyCard = {
+  name: '',
+  category: 'General',
+  content: '',
+  imagen: '',
+  imagenes: [],
+  imagenes_meta: []
+};
+
+const emptyProduct = {
+  nombre: '',
+  descripcion: '',
+  reglas_bot: '',
+  precio: '',
+  precio_oferta: '',
+  categoria: 'Motores',
+  stock: '',
+  imagen: '',
+  imagenes: [],
+  imagenes_meta: [],
+  catalog_link: ''
+};
+
+// Helper para obtener fotos con descripción de cualquier producto o tarjeta
+function getImagesMeta(item) {
+  if (!item) return [];
+  if (Array.isArray(item.imagenes_meta) && item.imagenes_meta.length > 0) {
+    return item.imagenes_meta;
+  }
+  if (Array.isArray(item.imagenes) && item.imagenes.length > 0) {
+    return item.imagenes.map(u => typeof u === 'string' ? { url: u, desc: '' } : u);
+  }
+  if (item.imagen) {
+    return [{ url: item.imagen, desc: '' }];
+  }
+  return [];
+}
 
 export default function ViewRAG({
-  documents, products,
-  onSaveCard, onUpdateCard, onDeleteCard,
-  onSaveProduct, onUpdateProduct, onDeleteProduct,
-  onUploadDocument, onUploadProductImage, onRunTestSearch,
+  documents = [],
+  products = [],
+  onSaveCard,
+  onUpdateCard,
+  onDeleteCard,
+  onSaveProduct,
+  onUpdateProduct,
+  onDeleteProduct,
+  onUploadDocument,
+  onUploadImageFile,
+  onRunTestSearch,
 }) {
   const [ragSubTab,      setRagSubTab]      = useState('conocimiento');
   const [showNewCard,    setShowNewCard]    = useState(false);
@@ -77,44 +120,143 @@ export default function ViewRAG({
     if (file) onUploadDocument(file);
   };
 
-  const handleProductImageUpload = (e, type) => {
+  // Manejo de subida de imagen para Productos
+  const handleProductImageUpload = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
-    onUploadProductImage(file, type, setNewProduct, setEditingProduct);
+    const url = await onUploadImageFile?.(file);
+    if (url) {
+      const setter = type === 'new' ? setNewProduct : setEditingProduct;
+      setter(prev => {
+        const existing = getImagesMeta(prev);
+        if (existing.length >= 5) return prev;
+        const next = [...existing, { url, desc: '' }];
+        return {
+          ...prev,
+          imagenes_meta: next,
+          imagenes: next.map(x => x.url),
+          imagen: next[0]?.url || ''
+        };
+      });
+    }
     e.target.value = '';
   };
 
-  const getImgs = (p) => Array.isArray(p?.imagenes) ? p.imagenes : (p?.imagen ? [p.imagen] : []);
+  // Manejo de subida de imagen para Tarjetas de Conocimiento (RAG)
+  const handleCardImageUpload = async (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = await onUploadImageFile?.(file);
+    if (url) {
+      const setter = type === 'new' ? setNewCard : setEditingCard;
+      setter(prev => {
+        const existing = getImagesMeta(prev);
+        if (existing.length >= 4) return prev;
+        const next = [...existing, { url, desc: '' }];
+        return {
+          ...prev,
+          imagenes_meta: next,
+          imagenes: next.map(x => x.url),
+          imagen: next[0]?.url || ''
+        };
+      });
+    }
+    e.target.value = '';
+  };
 
-  const removeProductImage = (idx, type) => {
-    const setter = type === 'new' ? setNewProduct : setEditingProduct;
+  // Eliminar imagen de un ítem
+  const removeImage = (idx, setter) => {
     setter(prev => {
-      const imgs = getImgs(prev).filter((_, i) => i !== idx);
-      return { ...prev, imagenes: imgs, imagen: imgs[0] || '' };
+      const existing = getImagesMeta(prev).filter((_, i) => i !== idx);
+      return {
+        ...prev,
+        imagenes_meta: existing,
+        imagenes: existing.map(x => x.url),
+        imagen: existing[0]?.url || ''
+      };
     });
   };
 
-  const renderImageGrid = (product, type) => {
-    const imgs = getImgs(product);
+  // Actualizar la descripción de una foto específica
+  const updateImageDesc = (idx, desc, setter) => {
+    setter(prev => {
+      const existing = getImagesMeta(prev).map((item, i) => i === idx ? { ...item, desc } : item);
+      return {
+        ...prev,
+        imagenes_meta: existing
+      };
+    });
+  };
+
+  // Componente reutilizable para galería y especificación de fotos
+  const renderImageManager = (item, type, isCard = false) => {
+    const images = getImagesMeta(item);
+    const maxImgs = isCard ? 4 : 5;
+    const setter = isCard
+      ? (type === 'new' ? setNewCard : setEditingCard)
+      : (type === 'new' ? setNewProduct : setEditingProduct);
+    const onUpload = isCard ? handleCardImageUpload : handleProductImageUpload;
+
     return (
-      <div className="space-y-2">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Imágenes ({imgs.length}/5)</label>
-        <div className="grid grid-cols-3 gap-2">
-          {imgs.map((url, i) => (
-            <div key={i} className="aspect-square rounded-2xl overflow-hidden relative group border border-slate-100">
-              <img src={url} alt={`img ${i+1}`} className="w-full h-full object-cover" />
-              <button type="button" onClick={() => removeProductImage(i, type)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-80 hover:opacity-100"><X size={12} /></button>
-              {i === 0 && <span className="absolute bottom-1 left-1 bg-slate-900/80 text-white text-[7px] font-black px-1.5 py-0.5 rounded-md uppercase">Principal</span>}
-            </div>
-          ))}
-          {imgs.length < 5 && (
-            <div className="aspect-square bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center relative group cursor-pointer hover:border-[#FF6B00]">
-              <Plus size={20} className="text-slate-300 group-hover:scale-110 group-hover:text-[#FF6B00] transition-transform" />
-              <input type="file" onChange={(e) => handleProductImageUpload(e, type)} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
-            </div>
+      <div className="space-y-3 bg-slate-50/80 p-4 rounded-3xl border border-slate-100">
+        <div className="flex justify-between items-center">
+          <div>
+            <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider block">
+              📸 Fotos & Especificación ({images.length}/{maxImgs})
+            </label>
+            <p className="text-[9px] text-slate-400 font-medium">
+              Escribe qué muestra cada foto para que la IA sepa exactamente cuál enviar cuando el cliente la pida.
+            </p>
+          </div>
+          {images.length < maxImgs && (
+            <label className="cursor-pointer px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
+              <Plus size={12} /> Subir Foto
+              <input type="file" onChange={(e) => onUpload(e, type)} className="hidden" accept="image/*" />
+            </label>
           )}
         </div>
-        <p className="text-[8px] text-slate-400 italic leading-tight">Hasta 5 imágenes. La primera es la principal.</p>
+
+        {images.length === 0 ? (
+          <div className="border-2 border-dashed border-slate-200 rounded-2xl p-4 text-center">
+            <ImageIcon size={20} className="mx-auto text-slate-300 mb-1" />
+            <p className="text-[10px] text-slate-400 font-bold">Sin fotos adjuntas aún.</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {images.map((img, i) => (
+              <div key={i} className="flex items-center gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="h-14 w-14 rounded-xl overflow-hidden relative shrink-0 border border-slate-100 bg-slate-100">
+                  <img src={img.url} alt={`foto ${i+1}`} className="w-full h-full object-cover" />
+                  {i === 0 && (
+                    <span className="absolute bottom-0 inset-x-0 bg-slate-900/80 text-white text-[7px] font-black py-0.5 text-center uppercase">
+                      Principal
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">
+                    ¿Qué muestra esta foto? (Instrucción para IA):
+                  </label>
+                  <input
+                    type="text"
+                    value={img.desc || ''}
+                    onChange={(e) => updateImageDesc(i, e.target.value, setter)}
+                    placeholder="Ej: Foto del motor instalado, control remoto, tabla de cuotas..."
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-medium outline-none focus:ring-1 focus:ring-[#FF6B00] text-slate-800"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeImage(i, setter)}
+                  className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all shrink-0"
+                  title="Eliminar foto"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -124,7 +266,10 @@ export default function ViewRAG({
       {/* Header */}
       <div className="flex flex-wrap gap-4 justify-between items-center">
         <div className="flex items-center space-x-6">
-          <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Base de Conocimiento RAG</h2>
+          <div>
+            <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Base de Conocimiento RAG</h2>
+            <p className="text-xs text-slate-400 font-medium mt-1">Entrena a la IA con productos, precios, fotos y reglas de venta</p>
+          </div>
           <div className="flex space-x-1 bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
             <button onClick={() => setRagSubTab('conocimiento')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'conocimiento' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Conocimiento</button>
             <button onClick={() => setRagSubTab('catalogo')}     className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'catalogo'     ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Catálogo</button>
@@ -150,66 +295,40 @@ export default function ViewRAG({
               {isSearching ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
             </button>
           </div>
-          <button
-            onClick={() => fileInputRef.current.click()}
-            className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-slate-800 shadow-sm flex items-center space-x-2"
-          >
-            <Link2 size={16} />
-            <span className="text-[9px] font-black uppercase">Subir Doc</span>
-          </button>
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.txt,.xlsx,.xls" />
-          <button
-            onClick={() => { if (ragSubTab === 'conocimiento') setShowNewCard(true); else setShowNewProduct(true); }}
-            className="bg-slate-900 text-white px-8 py-4 rounded-[24px] text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all flex items-center space-x-2"
-          >
-            <Plus size={16} />
-            <span>Añadir {ragSubTab === 'conocimiento' ? 'Tarjeta' : 'Producto'}</span>
-          </button>
+
+          {ragSubTab === 'conocimiento' ? (
+            <>
+              <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept=".pdf,.xlsx,.xls,.txt" />
+              <button onClick={() => fileInputRef.current?.click()} className="px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-slate-400 transition-all shadow-sm">Subir PDF/Excel</button>
+              <button onClick={() => setShowNewCard(true)} className="px-5 py-3 bg-slate-900 text-[#FF6B00] rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FF6B00] hover:text-white transition-all shadow-sm flex items-center gap-1.5"><Plus size={14} /> Nueva Tarjeta</button>
+            </>
+          ) : (
+            <button onClick={() => setShowNewProduct(true)} className="px-5 py-3 bg-slate-900 text-[#FF6B00] rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FF6B00] hover:text-white transition-all shadow-sm flex items-center gap-1.5"><Plus size={14} /> Nuevo Producto</button>
+          )}
         </div>
       </div>
 
-      {/* Search Results */}
+      {/* Resultados de prueba de búsqueda */}
       {testResults.length > 0 ? (
-        <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6 animate-in zoom-in-95 duration-500">
-          <div className="flex items-center justify-between border-b border-slate-50 pb-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resultados de Inteligencia</span>
-              <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded text-[8px] font-black uppercase">{testResults.length} Encontrados</span>
+        <div className="bg-orange-50/50 p-8 rounded-[36px] border border-orange-100 space-y-4 animate-in fade-in duration-300">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-[#FF6B00]" />
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">Coincidencias RAG para: "{testQuery}"</h3>
             </div>
-            <button onClick={() => { setTestResults([]); setTestQuery(''); }} className="text-[9px] font-black text-slate-400 uppercase hover:text-red-500 transition-colors flex items-center space-x-1">
-              <X size={12} /><span>Limpiar</span>
-            </button>
+            <button onClick={() => { setTestResults([]); setTestQuery(''); }} className="text-slate-400 hover:text-slate-700"><X size={16} /></button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {testResults.map((res, i) => (
-              <div key={i} className="bg-slate-50 border border-slate-100 rounded-[28px] p-6 space-y-3 hover:border-[#FF6B00]/30 transition-all group relative overflow-hidden">
-                <div className="flex justify-between items-center relative z-10">
-                  <div className="flex items-center space-x-2">
-                    <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${res.tipo === 'Tarjeta' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>{res.tipo}</span>
-                    {res.score > 0 && (
-                      <span className="bg-slate-900 text-[#FF6B00] text-[8px] font-black px-2 py-1 rounded-lg flex items-center space-x-1">
-                        <Zap size={8} fill="#FF6B00" />
-                        <span>{res.score > 50 ? 'ALTA' : res.score > 20 ? 'MEDIA' : 'BAJA'} RELEVANCIA</span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="h-1.5 w-1.5 bg-emerald-400 rounded-full group-hover:animate-ping" />
+              <div key={i} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-orange-100 text-[#FF6B00]">{res.tipo}</span>
+                  <span className="text-[9px] font-black text-slate-400">Score: {res.score}</span>
                 </div>
-                <h4 className="text-xs font-black text-slate-800 uppercase italic relative z-10">{res.titulo}</h4>
-                <p className="text-[10px] text-slate-400 leading-relaxed line-clamp-4 italic relative z-10">{res.contenido}</p>
-                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                  {res.tipo === 'Tarjeta' ? <BookOpen size={40} /> : <Tag size={40} />}
-                </div>
+                <h4 className="text-xs font-black text-slate-800">{res.titulo}</h4>
+                <p className="text-[10px] text-slate-500 line-clamp-3 mt-1 whitespace-pre-wrap">{res.contenido}</p>
               </div>
             ))}
-          </div>
-        </div>
-      ) : testQuery && !isSearching ? (
-        <div className="bg-white p-12 rounded-[32px] border border-slate-200 border-dashed text-center space-y-4 animate-in fade-in duration-500">
-          <div className="bg-slate-50 h-16 w-16 rounded-2xl flex items-center justify-center mx-auto text-slate-300"><Search size={32} /></div>
-          <div>
-            <h3 className="text-sm font-black text-slate-800 uppercase italic">Sin coincidencias exactas</h3>
-            <p className="text-[10px] text-slate-400 italic">Intenta buscar con palabras más simples o verifica el catálogo.</p>
           </div>
         </div>
       ) : null}
@@ -217,260 +336,358 @@ export default function ViewRAG({
       {/* Content Grid */}
       {ragSubTab === 'conocimiento' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {documents.map(doc => (
-            <div key={doc.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-100 transition-all duration-500 group relative">
-              <div className="absolute top-6 right-6 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => setEditingCard(doc)} className="p-2 bg-slate-900 text-white rounded-xl hover:bg-[#FF6B00] transition-colors shadow-lg"><Pencil size={14} /></button>
-                <button onClick={() => onDeleteCard(doc.id)} className="p-2 bg-slate-100 text-slate-400 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14} /></button>
-              </div>
-              <div className="space-y-6">
-                <span className={`px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-tighter border ${CATEGORY_STYLES[doc.category]?.badge || CATEGORY_STYLES.General.badge}`}>{doc.category || 'General'}</span>
-                <div>
-                  <h4 className="text-lg font-black text-slate-800 uppercase italic leading-tight mb-2">{doc.name}</h4>
-                  <p className="text-[11px] text-slate-400 leading-relaxed italic line-clamp-4">{doc.content}</p>
+          {documents.map(doc => {
+            const cardImgs = getImagesMeta(doc);
+            return (
+              <div key={doc.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group relative flex flex-col justify-between">
+                <div className="absolute top-6 right-6 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => setEditingCard(doc)} className="p-2 bg-slate-900 text-white rounded-xl hover:bg-[#FF6B00] transition-colors shadow-lg"><Pencil size={14} /></button>
+                  <button onClick={() => onDeleteCard(doc.id)} className="p-2 bg-slate-100 text-slate-400 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14} /></button>
                 </div>
-                <div className="pt-4 border-t border-slate-50 flex items-center justify-between text-[8px] font-black text-slate-300 uppercase tracking-widest italic">
+                <div className="space-y-4">
+                  <span className={`px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-tighter border ${CATEGORY_STYLES[doc.category]?.badge || CATEGORY_STYLES.General.badge}`}>{doc.category || 'General'}</span>
+                  <div>
+                    <h4 className="text-lg font-black text-slate-800 uppercase italic leading-tight mb-2">{doc.name}</h4>
+                    <p className="text-[11px] text-slate-600 leading-relaxed italic line-clamp-4">{doc.content}</p>
+                  </div>
+
+                  {/* Fotos adjuntas de la tarjeta */}
+                  {cardImgs.length > 0 && (
+                    <div className="pt-2 border-t border-slate-50">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                        <ImageIcon size={10} className="text-[#FF6B00]" /> {cardImgs.length} Foto(s) para enviar:
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                        {cardImgs.map((img, i) => (
+                          <div key={i} className="relative group/img shrink-0" title={img.desc || 'Foto adjunta'}>
+                            <img src={img.url} alt="foto" className="h-12 w-12 rounded-xl object-cover border border-slate-200" />
+                            {img.desc && (
+                              <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white text-[7px] font-bold px-1 rounded-md max-w-[50px] truncate">
+                                {img.desc}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-50 flex items-center justify-between text-[8px] font-black text-slate-300 uppercase tracking-widest italic mt-4">
                   <span>Actualizado</span>
                   <span className="tabular-nums">{doc.timestamp || '—'}</span>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {documents.length === 0 && (
             <div className="col-span-3 py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Sin tarjetas de conocimiento</p>
+              <BookOpen size={32} className="mx-auto text-slate-300 mb-2" />
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin tarjetas de conocimiento</p>
+              <p className="text-xs text-slate-300 mt-1">Crea una tarjeta con información de precios, garantías, visacuotas o instalación.</p>
             </div>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {products.map(prod => (
-            <div key={prod.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-100 transition-all duration-500 group overflow-hidden flex flex-col">
-              <div className="aspect-[4/3] bg-slate-50 relative overflow-hidden flex items-center justify-center">
-                {getImgs(prod).length > 0
-                  ? <img src={getImgs(prod)[0]} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                  : <ShoppingBag size={48} className="text-slate-200 group-hover:scale-110 transition-transform duration-700" />
-                }
-                {getImgs(prod).length > 1 && <span className="absolute bottom-4 left-4 bg-slate-900/75 text-white text-[8px] font-black px-2 py-1 rounded-lg shadow-lg">📷 {getImgs(prod).length}</span>}
-                <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
-                  <button onClick={() => setEditingProduct(prod)} className="bg-white p-3 rounded-2xl text-slate-900 hover:bg-[#FF6B00] hover:text-white transition-all shadow-xl active:scale-90"><Pencil size={18} /></button>
-                  <button onClick={() => onDeleteProduct(prod.id)} className="bg-white p-3 rounded-2xl text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl active:scale-90"><Trash2 size={18} /></button>
-                </div>
-                {(() => {
-                  const q = parseInt(prod.stock, 10);
-                  const hasNum = !isNaN(q);
-                  const label = hasNum ? (q <= 0 ? 'Agotado' : `Stock: ${q}`) : (prod.stock || '');
-                  const style = !hasNum ? STOCK_STYLES['En stock'] : (q <= 0 ? STOCK_STYLES['Agotado'] : q <= 3 ? STOCK_STYLES['Poco stock'] : STOCK_STYLES['En stock']);
-                  return label ? <span className={`absolute top-4 right-4 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-tighter border shadow-lg ${style}`}>{label}</span> : null;
-                })()}
-              </div>
-              <div className="p-6 space-y-4 flex-1 flex flex-col">
-                <span className="text-[8px] font-black text-[#FF6B00] uppercase tracking-widest">{prod.categoria}</span>
-                <div className="flex-1">
-                  <h4 className="text-sm font-black text-slate-800 uppercase italic leading-tight mb-1">{prod.nombre}</h4>
-                  <p className="text-[10px] text-slate-400 italic line-clamp-2">{prod.descripcion}</p>
-                </div>
-                <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-                  {prod.precio_oferta ? (
-                    <span className="flex items-baseline gap-2">
-                      <span className="text-xs font-bold text-slate-400 line-through tabular-nums italic">Q{prod.precio}</span>
-                      <span className="text-lg font-black text-[#FF6B00] tabular-nums italic">Q{prod.precio_oferta}</span>
-                      <span className="text-[8px] font-black text-[#FF6B00] uppercase bg-orange-50 px-1.5 py-0.5 rounded-full">Oferta</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {products.map(prod => {
+            const prodImgs = getImagesMeta(prod);
+            return (
+              <div key={prod.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group overflow-hidden flex flex-col">
+                <div className="aspect-[4/3] bg-slate-50 relative overflow-hidden flex items-center justify-center">
+                  {prodImgs.length > 0
+                    ? <img src={prodImgs[0].url} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    : <ShoppingBag size={48} className="text-slate-200 group-hover:scale-105 transition-transform duration-500" />
+                  }
+                  {prodImgs.length > 1 && (
+                    <span className="absolute bottom-3 left-3 bg-slate-900/80 text-white text-[8px] font-black px-2 py-0.5 rounded-lg shadow-md flex items-center gap-1">
+                      <ImageIcon size={10} /> {prodImgs.length} fotos
                     </span>
-                  ) : (
-                    <span className="text-lg font-black text-slate-900 tabular-nums italic">Q{prod.precio}</span>
                   )}
-                  <span className="h-2 w-2 bg-emerald-400 rounded-full" />
+                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
+                    <button onClick={() => setEditingProduct(prod)} className="bg-white p-3 rounded-2xl text-slate-900 hover:bg-[#FF6B00] hover:text-white transition-all shadow-xl active:scale-90" title="Editar producto y reglas"><Pencil size={18} /></button>
+                    <button onClick={() => onDeleteProduct(prod.id)} className="bg-white p-3 rounded-2xl text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl active:scale-90" title="Eliminar producto"><Trash2 size={18} /></button>
+                  </div>
+                  {(() => {
+                    const q = parseInt(prod.stock, 10);
+                    const hasNum = !isNaN(q);
+                    const label = hasNum ? (q <= 0 ? 'Agotado' : `Stock: ${q}`) : (prod.stock || '');
+                    const style = !hasNum ? STOCK_STYLES['En stock'] : (q <= 0 ? STOCK_STYLES['Agotado'] : q <= 3 ? STOCK_STYLES['Poco stock'] : STOCK_STYLES['En stock']);
+                    return label ? <span className={`absolute top-4 right-4 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-tighter border shadow-lg ${style}`}>{label}</span> : null;
+                  })()}
+                </div>
+
+                <div className="p-6 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <span className="text-[8px] font-black text-[#FF6B00] uppercase tracking-widest">{prod.categoria}</span>
+                    <h4 className="text-sm font-black text-slate-800 uppercase italic leading-tight">{prod.nombre}</h4>
+                    
+                    {/* Descripción para cliente */}
+                    {prod.descripcion && (
+                      <p className="text-[10px] text-slate-500 italic line-clamp-2 leading-relaxed">
+                        {prod.descripcion}
+                      </p>
+                    )}
+
+                    {/* Reglas del bot destacadas */}
+                    {prod.reglas_bot && (
+                      <div className="bg-amber-50 border border-amber-100 rounded-xl p-2 flex items-start gap-1.5 mt-2">
+                        <Bot size={12} className="text-amber-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-[8px] font-black text-amber-700 uppercase leading-none">Regla Interna IA:</p>
+                          <p className="text-[9px] text-amber-800 italic line-clamp-2 leading-tight mt-0.5">{prod.reglas_bot}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-50 flex items-center justify-between">
+                    {prod.precio_oferta ? (
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-xs font-bold text-slate-400 line-through tabular-nums italic">Q{prod.precio}</span>
+                        <span className="text-lg font-black text-[#FF6B00] tabular-nums italic">Q{prod.precio_oferta}</span>
+                        <span className="text-[8px] font-black text-[#FF6B00] uppercase bg-orange-50 px-1.5 py-0.5 rounded-full">Oferta</span>
+                      </span>
+                    ) : (
+                      <span className="text-lg font-black text-slate-900 tabular-nums italic">{prod.precio ? `Q${prod.precio}` : 'Consultar'}</span>
+                    )}
+                    <span className="h-2 w-2 bg-emerald-400 rounded-full" />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {products.length === 0 && (
             <div className="col-span-4 py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Sin productos en catálogo</p>
+              <ShoppingBag size={32} className="mx-auto text-slate-300 mb-2" />
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin productos en catálogo</p>
+              <p className="text-xs text-slate-300 mt-1">Agrega motores, cremalleras, controles o kits con sus precios y fotos.</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Modal: Nueva Tarjeta */}
+      {/* Modal: Nueva Tarjeta de Conocimiento */}
       {showNewCard && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
-            <div className="p-10 border-b border-slate-50 flex justify-between items-center">
-              <h3 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Nueva Tarjeta de Conocimiento</h3>
-              <button onClick={() => setShowNewCard(false)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={20} /></button>
+          <div className="bg-white w-full max-w-xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto no-scrollbar">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <h3 className="text-lg font-black text-slate-800 uppercase italic tracking-tight">Nueva Tarjeta de Conocimiento</h3>
+              <button onClick={() => setShowNewCard(false)} className="p-2.5 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={18} /></button>
             </div>
-            <div className="p-10 space-y-6">
+            <div className="p-8 space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre / Título</label>
-                  <input type="text" value={newCard.name} onChange={e => setNewCard({...newCard, name: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" placeholder="Ej: Garantía de Motores" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Título de la Tarjeta</label>
+                  <input type="text" value={newCard.name} onChange={e => setNewCard({...newCard, name: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Ej: Tabla de Visacuotas / Garantías" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría</label>
-                  <select value={newCard.category} onChange={e => setNewCard({...newCard, category: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
+                  <select value={newCard.category} onChange={e => setNewCard({...newCard, category: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
                     {CARD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Contenido</label>
-                <textarea rows={6} value={newCard.content} onChange={e => setNewCard({...newCard, content: e.target.value})} className="w-full px-8 py-6 bg-slate-50 border border-slate-100 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all resize-none italic" placeholder="Información que la IA usará para responder..." />
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Información / Respuestas que usará la IA</label>
+                <textarea rows={5} value={newCard.content} onChange={e => setNewCard({...newCard, content: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all resize-none" placeholder="Escribe las políticas, precios de instalación, horarios o información clave..." />
               </div>
-              <button onClick={handleSaveCard} className="w-full py-5 bg-slate-900 text-white rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all active:scale-95">Integrar al Conocimiento</button>
+
+              {/* Subida y especificación de fotos en la tarjeta */}
+              {renderImageManager(newCard, 'new', true)}
+
+              <button onClick={handleSaveCard} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#FF6B00] transition-all active:scale-95">Guardar en Base de Conocimiento</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Editar Tarjeta */}
+      {/* Modal: Editar Tarjeta de Conocimiento */}
       {editingCard && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
-            <div className="p-10 border-b border-slate-50 flex justify-between items-center">
-              <h3 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Editar Conocimiento</h3>
-              <button onClick={() => setEditingCard(null)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={20} /></button>
+          <div className="bg-white w-full max-w-xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto no-scrollbar">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <h3 className="text-lg font-black text-slate-800 uppercase italic tracking-tight">Editar Tarjeta de Conocimiento</h3>
+              <button onClick={() => setEditingCard(null)} className="p-2.5 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={18} /></button>
             </div>
-            <div className="p-10 space-y-6">
+            <div className="p-8 space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre / Título</label>
-                  <input type="text" value={editingCard.name} onChange={e => setEditingCard({...editingCard, name: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Título de la Tarjeta</label>
+                  <input type="text" value={editingCard.name} onChange={e => setEditingCard({...editingCard, name: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría</label>
-                  <select value={editingCard.category} onChange={e => setEditingCard({...editingCard, category: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
+                  <select value={editingCard.category} onChange={e => setEditingCard({...editingCard, category: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
                     {CARD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Contenido</label>
-                <textarea rows={6} value={editingCard.content} onChange={e => setEditingCard({...editingCard, content: e.target.value})} className="w-full px-8 py-6 bg-slate-50 border border-slate-100 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all resize-none italic" />
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Información / Respuestas que usará la IA</label>
+                <textarea rows={5} value={editingCard.content} onChange={e => setEditingCard({...editingCard, content: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all resize-none" />
               </div>
-              <button onClick={handleUpdateCard} className="w-full py-5 bg-slate-900 text-white rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all active:scale-95">Guardar Cambios</button>
+
+              {/* Subida y especificación de fotos en la tarjeta */}
+              {renderImageManager(editingCard, 'edit', true)}
+
+              <button onClick={handleUpdateCard} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#FF6B00] transition-all active:scale-95">Guardar Cambios</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Nuevo Producto */}
+      {/* Modal: Nuevo Producto (con separación clara de ficha vs reglas de bot) */}
       {showNewProduct && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-2xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 max-h-[90vh] overflow-y-auto no-scrollbar">
-            <div className="p-10 border-b border-slate-50 flex justify-between items-center sticky top-0 bg-white z-10">
-              <h3 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Nuevo Producto del Catálogo</h3>
-              <button onClick={() => setShowNewProduct(false)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={20} /></button>
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-2xl rounded-[44px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto no-scrollbar">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <h3 className="text-lg font-black text-slate-800 uppercase italic tracking-tight">Nuevo Producto del Catálogo</h3>
+              <button onClick={() => setShowNewProduct(false)} className="p-2.5 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={18} /></button>
             </div>
-            <div className="p-10 space-y-8">
-              <div className="flex flex-col md:flex-row gap-8">
-                <div className="w-48 shrink-0">
-                  {renderImageGrid(newProduct, 'new')}
-                </div>
-                <div className="flex-1 space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre del Producto</label>
-                    <input type="text" value={newProduct.nombre} onChange={e => setNewProduct({...newProduct, nombre: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" placeholder="Ej: Motor Residencial BFT" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Precio (Q)</label>
-                      <input type="text" value={newProduct.precio} onChange={e => setNewProduct({...newProduct, precio: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="2500.00" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest ml-4">🔥 Precio de Oferta (Q)</label>
-                      <input type="text" value={newProduct.precio_oferta || ''} onChange={e => setNewProduct({...newProduct, precio_oferta: e.target.value})} className="w-full px-6 py-4 bg-orange-50/50 border border-orange-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Opcional. Ej: 2200.00" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock (cantidad)</label>
-                      <input type="number" min="0" value={newProduct.stock} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Ej: 10" />
-                    </div>
-                  </div>
-                </div>
+            <div className="p-8 space-y-6">
+              {/* Datos básicos */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Nombre del Producto / Modelo</label>
+                <input type="text" value={newProduct.nombre} onChange={e => setNewProduct({...newProduct, nombre: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Ej: Motor Residencial BFT Deimos BT A600" />
               </div>
-              <div className="grid grid-cols-2 gap-6">
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría</label>
-                  <select value={newProduct.categoria} onChange={e => setNewProduct({...newProduct, categoria: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Precio Normal (Q)</label>
+                  <input type="text" value={newProduct.precio} onChange={e => setNewProduct({...newProduct, precio: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Ej: 3500.00" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest ml-2">🔥 Precio Oferta (Q)</label>
+                  <input type="text" value={newProduct.precio_oferta || ''} onChange={e => setNewProduct({...newProduct, precio_oferta: e.target.value})} className="w-full px-5 py-3.5 bg-orange-50/50 border border-orange-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Opcional. Ej: 3200.00" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
+                  <select value={newProduct.categoria} onChange={e => setNewProduct({...newProduct, categoria: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
                     {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Link del Catálogo (opcional)</label>
-                  <input type="text" value={newProduct.catalog_link || ''} onChange={e => setNewProduct({...newProduct, catalog_link: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" placeholder="https://..." />
-                </div>
               </div>
+
+              {/* CAMPO 1: FICHA PARA EL CLIENTE */}
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Descripción Detallada</label>
-                <textarea rows={4} value={newProduct.descripcion} onChange={e => setNewProduct({...newProduct, descripcion: e.target.value})} className="w-full px-8 py-6 bg-slate-50 border border-slate-100 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all resize-none italic" placeholder="Características técnicas, garantía, etc..." />
+                <div className="flex items-center justify-between ml-2">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">
+                    📄 Ficha / Descripción para el Cliente (Visible en WhatsApp)
+                  </label>
+                  <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
+                    Visible en cotizaciones
+                  </span>
+                </div>
+                <textarea rows={3} value={newProduct.descripcion} onChange={e => setNewProduct({...newProduct, descripcion: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium leading-relaxed outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all resize-none" placeholder="Ej: Motor para portón corredizo de hasta 600kg. Incluye 2 controles remotos, 3 metros de cremallera metálica y 1 año de garantía..." />
               </div>
-              <button onClick={handleSaveProduct} className="w-full py-5 bg-slate-900 text-white rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all active:scale-95">Publicar en Catálogo</button>
+
+              {/* CAMPO 2: REGLAS INTERNAS DEL BOT */}
+              <div className="space-y-2 bg-amber-50/70 p-4 rounded-3xl border border-amber-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Bot size={15} className="text-amber-600" />
+                    <label className="text-[10px] font-black text-amber-900 uppercase tracking-widest">
+                      🤖 Reglas e Instrucciones para la IA (Interno)
+                    </label>
+                  </div>
+                  <span className="text-[8px] font-black text-amber-700 uppercase bg-amber-100 px-2 py-0.5 rounded-md">
+                    Solo para el Bot · No se envía al cliente
+                  </span>
+                </div>
+                <textarea rows={3} value={newProduct.reglas_bot || ''} onChange={e => setNewProduct({...newProduct, reglas_bot: e.target.value})} className="w-full px-4 py-3 bg-white border border-amber-200 rounded-2xl text-xs font-medium leading-relaxed outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all resize-none text-amber-900 placeholder:text-amber-400" placeholder="Ej: No ofrecer si el portón es menor a 400kg. Si el cliente pide descuento, ofrecer el precio de oferta en Q3,200. Si preguntan si incluye instalación, decir que sí dentro de la capital..." />
+                <p className="text-[9px] text-amber-700/80 italic">
+                  💡 Usa este campo para poner condiciones: cuándo ofrecerlo, cuándo no enviarlo, objeciones o qué decir si piden rebaja.
+                </p>
+              </div>
+
+              {/* Subida de fotos con especificación para el producto */}
+              {renderImageManager(newProduct, 'new', false)}
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Link del Catálogo Web (opcional)</label>
+                <input type="text" value={newProduct.catalog_link || ''} onChange={e => setNewProduct({...newProduct, catalog_link: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="https://onecontrol.shop/..." />
+              </div>
+
+              <button onClick={handleSaveProduct} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#FF6B00] transition-all active:scale-95">Publicar en Catálogo</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Editar Producto */}
+      {/* Modal: Editar Producto (con separación clara de ficha vs reglas de bot) */}
       {editingProduct && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-2xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 max-h-[90vh] overflow-y-auto no-scrollbar">
-            <div className="p-10 border-b border-slate-50 flex justify-between items-center sticky top-0 bg-white z-10">
-              <h3 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Editar Producto</h3>
-              <button onClick={() => setEditingProduct(null)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={20} /></button>
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-2xl rounded-[44px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto no-scrollbar">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <h3 className="text-lg font-black text-slate-800 uppercase italic tracking-tight">Editar Producto</h3>
+              <button onClick={() => setEditingProduct(null)} className="p-2.5 bg-slate-50 text-slate-400 rounded-2xl hover:text-slate-800"><X size={18} /></button>
             </div>
-            <div className="p-10 space-y-8">
-              <div className="flex flex-col md:flex-row gap-8">
-                <div className="w-48 shrink-0">
-                  {renderImageGrid(editingProduct, 'edit')}
-                </div>
-                <div className="flex-1 space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nombre del Producto</label>
-                    <input type="text" value={editingProduct.nombre} onChange={e => setEditingProduct({...editingProduct, nombre: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Precio (Q)</label>
-                      <input type="text" value={editingProduct.precio} onChange={e => setEditingProduct({...editingProduct, precio: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest ml-4">🔥 Precio de Oferta (Q)</label>
-                      <input type="text" value={editingProduct.precio_oferta || ''} onChange={e => setEditingProduct({...editingProduct, precio_oferta: e.target.value})} className="w-full px-6 py-4 bg-orange-50/50 border border-orange-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Opcional. Ej: 2200.00" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Stock (cantidad)</label>
-                      <input type="number" min="0" value={editingProduct.stock} onChange={e => setEditingProduct({...editingProduct, stock: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all tabular-nums" placeholder="Ej: 10" />
-                    </div>
-                  </div>
-                </div>
+            <div className="p-8 space-y-6">
+              {/* Datos básicos */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Nombre del Producto / Modelo</label>
+                <input type="text" value={editingProduct.nombre} onChange={e => setEditingProduct({...editingProduct, nombre: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
               </div>
-              <div className="grid grid-cols-2 gap-6">
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Categoría</label>
-                  <select value={editingProduct.categoria} onChange={e => setEditingProduct({...editingProduct, categoria: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Precio Normal (Q)</label>
+                  <input type="text" value={editingProduct.precio} onChange={e => setEditingProduct({...editingProduct, precio: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-[#FF6B00] uppercase tracking-widest ml-2">🔥 Precio Oferta (Q)</label>
+                  <input type="text" value={editingProduct.precio_oferta || ''} onChange={e => setEditingProduct({...editingProduct, precio_oferta: e.target.value})} className="w-full px-5 py-3.5 bg-orange-50/50 border border-orange-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Opcional" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
+                  <select value={editingProduct.categoria} onChange={e => setEditingProduct({...editingProduct, categoria: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
                     {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Link del Catálogo</label>
-                  <input type="text" value={editingProduct.catalog_link || ''} onChange={e => setEditingProduct({...editingProduct, catalog_link: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all" />
-                </div>
               </div>
+
+              {/* CAMPO 1: FICHA PARA EL CLIENTE */}
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Descripción Detallada</label>
-                <textarea rows={4} value={editingProduct.descripcion} onChange={e => setEditingProduct({...editingProduct, descripcion: e.target.value})} className="w-full px-8 py-6 bg-slate-50 border border-slate-100 rounded-3xl text-xs font-medium leading-relaxed outline-none focus:ring-4 focus:ring-orange-50 focus:border-[#FF6B00] transition-all resize-none italic" />
+                <div className="flex items-center justify-between ml-2">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">
+                    📄 Ficha / Descripción para el Cliente (Visible en WhatsApp)
+                  </label>
+                  <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
+                    Visible en cotizaciones
+                  </span>
+                </div>
+                <textarea rows={3} value={editingProduct.descripcion} onChange={e => setEditingProduct({...editingProduct, descripcion: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium leading-relaxed outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all resize-none" />
               </div>
-              <div className="flex items-center space-x-4">
-                <label className="flex items-center space-x-2 cursor-pointer group">
-                  <input type="checkbox" checked={!!editingProduct.activo} onChange={e => setEditingProduct({...editingProduct, activo: e.target.checked ? 1 : 0})} className="hidden" />
-                  <div className={`h-6 w-11 rounded-full relative transition-all ${editingProduct.activo ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                    <div className={`absolute top-1 h-4 w-4 bg-white rounded-full transition-all ${editingProduct.activo ? 'left-6' : 'left-1'}`} />
+
+              {/* CAMPO 2: REGLAS INTERNAS DEL BOT */}
+              <div className="space-y-2 bg-amber-50/70 p-4 rounded-3xl border border-amber-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Bot size={15} className="text-amber-600" />
+                    <label className="text-[10px] font-black text-amber-900 uppercase tracking-widest">
+                      🤖 Reglas e Instrucciones para la IA (Interno)
+                    </label>
                   </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase group-hover:text-slate-800 transition-colors">Activo en catálogo</span>
-                </label>
+                  <span className="text-[8px] font-black text-amber-700 uppercase bg-amber-100 px-2 py-0.5 rounded-md">
+                    Solo para el Bot · No se envía al cliente
+                  </span>
+                </div>
+                <textarea rows={3} value={editingProduct.reglas_bot || ''} onChange={e => setEditingProduct({...editingProduct, reglas_bot: e.target.value})} className="w-full px-4 py-3 bg-white border border-amber-200 rounded-2xl text-xs font-medium leading-relaxed outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all resize-none text-amber-900 placeholder:text-amber-400" placeholder="Ej: No ofrecer si el portón es de más de 400kg. Si piden rebaja, dar en Q3,200..." />
+                <p className="text-[9px] text-amber-700/80 italic">
+                  💡 Usa este campo para poner condiciones: cuándo ofrecerlo, cuándo no enviarlo, objeciones o qué decir si piden rebaja.
+                </p>
               </div>
-              <button onClick={handleUpdateProduct} className="w-full py-5 bg-slate-900 text-white rounded-[28px] text-xs font-black uppercase tracking-[0.3em] shadow-xl shadow-slate-200 hover:bg-[#FF6B00] transition-all active:scale-95">Guardar Cambios</button>
+
+              {/* Subida de fotos con especificación para el producto */}
+              {renderImageManager(editingProduct, 'edit', false)}
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Link del Catálogo Web (opcional)</label>
+                <input type="text" value={editingProduct.catalog_link || ''} onChange={e => setEditingProduct({...editingProduct, catalog_link: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
+              </div>
+
+              <button onClick={handleUpdateProduct} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#FF6B00] transition-all active:scale-95">Guardar Cambios</button>
             </div>
           </div>
         </div>

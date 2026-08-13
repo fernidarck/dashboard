@@ -350,6 +350,10 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN reglas_bot TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN imagenes_meta TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE documents ADD COLUMN imagen TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE documents ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN lead_alertado INTEGER DEFAULT 0"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
@@ -1809,9 +1813,59 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
   }
 });
 
+// Helper: normaliza imágenes de productos con descripciones
+function normalizeProductImages(p) {
+  let arr = [];
+  try {
+    if (p.imagenes_meta) {
+      arr = typeof p.imagenes_meta === 'string' ? JSON.parse(p.imagenes_meta) : p.imagenes_meta;
+    } else if (p.imagenes) {
+      arr = typeof p.imagenes === 'string' ? JSON.parse(p.imagenes) : p.imagenes;
+    }
+  } catch (e) { arr = []; }
+
+  if ((!Array.isArray(arr) || arr.length === 0) && p.imagen) {
+    arr = [p.imagen];
+  }
+
+  return (Array.isArray(arr) ? arr : []).map(item => {
+    if (typeof item === 'string') return { url: item, desc: '' };
+    if (item && item.url) return { url: item.url, desc: item.desc || item.descripcion || '' };
+    return null;
+  }).filter(Boolean);
+}
+
+// Helper: normaliza imágenes de documentos RAG con descripciones
+function normalizeDocImages(d) {
+  let arr = [];
+  try {
+    if (d.imagenes_meta) {
+      arr = typeof d.imagenes_meta === 'string' ? JSON.parse(d.imagenes_meta) : d.imagenes_meta;
+    } else if (d.imagenes) {
+      arr = typeof d.imagenes === 'string' ? JSON.parse(d.imagenes) : d.imagenes;
+    }
+  } catch (e) { arr = []; }
+
+  if ((!Array.isArray(arr) || arr.length === 0) && d.imagen) {
+    arr = [d.imagen];
+  }
+
+  return (Array.isArray(arr) ? arr : []).map(item => {
+    if (typeof item === 'string') return { url: item, desc: '' };
+    if (item && item.url) return { url: item.url, desc: item.desc || item.descripcion || '' };
+    return null;
+  }).filter(Boolean);
+}
+
 app.get('/api/rag/documents', async (_req, res) => {
   try {
-    const rows = await db.all("SELECT id, name, category, timestamp, SUBSTR(content, 1, 200) as content FROM documents ORDER BY id DESC");
+    const rows = await db.all("SELECT id, name, category, timestamp, content, imagen, imagenes FROM documents ORDER BY id DESC");
+    rows.forEach(d => {
+      const meta = normalizeDocImages(d);
+      d.imagenes_meta = meta;
+      d.imagenes = meta.map(m => m.url);
+      d.imagen = meta[0]?.url || d.imagen || '';
+    });
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1851,25 +1905,29 @@ app.post('/api/rag/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// Crear tarjeta de conocimiento desde texto (sin subir archivo)
+// Crear tarjeta de conocimiento desde texto (con soporte de fotos)
 app.post('/api/rag/save', async (req, res) => {
   try {
-    const { name, category, content } = req.body;
+    const { name, category, content, imagen, imagenes, imagenes_meta } = req.body;
     if (!name || !content) return res.status(400).json({ error: "Nombre y contenido requeridos" });
-    await db.run("INSERT INTO documents (name, category, content, timestamp) VALUES (?, ?, ?, ?)",
-      name, category || 'General', content, new Date().toLocaleString());
+    const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
+    const urls = meta.map(m => m.url || m);
+    await db.run("INSERT INTO documents (name, category, content, imagen, imagenes, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+      name, category || 'General', content, urls[0] || imagen || '', JSON.stringify(meta), new Date().toLocaleString());
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Editar tarjeta existente
+// Editar tarjeta existente (con fotos)
 app.put('/api/rag/documents/:id', async (req, res) => {
   try {
-    const { name, category, content } = req.body;
-    await db.run("UPDATE documents SET name = ?, category = ?, content = ? WHERE id = ?",
-      name, category, content, req.params.id);
+    const { name, category, content, imagen, imagenes, imagenes_meta } = req.body;
+    const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
+    const urls = meta.map(m => m.url || m);
+    await db.run("UPDATE documents SET name = ?, category = ?, content = ?, imagen = ?, imagenes = ? WHERE id = ?",
+      name, category, content, urls[0] || imagen || '', JSON.stringify(meta), req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1886,7 +1944,6 @@ app.delete('/api/rag/documents/:id', async (req, res) => {
 });
 
 // Endpoint para que n8n obtenga el prompt completo del agente listo para usar
-// ?tipo=recepcionista | ventas | soporte  (opcional, por defecto recepcionista)
 app.get('/api/agent/prompt', async (req, res) => {
   try {
     const tipo = (req.query.tipo || 'recepcionista').toLowerCase();
@@ -1914,25 +1971,37 @@ app.get('/api/agent/prompt', async (req, res) => {
     const msgFueraHorario = (s.msg_fuera_horario|| '');
     const msgDespedida    = (s.msg_despedida    || '');
 
-    // Obtener catálogo de productos dinámicamente
+    // Obtener catálogo de productos dinámicamente con reglas e imágenes detalladas
     const prods = await db.all("SELECT * FROM products WHERE activo = 1 ORDER BY categoria, nombre");
     let catalogText = "";
     if (prods.length > 0) {
       catalogText = "CATÁLOGO DE PRODUCTOS DISPONIBLES (Usa esta información para cotizar y dar precios reales):\n";
       prods.forEach(p => {
-        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${p.stock}\n`;
-        if (p.descripcion) catalogText += `  Detalles: ${p.descripcion}\n`;
-        normalizeProductImages(p).forEach(u => { catalogText += `  IMAGEN_PARA_ENVIAR: ${u}\n`; });
+        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${p.stock || 'Disponible'}\n`;
+        if (p.descripcion) catalogText += `  Ficha para el cliente: ${p.descripcion}\n`;
+        if (p.reglas_bot && p.reglas_bot.trim()) {
+          catalogText += `  ⚠️ REGLAS DEL BOT PARA ESTE PRODUCTO: ${p.reglas_bot.trim()}\n`;
+        }
+        const prodImages = normalizeProductImages(p);
+        prodImages.forEach(img => {
+          catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
+        });
+        if (p.catalog_link) catalogText += `  Link catálogo: ${p.catalog_link}\n`;
       });
     }
 
-    // Obtener base de conocimiento (RAG)
+    // Obtener base de conocimiento (RAG) con fotos
     const docs = await db.all("SELECT * FROM documents ORDER BY timestamp DESC");
     let ragText = "";
     if (docs.length > 0) {
       ragText = "BASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\n";
       docs.forEach(d => {
-        ragText += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n\n`;
+        ragText += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n`;
+        const docImgs = normalizeDocImages(d);
+        docImgs.forEach(img => {
+          ragText += `IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
+        });
+        ragText += `\n`;
       });
     }
 
@@ -1962,7 +2031,8 @@ REGLAS IMPORTANTES:
 - Nunca digas que eres una IA a menos que te lo pregunten directamente
 - Si no sabes algo, pide más detalles o transfiere al equipo humano
 - Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)
-- SI EL PRODUCTO TIENE UNA IMAGEN_PARA_ENVIAR: Incluye el texto "ENVIAR_IMAGEN: [URL_DE_LA_IMAGEN]" al final de tu mensaje para que el sistema la envíe automáticamente.
+- SI EL CLIENTE PIDE UNA FOTO O ESPECIFICACIÓN: Busca en el catálogo o base de conocimiento la IMAGEN_PARA_ENVIAR cuya descripción coincida con lo solicitado e incluye "ENVIAR_IMAGEN: [URL_DE_LA_IMAGEN]" al final de tu mensaje para que el sistema la envíe automáticamente.
+- RESPETA LAS REGLAS DEL BOT de cada producto (por ejemplo: si una regla indica cuándo ofrecer un producto o cuándo no enviarlo).
 
 REGLA DE ESCALACIÓN (OBLIGATORIA):
 Cuando NO puedas resolver autónomamente (cotización de envío, precio especial, soporte técnico, caso complejo) y necesites que un asesor contacte al cliente:
@@ -2028,31 +2098,29 @@ app.delete('/api/agenda/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── CATÁLOGO DE PRODUCTOS ────────────────────────────────────────────────────
-// Helper: normaliza imagenes a array (parsea JSON; fallback a [imagen] para productos viejos)
-function normalizeProductImages(p) {
-  let arr = [];
-  try { arr = p.imagenes ? JSON.parse(p.imagenes) : []; } catch (e) { arr = []; }
-  if ((!Array.isArray(arr) || arr.length === 0) && p.imagen) arr = [p.imagen];
-  return Array.isArray(arr) ? arr.filter(Boolean) : [];
-}
-
 app.get('/api/products', async (_req, res) => {
   try {
     const rows = await db.all("SELECT * FROM products ORDER BY categoria, nombre");
-    rows.forEach(p => { p.imagenes = normalizeProductImages(p); });
+    rows.forEach(p => {
+      const meta = normalizeProductImages(p);
+      p.imagenes_meta = meta;
+      p.imagenes = meta.map(m => m.url);
+      p.imagen = meta[0]?.url || p.imagen || '';
+    });
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, precio_oferta, categoria, stock, imagen, imagenes, catalog_link } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
-    const imgs = (Array.isArray(imagenes) ? imagenes : (imagen ? [imagen] : [])).filter(Boolean).slice(0, 5);
+    const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
+    const urls = meta.map(m => m.url || m);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, precio, precio_oferta, categoria, stock, imagen, imagenes, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', imgs[0] || '', JSON.stringify(imgs), catalog_link || '', ts
+      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2060,11 +2128,12 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, catalog_link } = req.body;
-    const imgs = (Array.isArray(imagenes) ? imagenes : (imagen ? [imagen] : [])).filter(Boolean).slice(0, 5);
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link } = req.body;
+    const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
+    const urls = meta.map(m => m.url || m);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, catalog_link=? WHERE id=?",
-      nombre, descripcion, precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, imgs[0] || '', JSON.stringify(imgs), catalog_link ?? '', req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
