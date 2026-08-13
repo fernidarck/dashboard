@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
 
 console.log("🚀 SERVER VERSION: 1.0.5 (MEDIA COLUMNS) - Iniciando servidor del Dashboard...");
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3002;
 const ENV_N8N_OUTBOUND_WEBHOOK = process.env.N8N_OUTBOUND_WEBHOOK || "https://appn8n-n8n.83aqlq.easypanel.host/webhook/send-message";
 
 console.log(`📌 Puerto detectado: ${port}`);
