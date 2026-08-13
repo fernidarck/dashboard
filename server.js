@@ -355,8 +355,9 @@ async function setup() {
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN lead_alertado INTEGER DEFAULT 0"); } catch(e){}
-    // Normalizar prioridad: solo quedan urgentes los que pidieron humano / intervención (antes TODOS nacían urgent)
-    try { await db.exec("UPDATE leads SET priority = 'normal' WHERE priority = 'urgent' AND (handoff_reason IS NULL OR handoff_reason = '') AND estado <> 'Intervención Requerida'"); } catch(e){}
+    // Normalizar prioridad: rojo/urgente SOLO para los que pidieron un humano (handoff_reason).
+    // Antes TODOS nacían 'urgent' y muchos quedaban en 'Intervención Requerida' sin pedir nada.
+    try { await db.exec("UPDATE leads SET priority = 'normal' WHERE priority = 'urgent' AND (handoff_reason IS NULL OR handoff_reason = '')"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
