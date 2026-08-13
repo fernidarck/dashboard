@@ -445,14 +445,31 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
     const channel = await getChannelConfig(channelPhone);
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
-    const payload = { from: fromNum, to: toPhone, type: 'image', image: { link: imageUrl } };
-    if (caption) payload.image.caption = caption;
-    await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+    if (!apiKey || !fromNum || !toPhone || !imageUrl) return;
+
+    const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
+    const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
+
+    console.log(`📸 Enviando imagen por YCloud desde ${cleanFrom} a ${cleanTo}: ${imageUrl}`);
+    const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        from: cleanFrom,
+        to: cleanTo,
+        type: 'image',
+        image: {
+          link: imageUrl,
+          ...(caption ? { caption } : {})
+        }
+      })
     });
-    console.log(`🖼️ Imagen enviada a ${toPhone} desde ${fromNum}: ${imageUrl}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`❌ Error enviando imagen YCloud (${res.status}): ${errText}`);
+    } else {
+      console.log(`✅ Imagen enviada exitosamente por YCloud a ${cleanTo}`);
+    }
   } catch(e) {
     console.error('❌ Error enviando imagen via YCloud:', e.message);
   }
@@ -464,16 +481,28 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
     const channel = await getChannelConfig(channelPhone);
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    if (!apiKey || !fromNum || !toPhone || !docUrl) return;
+
+    const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
+    const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
     const link = String(docUrl || '').replace(/^http:\/\//, 'https://'); // WhatsApp requiere https
-    const payload = { from: fromNum, to: toPhone, type: 'document', document: { link, filename: fileName } };
-    if (caption) payload.document.caption = caption;
+
     const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        from: cleanFrom,
+        to: cleanTo,
+        type: 'document',
+        document: {
+          link,
+          filename: fileName,
+          ...(caption ? { caption } : {})
+        }
+      })
     });
     if (!r.ok) { const t = await r.text(); console.error(`❌ Error documento YCloud: ${r.status} ${t}`); }
-    else console.log(`📄 Documento enviado a ${toPhone} desde ${fromNum}: ${fileName}`);
+    else console.log(`📄 Documento enviado a ${cleanTo} desde ${cleanFrom}: ${fileName}`);
   } catch(e) {
     console.error('❌ Error enviando documento via YCloud:', e.message);
   }
@@ -1697,74 +1726,6 @@ app.post('/api/auth/change-token', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone = null) {
-  try {
-    const channel = await getChannelConfig(channelPhone);
-    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
-    if (!apiKey || !fromNum || !toPhone || !imageUrl) return;
-
-    const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
-    const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
-
-    console.log(`📸 Enviando imagen por YCloud desde ${cleanFrom} a ${cleanTo}: ${imageUrl}`);
-    const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({
-        from: cleanFrom,
-        to: cleanTo,
-        type: 'image',
-        image: {
-          link: imageUrl,
-          ...(caption ? { caption } : {})
-        }
-      })
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`❌ Error enviando imagen YCloud (${res.status}): ${errText}`);
-    } else {
-      console.log(`✅ Imagen enviada exitosamente por YCloud a ${cleanTo}`);
-    }
-  } catch (err) {
-    console.error('❌ Error de red enviando imagen por YCloud:', err.message);
-  }
-}
-
-async function sendDocumentViaYCloud(toPhone, docUrl, filename = 'documento.pdf', caption = '', channelPhone = null) {
-  try {
-    const channel = await getChannelConfig(channelPhone);
-    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
-    if (!apiKey || !fromNum || !toPhone || !docUrl) return;
-
-    const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
-    const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
-
-    const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({
-        from: cleanFrom,
-        to: cleanTo,
-        type: 'document',
-        document: {
-          link: docUrl,
-          filename: filename,
-          ...(caption ? { caption } : {})
-        }
-      })
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`❌ Error enviando documento YCloud (${res.status}): ${errText}`);
-    }
-  } catch (err) {
-    console.error('❌ Error de red enviando documento por YCloud:', err.message);
-  }
-}
 
 app.post('/api/messages/send', async (req, res) => {
   try {
