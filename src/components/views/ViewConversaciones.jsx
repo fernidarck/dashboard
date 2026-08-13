@@ -2,7 +2,8 @@ import { useState, useRef, useMemo } from 'react';
 import {
   Search, X, AlertTriangle, Bot, Power, Database,
   MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft, Paperclip, FileText,
-  ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon
+  ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon,
+  UserPlus, Phone, Download
 } from 'lucide-react';
 
 export default function ViewConversaciones({
@@ -44,16 +45,59 @@ export default function ViewConversaciones({
     finally { setSendingDoc(false); }
   };
 
-  // Filtrado de leads en la bandeja
+  // Función para guardar / descargar contacto en la agenda del teléfono (.vcf vCard)
+  const downloadVCard = (lead) => {
+    if (!lead || !lead.phone) return;
+    const cleanPhone = String(lead.phone).replace(/[^0-9+]/g, '');
+    const cleanName = String(lead.nombre || '').trim() || `Cliente ${cleanPhone}`;
+    const vCardData = [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      `FN:${cleanName}`,
+      `N:${cleanName};;;;`,
+      `TEL;TYPE=CELL,VOICE:${cleanPhone}`,
+      `ORG:OneControl CRM`,
+      lead.motor && lead.motor !== 'N/A' ? `TITLE:Motor ${lead.motor}` : '',
+      `NOTE:Motor: ${lead.motor || 'N/A'} | Zona: ${lead.zona || 'N/A'} | Origen: ${lead.origen || 'WhatsApp'} | OneControl`,
+      'END:VCARD'
+    ].filter(Boolean).join('\r\n');
+
+    const blob = new Blob([vCardData], { type: 'text/vcard;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${cleanName.replace(/[^a-zA-Z0-9_-]/g, '_')}.vcf`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Filtrado y ordenamiento en tiempo real de leads en la bandeja
   const filteredLeads = useMemo(() => {
-    if (!chatSearch.trim()) return leads;
-    const q = chatSearch.toLowerCase();
-    return leads.filter(l =>
-      (l.nombre || '').toLowerCase().includes(q) ||
-      (l.phone || '').toLowerCase().includes(q) ||
-      (l.motor || '').toLowerCase().includes(q) ||
-      (l.lastMessage || '').toLowerCase().includes(q)
-    );
+    let list = [...leads];
+    if (chatSearch.trim()) {
+      const rawQ = chatSearch.toLowerCase().trim();
+      const numQ = rawQ.replace(/\D/g, '');
+      list = list.filter(l => {
+        const nameMatch = (l.nombre || '').toLowerCase().includes(rawQ);
+        const phoneMatch = (l.phone || '').toLowerCase().includes(rawQ) || (numQ.length >= 4 && (l.phone || '').replace(/\D/g, '').includes(numQ));
+        const motorMatch = (l.motor || '').toLowerCase().includes(rawQ);
+        const msgMatch = (l.lastMessage || '').toLowerCase().includes(rawQ);
+        const estadoMatch = (l.estado || '').toLowerCase().includes(rawQ);
+        return nameMatch || phoneMatch || motorMatch || msgMatch || estadoMatch;
+      });
+    }
+    // Ordenar: urgentes primero, luego la conversación con mensaje más reciente en primera fila
+    return list.sort((a, b) => {
+      const aUrgent = a.priority === 'urgent' ? 1 : 0;
+      const bUrgent = b.priority === 'urgent' ? 1 : 0;
+      if (aUrgent !== bUrgent) return bUrgent - aUrgent;
+      const aMsg = Number(a.lastMsgId || 0);
+      const bMsg = Number(b.lastMsgId || 0);
+      if (aMsg !== bMsg) return bMsg - aMsg;
+      return (b.id || 0) - (a.id || 0);
+    });
   }, [leads, chatSearch]);
 
   // Filtrado de productos para enviar desde el catálogo
@@ -133,8 +177,12 @@ export default function ViewConversaciones({
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-baseline">
+                    <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
+                    {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums shrink-0 ml-1">{lead.lastMessageTime}</span>}
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold tabular-nums truncate">{lead.phone || 'Sin número'}</p>
+                  <div className="flex justify-between items-center mt-0.5">
                     <p className={`text-[9px] font-black uppercase tracking-tighter ${
                       lead.priority === 'urgent' ? 'text-red-500' :
                       lead.estado === 'Venta' ? 'text-emerald-600' :
@@ -142,7 +190,6 @@ export default function ViewConversaciones({
                     }`}>
                       {lead.priority === 'urgent' ? '⚠️ INTERVENCIÓN' : lead.estado === 'Venta' ? '🏆 VENTA' : lead.botActive ? `Score: ${lead.score || 0}%` : 'Modo Manual'}
                     </p>
-                    {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums">{lead.lastMessageTime}</span>}
                   </div>
                 </div>
               </div>
@@ -191,6 +238,16 @@ export default function ViewConversaciones({
             </div>
           </div>
           <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
+            {selectedLead.phone && (
+              <button
+                onClick={() => downloadVCard(selectedLead)}
+                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-50 hover:bg-orange-50 text-slate-700 hover:text-[#FF6B00] transition-all border border-slate-200 shadow-xs"
+                title="Guardar contacto en la agenda del teléfono / WhatsApp (.vcf)"
+              >
+                <UserPlus size={14} className="text-[#FF6B00]" />
+                <span className="hidden sm:inline">Guardar Contacto</span>
+              </button>
+            )}
             {selectedLead.id && (
               <button
                 onClick={() => onToggleBot(selectedLead.id)}
@@ -475,10 +532,22 @@ export default function ViewConversaciones({
             <button onClick={() => setShowSidebar(false)} className="text-slate-400 hover:text-slate-800"><X size={16} /></button>
           </div>
           <div className="space-y-6">
-            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-center">
-              <div className="h-16 w-16 bg-slate-900 text-[#FF6B00] rounded-2xl flex items-center justify-center font-black text-xl italic mb-3 mx-auto border-2 border-white shadow-xl">{selectedLead.nombre?.[0] || '?'}</div>
-              <h4 className="font-black text-slate-800 uppercase italic">{selectedLead.nombre}</h4>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{selectedLead.phone}</p>
+            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-center space-y-3">
+              <div className="h-16 w-16 bg-slate-900 text-[#FF6B00] rounded-2xl flex items-center justify-center font-black text-xl italic mx-auto border-2 border-white shadow-xl">{selectedLead.nombre?.[0] || '?'}</div>
+              <div>
+                <h4 className="font-black text-slate-800 uppercase italic">{selectedLead.nombre}</h4>
+                <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{selectedLead.phone}</p>
+              </div>
+              {selectedLead.phone && (
+                <button
+                  onClick={() => downloadVCard(selectedLead)}
+                  className="w-full py-2.5 px-3 bg-white hover:bg-orange-50 text-slate-700 hover:text-[#FF6B00] rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border border-slate-200 shadow-xs active:scale-95"
+                  title="Descargar vCard para guardar con 1 toque en tu teléfono"
+                >
+                  <UserPlus size={13} className="text-[#FF6B00]" />
+                  <span>Guardar en Mi Celular</span>
+                </button>
+              )}
             </div>
             <div className="space-y-3">
               {[

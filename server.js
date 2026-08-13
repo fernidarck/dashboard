@@ -638,7 +638,8 @@ app.get('/api/leads', async (req, res) => {
         (SELECT text FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessage,
         (SELECT timestamp FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageTime,
         (SELECT sender FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageSender,
-        (SELECT id FROM messages m WHERE m.lead_id = l.id AND m.sender = 'client' ORDER BY id DESC LIMIT 1) as lastClientMsgId
+        (SELECT id FROM messages m WHERE m.lead_id = l.id AND m.sender = 'client' ORDER BY id DESC LIMIT 1) as lastClientMsgId,
+        (SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMsgId
       FROM leads l
       WHERE l.archived = ?
     `;
@@ -650,7 +651,7 @@ app.get('/api/leads', async (req, res) => {
       params.push(cleanChan);
     }
 
-    query += ` ORDER BY l.priority DESC, l.id DESC`;
+    query += ` ORDER BY (CASE WHEN l.priority = 'urgent' THEN 1 ELSE 0 END) DESC, COALESCE((SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1), 0) DESC, l.id DESC`;
 
     const rows = await db.all(query, ...params);
     res.json(rows);
