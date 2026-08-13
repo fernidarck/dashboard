@@ -330,14 +330,16 @@ export default function ViewCRM({
   // ¿Ya se está trabajando o está cerrado?
   const isFollowedUp = (l) => isEnSeguimiento(l) || isVentaCerrada(l) || isPerdido(l) || l.estado === 'Post-Venta';
 
-  // Prospecto REAL = dio ubicación / necesidad / factura (más que solo preguntar precio)
-  const esProspecto = (l) => [l.zona, l.direccion, l.falla, l.nit].some(v => v && v !== 'N/A' && v !== 'null' && String(v).trim());
-  // 🎯 "Por Hablarles" = los que valen la pena: hicieron pedido, mostraron INTERÉS alto (score),
-  // dieron información concreta, o piden un humano. Los que SOLO preguntaron precio NO entran.
+  // INTERESADO EN COMPRAR = dio datos que solo da quien va en serio: ubicación/dirección o factura.
+  // (No cuenta "falla"/"motor" porque se llenan con solo mandar una foto.)
+  const esProspecto = (l) => [l.zona, l.direccion, l.nit].some(v => v && v !== 'N/A' && v !== 'null' && String(v).trim());
+  // 🎯 "Por Hablarles" = SOLO los que muestran intención real: hicieron PEDIDO, dieron datos de
+  // compra (ubicación/factura), o pidieron un HUMANO. NO entran: solo foto, solo precio, score/urgente automático.
   const isPorHablar = (l) => {
     if (isFollowedUp(l)) return false;
-    return hizoPedido(l) || esProspecto(l) || (Number(l.score) || 0) >= 60
-      || l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason;
+    if (hizoPedido(l)) return true; // un pedido siempre cuenta
+    if (String(l.nombre || '').trim().toLowerCase() === 'agente') return false; // ruido de eco del bot, no es cliente
+    return esProspecto(l) || !!l.handoff_reason;
   };
 
   // Conteos

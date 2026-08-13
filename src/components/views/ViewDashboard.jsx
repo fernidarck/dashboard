@@ -69,13 +69,15 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
   const cleanPh = (p) => String(p || '').replace(/\D/g, '');
   const pedidoPhones = useMemo(() => new Set((pedidos || []).map(p => cleanPh(p.phone)).filter(Boolean)), [pedidos]);
   const hizoPedido = (l) => pedidoPhones.has(cleanPh(l.phone));
-  const esProspecto = (l) => [l.zona, l.direccion, l.falla, l.nit].some(v => v && v !== 'N/A' && v !== 'null' && String(v).trim());
+  const esProspecto = (l) => [l.zona, l.direccion, l.nit].some(v => v && v !== 'N/A' && v !== 'null' && String(v).trim());
   const isEnSeguimiento = (l) => l.estado === 'En Seguimiento' || l.estado === 'Cita Agendada';
   const isFollowedUp = (l) => isEnSeguimiento(l) || l.estado === 'Venta' || l.estado === 'Perdido' || l.estado === 'Post-Venta';
+  // Solo intención real de compra: pedido, datos de compra (ubicación/factura), o pidió un humano.
   const isPorHablar = (l) => {
     if (l.archived || isFollowedUp(l)) return false;
-    return hizoPedido(l) || esProspecto(l) || (Number(l.score) || 0) >= 60
-      || l.priority === 'urgent' || l.estado === 'Intervención Requerida' || !!l.handoff_reason;
+    if (hizoPedido(l)) return true;
+    if (String(l.nombre || '').trim().toLowerCase() === 'agente') return false;
+    return esProspecto(l) || !!l.handoff_reason;
   };
 
   const activeLeads = useMemo(() => leads.filter(l => !l.archived), [leads]);
