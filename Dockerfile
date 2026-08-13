@@ -1,8 +1,10 @@
-FROM node:20
+FROM node:20-slim
 WORKDIR /app
+
 COPY package*.json ./
-RUN apt-get update && apt-get install -y python3 build-essential && npm install sqlite3 --build-from-source && npm install
+RUN npm install --omit=dev
+
 COPY . .
 
-EXPOSE 3000
+EXPOSE 3002
 CMD ["node", "server.js"]
