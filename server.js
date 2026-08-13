@@ -1698,6 +1698,74 @@ app.post('/api/auth/change-token', async (req, res) => {
   }
 });
 
+async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone = null) {
+  try {
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    if (!apiKey || !fromNum || !toPhone || !imageUrl) return;
+
+    const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
+    const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
+
+    console.log(`📸 Enviando imagen por YCloud desde ${cleanFrom} a ${cleanTo}: ${imageUrl}`);
+    const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({
+        from: cleanFrom,
+        to: cleanTo,
+        type: 'image',
+        image: {
+          link: imageUrl,
+          ...(caption ? { caption } : {})
+        }
+      })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`❌ Error enviando imagen YCloud (${res.status}): ${errText}`);
+    } else {
+      console.log(`✅ Imagen enviada exitosamente por YCloud a ${cleanTo}`);
+    }
+  } catch (err) {
+    console.error('❌ Error de red enviando imagen por YCloud:', err.message);
+  }
+}
+
+async function sendDocumentViaYCloud(toPhone, docUrl, filename = 'documento.pdf', caption = '', channelPhone = null) {
+  try {
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    if (!apiKey || !fromNum || !toPhone || !docUrl) return;
+
+    const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
+    const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
+
+    const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({
+        from: cleanFrom,
+        to: cleanTo,
+        type: 'document',
+        document: {
+          link: docUrl,
+          filename: filename,
+          ...(caption ? { caption } : {})
+        }
+      })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`❌ Error enviando documento YCloud (${res.status}): ${errText}`);
+    }
+  } catch (err) {
+    console.error('❌ Error de red enviando documento por YCloud:', err.message);
+  }
+}
+
 app.post('/api/messages/send', async (req, res) => {
   try {
     const { leadId, text, sender, phone } = req.body;
@@ -1732,51 +1800,41 @@ app.post('/api/messages/send', async (req, res) => {
       const lead = await db.get("SELECT phone, channel_phone FROM leads WHERE id = ?", leadId);
       const targetPhone = phone || lead?.phone;
       if (targetPhone) {
-        // Obtenemos la configuración de canal específica para el lead
         const channel = await getChannelConfig(lead?.channel_phone);
         const outboundWebhook = channel?.outbound_webhook || await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK);
+        const chanPhone = lead?.channel_phone || channel?.phone || '+50244315578';
+        const formattedChanPhone = String(chanPhone).startsWith('+') ? String(chanPhone) : `+${String(chanPhone).replace(/\D/g, '')}`;
+        const formattedTargetPhone = String(targetPhone).startsWith('+') ? String(targetPhone) : `+${String(targetPhone).replace(/\D/g, '')}`;
 
         if (outboundWebhook && outboundWebhook.trim() !== '') {
-          // Enviar texto limpio a n8n
-          if (cleanText) {
-            fetch(outboundWebhook, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phone: targetPhone,
-                text: cleanText,
-                channel_phone: lead?.channel_phone || channel?.phone || null
-              })
-            }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
-          }
-          // Enviar imagen directo por YCloud si existe
-          if (imageUrl) {
-            sendImageViaYCloud(targetPhone, imageUrl, '', lead?.channel_phone);
-          }
+          fetch(outboundWebhook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone: formattedTargetPhone,
+              text: cleanText,
+              image_url: imageUrl || null,
+              channel_phone: formattedChanPhone
+            })
+          }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
         } else {
-          // FALLBACK DIRECTO A YCLOUD: Si no hay webhook de n8n, enviar el texto directamente a YCloud
-          const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-          const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
-          if (apiKey && fromNum && cleanText) {
-            console.log(`📩 Enviando texto directamente por YCloud (Sin n8n) desde ${fromNum} a ${targetPhone}`);
-            fetch('https://api.ycloud.com/v2/whatsapp/messages', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-              body: JSON.stringify({
-                from: fromNum,
-                to: targetPhone,
-                type: 'text',
-                text: { body: cleanText }
-              })
-            }).then(async r => {
-              if (!r.ok) {
-                const t = await r.text();
-                console.error(`❌ Error directo YCloud: ${r.status} ${t}`);
-              }
-            }).catch(err => console.error("❌ Error de red directo YCloud:", err.message));
-          }
+          // FALLBACK DIRECTO A YCLOUD: Si no hay webhook de n8n
           if (imageUrl) {
-            sendImageViaYCloud(targetPhone, imageUrl, '', lead?.channel_phone);
+            sendImageViaYCloud(formattedTargetPhone, imageUrl, cleanText, formattedChanPhone);
+          } else if (cleanText) {
+            const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+            if (apiKey) {
+              fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+                body: JSON.stringify({
+                  from: formattedChanPhone,
+                  to: formattedTargetPhone,
+                  type: 'text',
+                  text: { body: cleanText, preview_url: true }
+                })
+              }).catch(err => console.error("❌ Error directo YCloud:", err.message));
+            }
           }
         }
       }
