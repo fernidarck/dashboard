@@ -578,12 +578,14 @@ export default function ViewRAG({
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">📦 Stock</label>
-                  <select value={newProduct.stock || 'En stock'} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
-                    <option value="En stock">🟢 En stock</option>
-                    <option value="Agotado">🔴 Agotado</option>
-                    <option value="Bajo pedido">🟠 Bajo pedido</option>
-                    <option value="Pocas unidades">🟡 Pocas unidades</option>
-                  </select>
+                  <input type="text" list="stock-opts" value={newProduct.stock ?? 'En stock'} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Cantidad (ej: 5) o estado" />
+                  <datalist id="stock-opts">
+                    <option value="En stock" />
+                    <option value="Agotado" />
+                    <option value="Bajo pedido" />
+                    <option value="Pocas unidades" />
+                  </datalist>
+                  <p className="text-[9px] text-slate-400 italic ml-2">Escribe un número (ej: 5) o elige un estado. 0 = Agotado.</p>
                 </div>
               </div>
 
@@ -665,12 +667,8 @@ export default function ViewRAG({
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">📦 Stock</label>
-                  <select value={editingProduct.stock || 'En stock'} onChange={e => setEditingProduct({...editingProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
-                    <option value="En stock">🟢 En stock</option>
-                    <option value="Agotado">🔴 Agotado</option>
-                    <option value="Bajo pedido">🟠 Bajo pedido</option>
-                    <option value="Pocas unidades">🟡 Pocas unidades</option>
-                  </select>
+                  <input type="text" list="stock-opts" value={editingProduct.stock ?? 'En stock'} onChange={e => setEditingProduct({...editingProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Cantidad (ej: 5) o estado" />
+                  <p className="text-[9px] text-slate-400 italic ml-2">Escribe un número (ej: 5) o elige un estado. 0 = Agotado.</p>
                 </div>
               </div>
 
