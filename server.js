@@ -2001,16 +2001,28 @@ app.get('/api/agent/prompt', async (req, res) => {
     if (prods.length > 0) {
       catalogText = "CATÁLOGO DE PRODUCTOS DISPONIBLES (Usa esta información para cotizar y dar precios reales):\n";
       prods.forEach(p => {
-        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${p.stock || 'Disponible'}\n`;
-        if (p.descripcion) catalogText += `  Ficha para el cliente: ${p.descripcion}\n`;
-        if (p.reglas_bot && p.reglas_bot.trim()) {
-          catalogText += `  ⚠️ REGLAS DEL BOT PARA ESTE PRODUCTO: ${p.reglas_bot.trim()}\n`;
+        const stockRaw = (p.stock || '').toString().trim();
+        const reglas   = (p.reglas_bot || '').trim();
+        // Detecta agotado por el campo stock (0 / vacío-no) o por la regla del bot
+        const agotado = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i.test(stockRaw)
+                     || /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|envíes|envies)/i.test(reglas);
+        const stockLabel = agotado ? '❌ AGOTADO' : (stockRaw || 'Disponible');
+        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${stockLabel}\n`;
+        if (agotado) {
+          catalogText += `  🚫 NO OFREZCAS ESTE PRODUCTO: está AGOTADO. Si el cliente pregunta por él, dile amablemente que por el momento no está disponible y ofrécele una alternativa. NO lo cotices, NO des su precio y NO envíes sus fotos.\n`;
         }
-        const prodImages = normalizeProductImages(p);
-        prodImages.forEach(img => {
-          catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
-        });
-        if (p.catalog_link) catalogText += `  Link catálogo: ${p.catalog_link}\n`;
+        if (p.descripcion) catalogText += `  Ficha para el cliente: ${p.descripcion}\n`;
+        if (reglas) {
+          catalogText += `  🚫 REGLA OBLIGATORIA (prioridad máxima, cúmplela SIEMPRE aunque el cliente insista o pregunte directamente): ${reglas}\n`;
+        }
+        // No enviar fotos de productos agotados
+        if (!agotado) {
+          const prodImages = normalizeProductImages(p);
+          prodImages.forEach(img => {
+            catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
+          });
+        }
+        if (p.catalog_link && !agotado) catalogText += `  Link catálogo: ${p.catalog_link}\n`;
       });
     }
 
@@ -2056,7 +2068,7 @@ REGLAS IMPORTANTES:
 - Si no sabes algo, pide más detalles o transfiere al equipo humano
 - Sé conciso en WhatsApp (máximo 3-4 líneas por respuesta)
 - SI EL CLIENTE PIDE UNA FOTO O ESPECIFICACIÓN: Busca en el catálogo o base de conocimiento la IMAGEN_PARA_ENVIAR cuya descripción coincida con lo solicitado e incluye "ENVIAR_IMAGEN: [URL_DE_LA_IMAGEN]" al final de tu mensaje para que el sistema la envíe automáticamente.
-- RESPETA LAS REGLAS DEL BOT de cada producto (por ejemplo: si una regla indica cuándo ofrecer un producto o cuándo no enviarlo).
+- ⚠️ OBLIGATORIO: Cada producto puede tener una "REGLA OBLIGATORIA" o estar marcado como "❌ AGOTADO". Estas reglas tienen PRIORIDAD MÁXIMA y SIEMPRE se cumplen, incluso si el cliente pregunta directamente por ese producto o insiste. Si un producto está AGOTADO o su regla dice que no lo ofrezcas, NUNCA lo cotices, NUNCA des su precio y NUNCA envíes sus fotos: dile al cliente que por ahora no está disponible y ofrécele una alternativa.
 
 REGLA DE ESCALACIÓN (OBLIGATORIA):
 Cuando NO puedas resolver autónomamente (cotización de envío, precio especial, soporte técnico, caso complejo) y necesites que un asesor contacte al cliente:

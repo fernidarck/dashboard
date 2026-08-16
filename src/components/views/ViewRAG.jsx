@@ -35,8 +35,8 @@ const emptyProduct = {
   reglas_bot: '',
   precio: '',
   precio_oferta: '',
-  categoria: 'Motores',
-  stock: '',
+  categoria: 'General',
+  stock: 'En stock',
   imagen: '',
   imagenes: [],
   imagenes_meta: [],
@@ -409,10 +409,19 @@ export default function ViewRAG({
                     <button onClick={() => onDeleteProduct(prod.id)} className="bg-white p-3 rounded-2xl text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl active:scale-90" title="Eliminar producto"><Trash2 size={18} /></button>
                   </div>
                   {(() => {
-                    const q = parseInt(prod.stock, 10);
+                    const raw = (prod.stock || '').toString().trim();
+                    const q = parseInt(raw, 10);
                     const hasNum = !isNaN(q);
-                    const label = hasNum ? (q <= 0 ? 'Agotado' : `Stock: ${q}`) : (prod.stock || '');
-                    const style = !hasNum ? STOCK_STYLES['En stock'] : (q <= 0 ? STOCK_STYLES['Agotado'] : q <= 3 ? STOCK_STYLES['Poco stock'] : STOCK_STYLES['En stock']);
+                    let label = '', style = '';
+                    if (hasNum) {
+                      label = q <= 0 ? 'Agotado' : `Stock: ${q}`;
+                      style = q <= 0 ? STOCK_STYLES['Agotado'] : q <= 3 ? STOCK_STYLES['Poco stock'] : STOCK_STYLES['En stock'];
+                    } else if (raw) {
+                      label = raw;
+                      style = /agot/i.test(raw) ? STOCK_STYLES['Agotado']
+                            : /(poca|bajo|pedido)/i.test(raw) ? STOCK_STYLES['Poco stock']
+                            : STOCK_STYLES['En stock'];
+                    }
                     return label ? <span className={`absolute top-4 right-4 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-tighter border shadow-lg ${style}`}>{label}</span> : null;
                   })()}
                 </div>
@@ -552,7 +561,7 @@ export default function ViewRAG({
                 <input type="text" value={newProduct.nombre} onChange={e => setNewProduct({...newProduct, nombre: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Ej: Motor Residencial BFT Deimos BT A600" />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Precio Normal (Q)</label>
                   <input type="text" value={newProduct.precio} onChange={e => setNewProduct({...newProduct, precio: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Ej: 3500.00" />
@@ -565,6 +574,15 @@ export default function ViewRAG({
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
                   <select value={newProduct.categoria} onChange={e => setNewProduct({...newProduct, categoria: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
                     {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">📦 Stock</label>
+                  <select value={newProduct.stock || 'En stock'} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
+                    <option value="En stock">🟢 En stock</option>
+                    <option value="Agotado">🔴 Agotado</option>
+                    <option value="Bajo pedido">🟠 Bajo pedido</option>
+                    <option value="Pocas unidades">🟡 Pocas unidades</option>
                   </select>
                 </div>
               </div>
@@ -630,7 +648,7 @@ export default function ViewRAG({
                 <input type="text" value={editingProduct.nombre} onChange={e => setEditingProduct({...editingProduct, nombre: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Precio Normal (Q)</label>
                   <input type="text" value={editingProduct.precio} onChange={e => setEditingProduct({...editingProduct, precio: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
@@ -643,6 +661,15 @@ export default function ViewRAG({
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
                   <select value={editingProduct.categoria} onChange={e => setEditingProduct({...editingProduct, categoria: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
                     {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">📦 Stock</label>
+                  <select value={editingProduct.stock || 'En stock'} onChange={e => setEditingProduct({...editingProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
+                    <option value="En stock">🟢 En stock</option>
+                    <option value="Agotado">🔴 Agotado</option>
+                    <option value="Bajo pedido">🟠 Bajo pedido</option>
+                    <option value="Pocas unidades">🟡 Pocas unidades</option>
                   </select>
                 </div>
               </div>

@@ -272,7 +272,7 @@ export default function App() {
             {/* Filtro de Canal de WhatsApp */}
             <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2 shadow-sm hover:border-[#FF6B00] transition-all">
               <select
-                value={selectedChannel}
+                value={selectedChannel || 'all'}
                 disabled={!!currentUser?.channel_phone}
                 onChange={(e) => {
                   setSelectedChannel(e.target.value);

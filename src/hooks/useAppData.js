@@ -14,7 +14,7 @@ export function useAppData(apiBase, authToken) {
   const [users, setUsers] = useState([]);
   const [leads, setLeads] = useState([]);
   const [channels, setChannels] = useState([]);
-  const [selectedChannel, setSelectedChannel] = useState('all');
+  const [selectedChannel, setSelectedChannel] = useState(null);
   const [messages, setMessages] = useState([]);
   const [agenda, setAgenda] = useState([]);
   const [pedidos, setPedidos] = useState([]);
@@ -91,7 +91,14 @@ export function useAppData(apiBase, authToken) {
   const fetchChannels = useCallback(async () => {
     try {
       const res = await apiFetch(`${apiBase}/api/channels`);
-      setChannels(await res.json());
+      const data = await res.json();
+      setChannels(data);
+      // Auto-select the first channel on initial load (when nothing is selected yet)
+      // so the main channel appears by default instead of "all channels"
+      setSelectedChannel(prev => {
+        if (prev === null && data.length > 0) return data[0].phone;
+        return prev;
+      });
     } catch (err) { console.error(err); }
   }, [apiFetch, apiBase]);
 
