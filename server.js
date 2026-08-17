@@ -2022,7 +2022,7 @@ app.get('/api/agent/prompt', async (req, res) => {
         }
         const prodImages = normalizeProductImages(p);
         prodImages.forEach(img => {
-          catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
+          catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? `\n  ⚠️ ENVIÁ ESTA FOTO (la URL de arriba) automáticamente cuando el cliente pida o diga: ${img.desc}` : ''}\n`;
         });
         if (p.catalog_link) catalogText += `  Link catálogo: ${p.catalog_link}\n`;
       });
@@ -2037,7 +2037,7 @@ app.get('/api/agent/prompt', async (req, res) => {
         ragText += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n`;
         const docImgs = normalizeDocImages(d);
         docImgs.forEach(img => {
-          ragText += `IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
+          ragText += `IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? `\n  ⚠️ ENVIÁ ESTA FOTO (la URL de arriba) automáticamente cuando el cliente pida o diga: ${img.desc}` : ''}\n`;
         });
         ragText += `\n`;
       });
