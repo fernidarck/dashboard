@@ -1967,6 +1967,53 @@ app.delete('/api/rag/documents/:id', async (req, res) => {
   }
 });
 
+// Endpoint DETERMINÍSTICO: dado el mensaje del cliente + la respuesta del bot,
+// devuelve las URLs de fotos ETIQUETADAS de productos EN JUEGO cuya etiqueta
+// coincide con lo que pide el cliente (ej: "cuando te pidan medidas").
+// Excluye SIEMPRE los productos AGOTADOS (nunca manda la foto de un agotado).
+// n8n lo llama para adjuntar esas fotos sin depender del criterio del LLM.
+app.post('/api/photos/auto-attach', async (req, res) => {
+  try {
+    const clientMsg = String(req.body.clientMsg || '').toLowerCase();
+    const botMsg    = String(req.body.botMsg || '').toLowerCase();
+    if (!clientMsg && !botMsg) return res.json({ urls: [] });
+    const text = clientMsg + ' \n ' + botMsg;
+
+    const prods = await db.all("SELECT * FROM products WHERE activo = 1");
+    const AGOT_STOCK = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i;
+    const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
+    const STOP = new Set(['mesa','noche','melamina','madera','para','con','del','los','las','una','uno','modelo','color','motor','control']);
+    const urls = [];
+
+    for (const p of prods) {
+      const stockRaw = String(p.stock || '').toLowerCase().trim();
+      const reglas   = String(p.reglas_bot || '').toLowerCase();
+      if (AGOT_STOCK.test(stockRaw) || AGOT_RULE.test(reglas)) continue; // AGOTADO => jamás
+
+      // ¿producto EN JUEGO? su "modelo N" o una palabra distintiva de su nombre aparece en el texto
+      const nombre = String(p.nombre || '').toLowerCase();
+      const modelo = (nombre.match(/modelo\s*\d+/) || [])[0];
+      const tokens = nombre.split(/\s+/).filter(w => w.length > 3 && !STOP.has(w));
+      const enJuego = (modelo && text.includes(modelo)) || tokens.some(t => text.includes(t));
+      if (!enJuego) continue;
+
+      for (const img of normalizeProductImages(p)) {
+        const desc = String(img.desc || '').toLowerCase();
+        if (!desc) continue;
+        // La etiqueta describe CUÁNDO enviarla. Extraer el disparador (lo que viene tras "cuando (te/les) pidan/pregunten...").
+        const trig = (desc.match(/cuando\s+(?:te\s+|les\s+)?(?:pidan|pida|pregunten(?:\s+por)?|quieran\s+ver|mostrala|mostrar)\s+(.+)/) || [,''])[1] || desc;
+        const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w));
+        const medidas = /medida|mide|tama|dimensi|cu[aá]nto\s+mide/.test(clientMsg) && /medida/.test(desc);
+        const overlap = trigWords.some(w => clientMsg.includes(w));
+        if (medidas || overlap) urls.push(img.url);
+      }
+    }
+    res.json({ urls: [...new Set(urls)].slice(0, 4) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Endpoint para que n8n obtenga el prompt completo del agente listo para usar
 app.get('/api/agent/prompt', async (req, res) => {
   try {
