@@ -2007,22 +2007,24 @@ app.get('/api/agent/prompt', async (req, res) => {
         const agotado = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i.test(stockRaw)
                      || /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|envíes|envies)/i.test(reglas);
         const stockLabel = agotado ? '❌ AGOTADO' : (stockRaw || 'Disponible');
-        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${stockLabel}\n`;
+        // AGOTADO: NO enviar ficha, descripción, medidas, fotos ni link. Solo el
+        // nombre + la orden de no ofrecerlo, para que el bot no tenga con qué venderlo
+        // ni lo cuente entre los modelos disponibles.
         if (agotado) {
-          catalogText += `  🚫 NO OFREZCAS ESTE PRODUCTO: está AGOTADO. Si el cliente pregunta por él, dile amablemente que por el momento no está disponible y ofrécele una alternativa. NO lo cotices, NO des su precio y NO envíes sus fotos.\n`;
+          catalogText += `• ${p.nombre} — ❌ AGOTADO / NO DISPONIBLE\n`;
+          catalogText += `  🚫 NO OFREZCAS NI MENCIONES ESTE PRODUCTO. Está AGOTADO. NO lo incluyas al listar modelos disponibles, NO lo cotices, NO des su precio, NO des sus medidas ni fotos. Si el cliente pregunta específicamente por él, dile que por el momento no está disponible y ofrécele una alternativa de las que SÍ hay.\n`;
+          return; // pasa al siguiente producto
         }
+        catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${stockLabel}\n`;
         if (p.descripcion) catalogText += `  Ficha para el cliente: ${p.descripcion}\n`;
         if (reglas) {
           catalogText += `  🚫 REGLA OBLIGATORIA (prioridad máxima, cúmplela SIEMPRE aunque el cliente insista o pregunte directamente): ${reglas}\n`;
         }
-        // No enviar fotos de productos agotados
-        if (!agotado) {
-          const prodImages = normalizeProductImages(p);
-          prodImages.forEach(img => {
-            catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
-          });
-        }
-        if (p.catalog_link && !agotado) catalogText += `  Link catálogo: ${p.catalog_link}\n`;
+        const prodImages = normalizeProductImages(p);
+        prodImages.forEach(img => {
+          catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? ` (Foto de: ${img.desc})` : ''}\n`;
+        });
+        if (p.catalog_link) catalogText += `  Link catálogo: ${p.catalog_link}\n`;
       });
     }
 
