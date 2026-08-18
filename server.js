@@ -1826,12 +1826,18 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
     const docUrl = `https://${req.get('host')}/uploads/${req.file.filename}`;
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Si el archivo es una imagen, se manda como FOTO (tipo WhatsApp), no como documento.
+    const isImage = String(req.file.mimetype || '').startsWith('image/');
+    const mediaType = isImage ? 'image' : 'document';
     const result = await db.run(
       "INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-      leadId, 'agent', fileName, docUrl, 'document', time
+      leadId, 'agent', isImage ? (caption || '') : fileName, docUrl, mediaType, time
     );
-    if (lead.phone) sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
-    res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType: 'document' });
+    if (lead.phone) {
+      if (isImage) sendImageViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
+      else         sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
+    }
+    res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

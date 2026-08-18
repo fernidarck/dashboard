@@ -45,6 +45,26 @@ export default function ViewConversaciones({
     finally { setSendingDoc(false); }
   };
 
+  // Pegar imagen desde el portapapeles (Ctrl/Cmd+V) y enviarla como foto (tipo WhatsApp)
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items || !selectedChatId) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith('image/')) {
+        const blob = it.getAsFile();
+        if (!blob) continue;
+        e.preventDefault();
+        if (blob.size > 15 * 1024 * 1024) { alert('La imagen es muy grande (máximo 15 MB).'); return; }
+        const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const file = new File([blob], `pegada-${Date.now()}.${ext}`, { type: blob.type });
+        setSendingDoc(true);
+        try { await onSendDocument?.(selectedChatId, file); }
+        finally { setSendingDoc(false); }
+        return;
+      }
+    }
+  };
+
   // Función para guardar / descargar contacto en la agenda del teléfono (.vcf vCard)
   const downloadVCard = (lead) => {
     if (!lead || !lead.phone) return;
@@ -344,7 +364,8 @@ export default function ViewConversaciones({
               value={messageText}
               onChange={e => setMessageText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
-              placeholder="Escribe un mensaje por WhatsApp..."
+              onPaste={handlePaste}
+              placeholder="Escribe un mensaje o pega una imagen (Ctrl+V)..."
               className="flex-1 min-w-0 bg-transparent px-3 md:px-4 py-2 text-base md:text-xs outline-none font-medium text-slate-800"
             />
             
