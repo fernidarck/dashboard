@@ -2458,13 +2458,20 @@ app.get('/api/rag/context', async (req, res) => {
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
     const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot FROM products WHERE activo = 1");
     // Detecta agotado (sin stock inmediato). Los muebles se fabrican a pedido en ~4 días.
+    // 3 estados de stock:
+    //  - AGOTADO  → no se ofrece; solo aparece (a pedido) si el cliente lo nombra específicamente.
+    //  - A PEDIDO / FABRICACIÓN → SÍ se ofrece, pero aclarando que es a pedido (~4 días).
+    //  - DISPONIBLE (en stock / número) → se ofrece normal, como disponible.
     const AGOT_STOCK = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i;
     const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
+    const APEDIDO    = /a\s*pedido|bajo\s*pedido|por\s*encargo|encargo|fabricaci|producci/i;
     const noAcc = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
     const GENERIC = new Set(['mesa','noche','melamina','madera','mueble','muebles','modelo','color','para','con','precio','medida','medidas','info','informacion','tienen','tenes','hola','quiero','busco']);
     const qNorm = noAcc(q);
     const prods = prodRows.map(p => {
-      const agotado = AGOT_STOCK.test(String(p.stock).trim()) || AGOT_RULE.test(String(p.reglas_bot));
+      const stockStr = String(p.stock || '').trim();
+      const agotado  = AGOT_STOCK.test(stockStr) || AGOT_RULE.test(String(p.reglas_bot));
+      const aPedido  = !agotado && APEDIDO.test(stockStr);
       // Formato IDÉNTICO al anterior para los disponibles (no rompe nada).
       let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + ' - Link: ' + p.catalog_link;
       if (agotado) {
@@ -2475,6 +2482,9 @@ app.get('/api/rag/context', async (req, res) => {
         if (!preguntoPorEl) return null;
         // Preguntó por él: ofrecerlo A PEDIDO (~4 días), nunca como disponible al instante.
         content = 'ESTADO: SIN STOCK INMEDIATO. NO lo listes entre los modelos disponibles. Como el cliente pregunto por este producto en concreto, decile que lo fabricamos A PEDIDO, listo en ~4 dias aprox (NUNCA digas que hay en stock ni prometas entrega inmediata). ' + content;
+      } else if (aPedido) {
+        // A pedido / fabricación: SÍ se ofrece (incluso proactivamente), pero como fabricación a pedido.
+        content = 'ESTADO: A PEDIDO / FABRICACION — no hay stock inmediato, pero lo fabricamos A PEDIDO, listo en ~4 dias aprox. SI podes ofrecerlo, siempre aclarando que es a pedido (~4 dias); NUNCA prometas entrega inmediata ni digas que hay stock. ' + content;
       }
       return { name: p.nombre, category: p.categoria, content };
     }).filter(Boolean);

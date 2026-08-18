@@ -419,7 +419,7 @@ export default function ViewRAG({
                     } else if (raw) {
                       label = raw;
                       style = /agot/i.test(raw) ? STOCK_STYLES['Agotado']
-                            : /(poca|bajo|pedido)/i.test(raw) ? STOCK_STYLES['Poco stock']
+                            : /(poca|bajo|pedido|fabricaci|producci|encargo)/i.test(raw) ? STOCK_STYLES['Poco stock']
                             : STOCK_STYLES['En stock'];
                     }
                     return label ? <span className={`absolute top-4 right-4 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-tighter border shadow-lg ${style}`}>{label}</span> : null;
@@ -581,11 +581,12 @@ export default function ViewRAG({
                   <input type="text" list="stock-opts" value={newProduct.stock ?? 'En stock'} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Cantidad (ej: 5) o estado" />
                   <datalist id="stock-opts">
                     <option value="En stock" />
+                    <option value="A pedido (4 días)" />
+                    <option value="Fabricación" />
                     <option value="Agotado" />
-                    <option value="Bajo pedido" />
                     <option value="Pocas unidades" />
                   </datalist>
-                  <p className="text-[9px] text-slate-400 italic ml-2">Escribe un número (ej: 5) o elige un estado. 0 = Agotado.</p>
+                  <p className="text-[9px] text-slate-400 italic ml-2 leading-relaxed">Número (ej: 5) o estado. 🟢 <b>En stock</b> = lo ofrece disponible. 🔨 <b>A pedido (4 días)</b> / <b>Fabricación</b> = lo ofrece pero aclara que es a pedido (~4 días). 🔴 <b>Agotado</b> = no lo ofrece (solo si preguntan por él). 0 = Agotado.</p>
                 </div>
               </div>
 
@@ -668,7 +669,7 @@ export default function ViewRAG({
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">📦 Stock</label>
                   <input type="text" list="stock-opts" value={editingProduct.stock ?? 'En stock'} onChange={e => setEditingProduct({...editingProduct, stock: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="Cantidad (ej: 5) o estado" />
-                  <p className="text-[9px] text-slate-400 italic ml-2">Escribe un número (ej: 5) o elige un estado. 0 = Agotado.</p>
+                  <p className="text-[9px] text-slate-400 italic ml-2 leading-relaxed">Número (ej: 5) o estado. 🟢 <b>En stock</b> = lo ofrece disponible. 🔨 <b>A pedido (4 días)</b> / <b>Fabricación</b> = lo ofrece pero aclara que es a pedido (~4 días). 🔴 <b>Agotado</b> = no lo ofrece (solo si preguntan por él). 0 = Agotado.</p>
                 </div>
               </div>
 
