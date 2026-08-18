@@ -2054,14 +2054,11 @@ app.get('/api/agent/prompt', async (req, res) => {
         const agotado = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i.test(stockRaw)
                      || /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|envíes|envies)/i.test(reglas);
         const stockLabel = agotado ? '❌ AGOTADO' : (stockRaw || 'Disponible');
-        // AGOTADO: NO enviar ficha, descripción, medidas, fotos ni link. Solo el
-        // nombre + la orden de no ofrecerlo, para que el bot no tenga con qué venderlo
-        // ni lo cuente entre los modelos disponibles.
-        if (agotado) {
-          catalogText += `• ${p.nombre} — ❌ AGOTADO / NO DISPONIBLE\n`;
-          catalogText += `  🚫 NO OFREZCAS NI MENCIONES ESTE PRODUCTO. Está AGOTADO. NO lo incluyas al listar modelos disponibles, NO lo cotices, NO des su precio, NO des sus medidas ni fotos. Si el cliente pregunta específicamente por él, dile que por el momento no está disponible y ofrécele una alternativa de las que SÍ hay.\n`;
-          return; // pasa al siguiente producto
-        }
+        // AGOTADO: se OMITE por completo del catálogo. El bot no lo ve, así que no
+        // puede listarlo, contarlo entre los modelos, cotizarlo ni mencionarlo.
+        // (Si el cliente pregunta por él, no tiene el dato y, por la regla
+        // anti-invención, dirá que no está disponible en vez de inventar.)
+        if (agotado) return;
         catalogText += `• ${p.nombre} — Precio: ${p.precio || 'Consultar'}${p.precio_oferta ? ` | 🔥 OFERTA: ${p.precio_oferta} (ofrécela como precio promocional)` : ''} | Stock: ${stockLabel}\n`;
         if (p.descripcion) catalogText += `  Ficha para el cliente: ${p.descripcion}\n`;
         if (reglas) {
