@@ -2450,8 +2450,21 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
-    const prods = await db.all("SELECT nombre as name, categoria as category, COALESCE(descripcion, '') || ' - Precio: ' || COALESCE(precio, 'Consultar') || CASE WHEN COALESCE(precio_oferta,'') <> '' THEN ' - OFERTA: ' || precio_oferta ELSE '' END || ' - Imagen: ' || COALESCE(imagen, '') || ' - Link: ' || COALESCE(catalog_link, '') as content FROM products WHERE activo = 1");
-    
+    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot FROM products WHERE activo = 1");
+    // Detecta agotado (sin stock inmediato). Los muebles se fabrican a pedido en ~4 días.
+    const AGOT_STOCK = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i;
+    const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
+    const prods = prodRows.map(p => {
+      const agotado = AGOT_STOCK.test(String(p.stock).trim()) || AGOT_RULE.test(String(p.reglas_bot));
+      // Formato IDÉNTICO al anterior para los disponibles (no rompe nada).
+      let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + ' - Link: ' + p.catalog_link;
+      if (agotado) {
+        // No hay stock inmediato: ofrecerlo A PEDIDO (fabricación ~4 días), no como disponible al instante.
+        content = 'ESTADO: SIN STOCK INMEDIATO. Este mueble lo fabricamos A PEDIDO, listo en ~4 dias aprox. Ofrecelo asi (a pedido, 4 dias), NUNCA digas que hay en stock ni prometas entrega inmediata. ' + content;
+      }
+      return { name: p.nombre, category: p.categoria, content };
+    });
+
     const allKnowledge = [...docs, ...prods];
 
     if (allKnowledge.length === 0) return res.json({ context: "No hay información en la base de datos", found: false, sources: [] });
