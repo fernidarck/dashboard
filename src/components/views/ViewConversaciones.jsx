@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Search, X, AlertTriangle, Bot, Power, Database,
   MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft, Paperclip, FileText,
@@ -17,7 +17,8 @@ export default function ViewConversaciones({
   onSendDocument,
   onToggleBot,
   messagesContainerRef,
-  messagesEndRef
+  messagesEndRef,
+  openChatNonce = 0
 }) {
   const [messageText, setMessageText] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
@@ -27,6 +28,12 @@ export default function ViewConversaciones({
   const [catalogSearch, setCatalogSearch] = useState('');
   const [chatSearch, setChatSearch] = useState('');
   const fileInputRef = useRef(null);
+
+  // Al navegar desde Leads/Dashboard/notificación (cambia openChatNonce), abrir el chat
+  // específico también en móvil (no quedarse en la lista general).
+  useEffect(() => {
+    if (openChatNonce) setMobileShowChat(true);
+  }, [openChatNonce]);
 
   const handleSend = async () => {
     if (!messageText.trim()) return;

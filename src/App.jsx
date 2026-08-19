@@ -47,7 +47,17 @@ export default function App() {
   const [activeTab,      setActiveTab]      = useState('dashboard');
   const [sidebarOpen,    setSidebarOpen]    = useState(false);
   const [selectedChatId, setSelectedChatId] = useState(null);
+  const [openChatNonce,  setOpenChatNonce]  = useState(0);
   const [selectedLead,   setSelectedLead]   = useState({});
+
+  // Abrir el chat de un lead específico (desde Leads, Dashboard o una notificación).
+  // El nonce fuerza que en móvil se muestre el chat, no la lista general.
+  const openConversation = (id) => {
+    if (!id) return;
+    setActiveTab('conversaciones');
+    setSelectedChatId(id);
+    setOpenChatNonce(n => n + 1);
+  };
   const [botEnabled,     setBotEnabled]     = useState(true);
   const [showChangePwd,  setShowChangePwd]  = useState(false);
   const [newPwd,         setNewPwd]         = useState('');
@@ -331,7 +341,7 @@ export default function App() {
                 pedidos={pedidos}
                 agenda={agenda}
                 stats={stats}
-                onOpenConversation={(id) => { setActiveTab('conversaciones'); setSelectedChatId(id); }}
+                onOpenConversation={openConversation}
                 onOpenLeads={() => setActiveTab('crm')}
                 onConfigureAgent={() => setActiveTab('cerebro')}
               />
@@ -342,6 +352,7 @@ export default function App() {
                 messages={messages}
                 products={products}
                 selectedChatId={selectedChatId}
+                openChatNonce={openChatNonce}
                 selectedLead={selectedLead}
                 onSelectChat={setSelectedChatId}
                 onSendMessage={sendMessage}
@@ -359,7 +370,7 @@ export default function App() {
                 onToggleBot={handleToggleBot}
                 onArchive={archiveLead}
                 onDeleteMessages={deleteMessages}
-                onOpenConversation={(id) => { setActiveTab('conversaciones'); setSelectedChatId(id); }}
+                onOpenConversation={openConversation}
               />
             )}
             {activeTab === 'agenda' && (
@@ -453,7 +464,7 @@ export default function App() {
               </div>
             </div>
             <button
-              onClick={() => { setActiveTab('conversaciones'); setSelectedChatId(notification.lead?.id); setNotification(null); }}
+              onClick={() => { openConversation(notification.lead?.id); setNotification(null); }}
               className="w-full py-2.5 bg-slate-800 hover:bg-[#FF6B00] text-slate-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition-all border-t border-slate-700"
             >
               Ver conversación →
