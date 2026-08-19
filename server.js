@@ -2009,8 +2009,10 @@ app.post('/api/photos/auto-attach', async (req, res) => {
         // La etiqueta describe CUÁNDO enviarla. Extraer el disparador (lo que viene tras "cuando (te/les) pidan/pregunten...").
         const trig = (desc.match(/cuando\s+(?:te\s+|les\s+)?(?:pidan|pida|pregunten(?:\s+por)?|quieran\s+ver|mostrala|mostrar)\s+(.+)/) || [,''])[1] || desc;
         const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w));
-        const medidas = /medida|mide|tama|dimensi|cu[aá]nto\s+mide/.test(clientMsg) && /medida/.test(desc);
-        const overlap = trigWords.some(w => clientMsg.includes(w));
+        // Se dispara si se están hablando medidas EN EL MENSAJE DEL CLIENTE O EN LA RESPUESTA DEL BOT
+        // (ej: cliente dice "modelo 1" y el bot responde "el modelo 1 MIDE 60x45x38").
+        const medidas = /medida|mide|tama|dimensi|cu[aá]nto\s+mide/.test(text) && /medida/.test(desc);
+        const overlap = trigWords.some(w => text.includes(w));
         if (medidas || overlap) urls.push(img.url);
       }
     }
