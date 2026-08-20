@@ -31,7 +31,7 @@ function ClientSidebarPanel({
   const waUrl = getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id);
 
   return (
-    <div className="w-84 md:w-96 border-l border-slate-100 bg-white flex flex-col shrink-0 animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar shadow-2xl z-20">
+    <div className="fixed inset-0 z-50 w-full md:relative md:inset-auto md:z-20 md:w-96 border-l border-slate-100 bg-white flex flex-col shrink-0 animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar shadow-2xl">
       <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
         <div>
           <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Ficha del Lead</h3>
