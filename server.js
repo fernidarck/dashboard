@@ -16,6 +16,16 @@ function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
 
+// Hora actual de Guatemala (UTC-6) en formato 12h, ej: "08:34 AM".
+// Se usa para el timestamp de TODOS los mensajes (cliente, bot y agente),
+// así el dashboard muestra la hora local y no la del servidor (UTC).
+function horaGuate() {
+  return new Date().toLocaleTimeString('en-US', {
+    timeZone: 'America/Guatemala',
+    hour: '2-digit', minute: '2-digit', hour12: true
+  });
+}
+
 process.on('uncaughtException', (err) => {
   console.error('❌ UNCAUGHT EXCEPTION:', err.message);
   console.error(err.stack);
@@ -816,11 +826,7 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       if (defaultChan) cleanChannelPhone = String(defaultChan.phone).replace(/\D/g, '');
     }
 
-    const now = new Date();
-    const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-    const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + 
-                 guateTime.getUTCMinutes().toString().padStart(2, '0') + 
-                 (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
+    const time = horaGuate();
 
     console.log(`📨 [${sourceName}] Procesando mensaje:`, {
       sender: parsed.sender,
@@ -1007,9 +1013,7 @@ app.post('/api/leads/handoff', async (req, res) => {
     if (currentLead && (currentLead.estado === 'En Gestión' || currentLead.botActive === 0)) {
       // Solo guardar el mensaje del cliente si viene, pero no re-marcar como urgente
       if (mensaje && mensaje.trim()) {
-        const now = new Date();
-        const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-        const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
+        const time = horaGuate();
         await saveSmartMessage(id, 'client', mensaje.trim(), time);
       }
       const skipReason = currentLead.botActive === 0 ? 'Bot ya inactivo — handoff ignorado' : 'Lead ya en gestión manual';
@@ -1025,9 +1029,7 @@ app.post('/api/leads/handoff', async (req, res) => {
 
     // Bug 3 fix: guardar el mensaje del cliente aunque el bot esté apagado
     if (mensaje && mensaje.trim()) {
-      const now = new Date();
-      const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-      const time = guateTime.getUTCHours().toString().padStart(2, '0') + ':' + guateTime.getUTCMinutes().toString().padStart(2, '0') + (guateTime.getUTCHours() >= 12 ? ' PM' : ' AM');
+      const time = horaGuate();
       await saveSmartMessage(id, 'client', mensaje.trim(), time);
     }
 
@@ -1747,7 +1749,7 @@ app.post('/api/messages/send', async (req, res) => {
     }
 
     const msgSender = sender || 'agent';
-    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    const time = horaGuate();
 
     // Extraer imagen si el texto trae ENVIAR_IMAGEN:
     const { cleanText, imageUrl } = parseImageFromText(text);
@@ -1825,7 +1827,7 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     }
     const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
     const docUrl = `https://${req.get('host')}/uploads/${req.file.filename}`;
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = horaGuate();
     // Si el archivo es una imagen, se manda como FOTO (tipo WhatsApp), no como documento.
     const isImage = String(req.file.mimetype || '').startsWith('image/');
     const mediaType = isImage ? 'image' : 'document';
