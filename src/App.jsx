@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
   Brain, Database, Zap, Search, Bell, X, MoreVertical,
-  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown
+  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown, AtSign
 } from 'lucide-react';
 import Login from './components/Login.jsx';
 import LogoMark from './components/LogoMark.jsx';
@@ -14,6 +14,7 @@ import ViewAgenda from './components/views/ViewAgenda.jsx';
 import ViewPedidos from './components/views/ViewPedidos.jsx';
 import ViewCerebro from './components/views/ViewCerebro.jsx';
 import ViewRAG from './components/views/ViewRAG.jsx';
+import ViewComentarios from './components/views/ViewComentarios.jsx';
 
 const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 const CURRENT_USER_ID = 'fer';
@@ -222,6 +223,7 @@ export default function App() {
               <SidebarItem icon={Users}         label="Leads"            id="crm" />
               <SidebarItem icon={Calendar}      label="Agenda IA"        id="agenda" />
               <SidebarItem icon={ShoppingBag}   label="Pedidos IA"       id="pedidos" />
+              <SidebarItem icon={AtSign}        label="Comentarios"      id="comentarios" />
             </div>
             {currentUser?.role === 'admin' && (
               <div>
@@ -387,6 +389,9 @@ export default function App() {
                 onSavePedido={savePedido}
                 onDeletePedido={deletePedido}
               />
+            )}
+            {activeTab === 'comentarios' && (
+              <ViewComentarios apiBase={API_BASE_URL} authToken={authToken} />
             )}
             {activeTab === 'cerebro' && (
               <ViewCerebro

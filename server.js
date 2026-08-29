@@ -322,6 +322,23 @@ async function setup() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id)
       );
+
+      CREATE TABLE IF NOT EXISTS redes_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT DEFAULT 'instagram',
+        comment_id TEXT UNIQUE,
+        media_id TEXT,
+        parent_id TEXT,
+        from_id TEXT,
+        from_name TEXT,
+        text TEXT,
+        bot_reply TEXT,
+        status TEXT DEFAULT 'nuevo',
+        is_delicate INTEGER DEFAULT 0,
+        permalink TEXT,
+        timestamp TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Migration: add bot_active column to whatsapp_channels if not exists
@@ -2724,6 +2741,106 @@ app.get('/api/rag/test-search', async (req, res) => {
     console.error("❌ Error en test-search inteligente:", err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── COMENTARIOS DE REDES (Instagram) ────────────────────────────────────────
+// Módulo NUEVO y AISLADO: no toca el flujo de WhatsApp. El bot de WhatsApp usa
+// YCloud; esto usa el token de Meta (getDynamicSetting 'meta_page_token').
+const IG_GRAPH = 'https://graph.facebook.com/v21.0';
+
+async function getMetaPageToken() {
+  return await getDynamicSetting('meta_page_token', process.env.META_PAGE_TOKEN);
+}
+
+// Clasificación mixta: ¿el comentario es DELICADO (requiere que conteste un humano)?
+function comentarioEsDelicado(text) {
+  const t = normalize(text || '');
+  const claves = ['queja','reclamo','pesimo','malo','horrible','estafa','engan','engañ','fraude',
+    'denunci','no sirve','no funciona','roto','defectuoso','devoluc','reembolso','garantia',
+    'demora','tarda','molest','enojad','indignad','decepcion','verguenza','vergüenza','robo',
+    'ladron','ladrón','no llego','no llegó','nunca llego','pesima','malisimo','malísimo'];
+  return claves.some(k => t.includes(k));
+}
+
+// Responder un comentario de Instagram (respuesta pública)
+async function replyToIGComment(commentId, message) {
+  const token = await getMetaPageToken();
+  if (!token) throw new Error('No hay token de Meta configurado (META_PAGE_TOKEN)');
+  const r = await fetch(`${IG_GRAPH}/${commentId}/replies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, access_token: token })
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.error) throw new Error(`Meta ${r.status}: ${(data.error?.message || JSON.stringify(data)).slice(0, 200)}`);
+  return data;
+}
+
+// Webhook de Meta — verificación (GET)
+app.get('/webhooks/instagram', async (req, res) => {
+  const verifyToken = await getDynamicSetting('meta_verify_token', process.env.META_VERIFY_TOKEN || 'onecontrol_ig_verify_2026');
+  if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === verifyToken) {
+    console.log('✅ Webhook de Instagram verificado');
+    return res.status(200).send(req.query['hub.challenge']);
+  }
+  return res.sendStatus(403);
+});
+
+// Webhook de Meta — recepción de comentarios nuevos (POST)
+app.post('/webhooks/instagram', async (req, res) => {
+  res.sendStatus(200); // responder rápido a Meta
+  try {
+    const ig = await getDynamicSetting('ig_user_id', process.env.IG_USER_ID || '17841477412607895');
+    for (const entry of (req.body.entry || [])) {
+      for (const ch of (entry.changes || [])) {
+        if (ch.field !== 'comments') continue;
+        const v = ch.value || {};
+        if (!v.id) continue;
+        const fromId = v.from?.id || '';
+        if (fromId && String(fromId) === String(ig)) continue; // ignorar respuestas propias
+        const text = v.text || '';
+        const delicado = comentarioEsDelicado(text) ? 1 : 0;
+        try {
+          await db.run(
+            "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, parent_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES ('instagram', ?, ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
+            v.id, v.media?.id || '', v.parent_id || null, fromId, v.from?.username || v.from?.name || '', text, delicado, horaGuate()
+          );
+          console.log(`💬 Comentario IG de ${v.from?.username || fromId}: "${String(text).slice(0, 60)}" (delicado: ${delicado})`);
+        } catch (e) { console.error('Error guardando comentario:', e.message); }
+      }
+    }
+  } catch (err) {
+    console.error('❌ Error en webhook instagram:', err.message);
+  }
+});
+
+// Listar comentarios (para el dashboard)
+app.get('/api/comments', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM redes_comments ORDER BY id DESC LIMIT 200");
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Responder un comentario desde el dashboard (manual)
+app.post('/api/comments/:id/reply', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Falta el mensaje' });
+    const c = await db.get("SELECT * FROM redes_comments WHERE id = ?", req.params.id);
+    if (!c) return res.status(404).json({ error: 'Comentario no encontrado' });
+    await replyToIGComment(c.comment_id, message);
+    await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'manual' WHERE id = ?", message, req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cambiar estado de un comentario (visto/resuelto)
+app.post('/api/comments/:id/status', async (req, res) => {
+  try {
+    await db.run("UPDATE redes_comments SET status = ? WHERE id = ?", req.body.status || 'visto', req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
