@@ -622,6 +622,12 @@ async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null
     leadId, sender, text, timestamp, mediaUrl, mediaType
   );
 
+  // Si el bot respondió con éxito, limpiar la alerta de "bot caído" (auto-recuperación).
+  // Fire-and-forget con catch: nunca puede afectar el guardado del mensaje.
+  if (sender === 'bot') {
+    db.run("DELETE FROM settings WHERE key='bot_down_alert'").catch(() => {});
+  }
+
   // 2. Si es del cliente, intentar extraer datos (Simulado por ahora, n8n hace el pesado)
   if (sender === 'client' && text) {
     const t = normalize(text);
@@ -1333,6 +1339,12 @@ let lastBotDownAlert = 0;
 app.post('/api/alert/bot-down', async (req, res) => {
   try {
     const { workflow, node, error } = req.body || {};
+    // Guardar el estado para el BANNER del dashboard (siempre, sin throttle,
+    // así el aviso visual es confiable aunque el WhatsApp rebote por la regla de 24h)
+    try {
+      await db.run("REPLACE INTO settings (key, value) VALUES ('bot_down_alert', ?)",
+        JSON.stringify({ active: true, node: node || '', error: String(error || '').slice(0, 300), hora: horaGuate(), ts: new Date().toISOString() }));
+    } catch (e) { /* no bloquear la alerta si falla el guardado */ }
     const now = Date.now();
     if (now - lastBotDownAlert < 15 * 60 * 1000) {
       return res.json({ success: true, throttled: true });
@@ -1348,6 +1360,24 @@ app.post('/api/alert/bot-down', async (req, res) => {
     console.error('❌ Error en /api/alert/bot-down:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Estado de la alerta del bot para el banner del dashboard
+app.get('/api/system-alert', async (_req, res) => {
+  try {
+    const row = await db.get("SELECT value FROM settings WHERE key='bot_down_alert'");
+    if (!row?.value) return res.json({ active: false });
+    let a = {}; try { a = JSON.parse(row.value); } catch { a = {}; }
+    res.json(a);
+  } catch (e) { res.json({ active: false }); }
+});
+
+// Descartar la alerta (cuando el dueño ya la vio / recargó el saldo)
+app.post('/api/system-alert/clear', async (_req, res) => {
+  try {
+    await db.run("DELETE FROM settings WHERE key='bot_down_alert'");
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/pedidos', async (req, res) => {

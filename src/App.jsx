@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
   Brain, Database, Zap, Search, Bell, X, MoreVertical,
-  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown, AtSign
+  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown, AtSign, AlertTriangle
 } from 'lucide-react';
 import Login from './components/Login.jsx';
 import LogoMark from './components/LogoMark.jsx';
@@ -22,6 +22,7 @@ const CURRENT_USER_ID = 'fer';
 export default function App() {
   const savedToken = localStorage.getItem('dashboard_token');
   const [authToken, setAuthToken] = useState(savedToken || null);
+  const [sysAlert, setSysAlert] = useState(null); // alerta "bot caído" (banner)
 
   const {
     currentUser, users,
@@ -50,6 +51,27 @@ export default function App() {
   const [selectedChatId, setSelectedChatId] = useState(null);
   const [openChatNonce,  setOpenChatNonce]  = useState(0);
   const [selectedLead,   setSelectedLead]   = useState({});
+
+  // Alerta "bot caído": consultar cada 30s y mostrar el banner rojo
+  useEffect(() => {
+    if (!authToken) return;
+    let stop = false;
+    const check = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/system-alert`, { headers: { Authorization: `Bearer ${authToken}` } });
+        const a = await res.json();
+        if (!stop) setSysAlert(a && a.active ? a : null);
+      } catch { /* silencioso */ }
+    };
+    check();
+    const t = setInterval(check, 30000);
+    return () => { stop = true; clearInterval(t); };
+  }, [authToken]);
+
+  const dismissSysAlert = async () => {
+    setSysAlert(null);
+    try { await fetch(`${API_BASE_URL}/api/system-alert/clear`, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } }); } catch { /* */ }
+  };
 
   // Abrir el chat de un lead específico (desde Leads, Dashboard o una notificación).
   // El nonce fuerza que en móvil se muestre el chat, no la lista general.
@@ -189,6 +211,20 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-hidden">
+      {/* Banner de alerta: bot caído */}
+      {sysAlert && (
+        <div className="fixed top-0 left-0 right-0 z-[200] bg-red-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2 text-sm font-bold min-w-0">
+            <AlertTriangle size={18} className="shrink-0" />
+            <span className="truncate">
+              🚨 El bot no pudo responder{sysAlert.error ? ` — ${sysAlert.error}` : ''}{sysAlert.hora ? ` (${sysAlert.hora})` : ''}. Revisá el saldo de IA.
+            </span>
+          </div>
+          <button onClick={dismissSysAlert} className="shrink-0 text-white/90 hover:text-white p-1 rounded-lg hover:bg-red-700" title="Descartar alerta">
+            <X size={18} />
+          </button>
+        </div>
+      )}
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] md:hidden animate-in fade-in duration-300" onClick={() => setSidebarOpen(false)} />
