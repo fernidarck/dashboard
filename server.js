@@ -2873,6 +2873,39 @@ app.post('/api/comments/:id/status', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Sincronizar comentarios desde Instagram (pull) — trae los de los últimos posts,
+// por si el webhook se perdió alguno o son anteriores a la conexión.
+app.post('/api/comments/sync', async (_req, res) => {
+  try {
+    const token = await getMetaPageToken();
+    if (!token) return res.status(400).json({ error: 'No hay token de Meta configurado (META_PAGE_TOKEN).' });
+    const ig = await getDynamicSetting('ig_user_id', process.env.IG_USER_ID || '17841477412607895');
+    // username propio para no guardar las respuestas del negocio
+    let selfUser = '';
+    try { const u = await (await fetch(`${IG_GRAPH}/${ig}?fields=username&access_token=${token}`)).json(); selfUser = (u.username || '').toLowerCase(); } catch { /* */ }
+    const mediaResp = await (await fetch(`${IG_GRAPH}/${ig}/media?fields=id&limit=25&access_token=${token}`)).json();
+    if (mediaResp.error) return res.status(400).json({ error: mediaResp.error.message });
+    const media = mediaResp.data || [];
+    let nuevos = 0, total = 0;
+    for (const m of media) {
+      const cResp = await (await fetch(`${IG_GRAPH}/${m.id}/comments?fields=id,text,username,timestamp,from&limit=50&access_token=${token}`)).json();
+      for (const c of (cResp.data || [])) {
+        total++;
+        const uname = (c.username || '').toLowerCase();
+        const fromId = c.from?.id || '';
+        if ((selfUser && uname === selfUser) || (fromId && String(fromId) === String(ig))) continue; // saltar propios
+        const delicado = comentarioEsDelicado(c.text) ? 1 : 0;
+        const r = await db.run(
+          "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES ('instagram', ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
+          c.id, m.id, fromId, c.username || '', c.text || '', delicado, horaGuate()
+        );
+        if (r.changes) nuevos++;
+      }
+    }
+    res.json({ success: true, nuevos, revisados: total, posts: media.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
 app.use(express.static(join(__dirname, 'dist'), { setHeaders: (res, path) => { if (path.endsWith('.html')) { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } } }));
 

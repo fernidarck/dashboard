@@ -9,6 +9,8 @@ export default function ViewComentarios({ apiBase, authToken }) {
   const [replyText, setReplyText] = useState({});
   const [sending, setSending] = useState({});
   const [filter, setFilter] = useState('todos');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
 
   const apiFetch = useCallback((url, opts = {}) => {
     const headers = { Authorization: `Bearer ${authToken}`, ...(opts.headers || {}) };
@@ -45,6 +47,18 @@ export default function ViewComentarios({ apiBase, authToken }) {
     setSending((s) => ({ ...s, [id]: false }));
   };
 
+  const sincronizar = async () => {
+    setSyncing(true); setSyncMsg('');
+    try {
+      const res = await apiFetch(`${apiBase}/api/comments/sync`, { method: 'POST' });
+      const d = await res.json();
+      if (res.ok) { setSyncMsg(d.nuevos > 0 ? `✅ ${d.nuevos} comentario(s) nuevo(s)` : 'Sin comentarios nuevos'); load(); }
+      else setSyncMsg('⚠️ ' + (d.error || 'no se pudo sincronizar'));
+    } catch { setSyncMsg('⚠️ Error de conexión'); }
+    setSyncing(false);
+    setTimeout(() => setSyncMsg(''), 5000);
+  };
+
   const marcarVisto = async (id) => {
     await apiFetch(`${apiBase}/api/comments/${id}/status`, { method: 'POST', body: JSON.stringify({ status: 'visto' }) });
     load();
@@ -79,9 +93,16 @@ export default function ViewComentarios({ apiBase, authToken }) {
             {nuevos} sin responder{delicados > 0 && <span className="text-red-600 font-bold"> · {delicados} delicado(s) ⚠️</span>}
           </p>
         </div>
-        <button onClick={load} className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500" title="Actualizar">
-          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-        </button>
+        <div className="flex items-center gap-2">
+          {syncMsg && <span className="text-xs font-bold text-slate-500">{syncMsg}</span>}
+          <button onClick={sincronizar} disabled={syncing}
+            className="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5">
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> Sincronizar
+          </button>
+          <button onClick={load} className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500" title="Actualizar">
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2 mb-5 flex-wrap">
