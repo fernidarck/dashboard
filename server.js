@@ -2035,15 +2035,15 @@ app.post('/api/photos/auto-attach', async (req, res) => {
     const text = clientMsg + ' \n ' + botMsg;
 
     const prods = await db.all("SELECT * FROM products WHERE activo = 1");
-    const AGOT_STOCK = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i;
     const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
     const STOP = new Set(['mesa','noche','melamina','madera','para','con','del','los','las','una','uno','modelo','color','motor','control']);
     const urls = [];
 
     for (const p of prods) {
-      const stockRaw = String(p.stock || '').toLowerCase().trim();
       const reglas   = String(p.reglas_bot || '').toLowerCase();
-      if (AGOT_STOCK.test(stockRaw) || AGOT_RULE.test(reglas)) continue; // AGOTADO => jamás
+      // Los agotados se venden a pedido, así que SÍ se muestran sus fotos.
+      // Solo se excluye si el producto tiene una regla EXPLÍCITA de "no ofrecer".
+      if (AGOT_RULE.test(reglas)) continue;
 
       // ¿producto EN JUEGO? su "modelo N" o una palabra distintiva de su nombre aparece en el texto
       const nombre = String(p.nombre || '').toLowerCase();
