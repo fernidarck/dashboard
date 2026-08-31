@@ -13,7 +13,7 @@ const CATEGORY_STYLES = {
   'Técnico':  { badge: 'bg-purple-50 text-purple-600 border-purple-100' },
 };
 const CARD_CATEGORIES     = ['General', 'Precios', 'Soporte', 'Horarios', 'Técnico'];
-const PRODUCT_CATEGORIES  = ['Motores', 'Portones', 'Controles', 'Cámaras', 'Accesorios', 'Servicios'];
+const PRODUCT_CATEGORIES  = ['Motores', 'Portones', 'Controles', 'Cámaras', 'Accesorios', 'Muebles', 'Repuestos', 'Herramientas', 'Servicios'];
 const STOCK_STYLES        = {
   'En stock':   'bg-emerald-50 text-emerald-600 border-emerald-100',
   'Poco stock': 'bg-amber-50 text-amber-600 border-amber-100',
@@ -214,6 +214,9 @@ export default function ViewRAG({
       return { ...prev, imagenes_meta: existing, imagenes: existing.map(x => x.url), imagen: existing[0]?.url || '' };
     });
   };
+
+  // Categorías: las por defecto + las que ya usás en tus productos (podés escribir nuevas).
+  const allProductCats = [...new Set([...PRODUCT_CATEGORIES, ...products.map(p => p.categoria).filter(Boolean)])];
 
   // Componente reutilizable para galería y especificación de fotos
   const renderImageManager = (item, type, isCard = false) => {
@@ -616,9 +619,8 @@ export default function ViewRAG({
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
-                  <select value={newProduct.categoria} onChange={e => setNewProduct({...newProduct, categoria: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
-                    {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                  </select>
+                  <input list="prodcats-new" value={newProduct.categoria} onChange={e => setNewProduct({...newProduct, categoria: e.target.value})} placeholder="Escribí o elegí (ej: Muebles)" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
+                  <datalist id="prodcats-new">{allProductCats.map(c => <option key={c} value={c} />)}</datalist>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">📦 Stock</label>
@@ -706,9 +708,8 @@ export default function ViewRAG({
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
-                  <select value={editingProduct.categoria} onChange={e => setEditingProduct({...editingProduct, categoria: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
-                    {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                  </select>
+                  <input list="prodcats-edit" value={editingProduct.categoria} onChange={e => setEditingProduct({...editingProduct, categoria: e.target.value})} placeholder="Escribí o elegí (ej: Muebles)" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
+                  <datalist id="prodcats-edit">{allProductCats.map(c => <option key={c} value={c} />)}</datalist>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">📦 Stock</label>
