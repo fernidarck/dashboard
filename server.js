@@ -2078,7 +2078,9 @@ app.post('/api/photos/auto-attach', async (req, res) => {
     const prods = await db.all("SELECT * FROM products WHERE activo = 1");
     const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
     const STOP = new Set(['mesa','noche','melamina','madera','para','con','del','los','las','una','uno','modelo','color','motor','control']);
+    const VIDEO_EXT = /\.(mp4|mov|webm|avi|m4v)(\?|$)/i;
     const urls = [];
+    const videos = [];
 
     for (const p of prods) {
       const reglas   = String(p.reglas_bot || '').toLowerCase();
@@ -2102,11 +2104,15 @@ app.post('/api/photos/auto-attach', async (req, res) => {
         // Se dispara si se están hablando medidas EN EL MENSAJE DEL CLIENTE O EN LA RESPUESTA DEL BOT
         // (ej: cliente dice "modelo 1" y el bot responde "el modelo 1 MIDE 60x45x38").
         const medidas = /medida|mide|tama|dimensi|cu[aá]nto\s+mide/.test(text) && /medida/.test(desc);
-        const overlap = trigWords.some(w => text.includes(w));
-        if (medidas || overlap) urls.push(img.url);
+        const isVideo = VIDEO_EXT.test(img.url);
+        // Los videos disparan SOLO con lo que dice el CLIENTE (para no mandarlos cuando
+        // el bot los ofrece); las fotos, con el mensaje del cliente o del bot.
+        const scope = isVideo ? clientMsg : text;
+        const overlap = trigWords.some(w => scope.includes(w));
+        if ((medidas && !isVideo) || overlap) (isVideo ? videos : urls).push(img.url);
       }
     }
-    res.json({ urls: [...new Set(urls)].slice(0, 4) });
+    res.json({ urls: [...new Set(urls)].slice(0, 4), videos: [...new Set(videos)].slice(0, 2) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

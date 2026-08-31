@@ -188,6 +188,18 @@ export default function ViewRAG({
     });
   };
 
+  // Agregar un medio (VIDEO o foto) por URL — para pegar el link del video copiado
+  // de la sección Archivos. Luego se le escribe la regla en "¿Qué muestra?".
+  const addMediaByUrl = (setter) => {
+    const url = window.prompt('Pegá el link del archivo (video o foto), copiado de la sección Archivos:');
+    if (!url || !url.trim()) return;
+    setter(prev => {
+      const existing = [...getImagesMeta(prev), { url: url.trim(), desc: '' }];
+      return { ...prev, imagenes_meta: existing, imagenes: existing.map(x => x.url), imagen: existing[0]?.url || '' };
+    });
+  };
+  const esVideo = (u = '') => /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(u);
+
   // Componente reutilizable para galería y especificación de fotos
   const renderImageManager = (item, type, isCard = false) => {
     const images = getImagesMeta(item);
@@ -209,10 +221,16 @@ export default function ViewRAG({
             </p>
           </div>
           {images.length < maxImgs && (
-            <label className="cursor-pointer px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
-              <Plus size={12} /> Subir Foto
-              <input type="file" onChange={(e) => onUpload(e, type)} className="hidden" accept="image/*" />
-            </label>
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
+                <Plus size={12} /> Subir Foto
+                <input type="file" onChange={(e) => onUpload(e, type)} className="hidden" accept="image/*" />
+              </label>
+              <button type="button" onClick={() => addMediaByUrl(setter)}
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
+                <Plus size={12} /> Video por URL
+              </button>
+            </div>
           )}
         </div>
 
@@ -225,9 +243,16 @@ export default function ViewRAG({
           <div className="space-y-2.5">
             {images.map((img, i) => (
               <div key={i} className="flex items-center gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="h-14 w-14 rounded-xl overflow-hidden relative shrink-0 border border-slate-100 bg-slate-100">
-                  <img src={img.url} alt={`foto ${i+1}`} className="w-full h-full object-cover" />
-                  {i === 0 && (
+                <div className="h-14 w-14 rounded-xl overflow-hidden relative shrink-0 border border-slate-100 bg-slate-100 flex items-center justify-center">
+                  {esVideo(img.url) ? (
+                    <video src={img.url} className="w-full h-full object-cover" muted />
+                  ) : (
+                    <img src={img.url} alt={`foto ${i+1}`} className="w-full h-full object-cover" />
+                  )}
+                  {esVideo(img.url) && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-[8px] font-black">🎬 VIDEO</span>
+                  )}
+                  {i === 0 && !esVideo(img.url) && (
                     <span className="absolute bottom-0 inset-x-0 bg-slate-900/80 text-white text-[7px] font-black py-0.5 text-center uppercase">
                       Principal
                     </span>
@@ -235,13 +260,13 @@ export default function ViewRAG({
                 </div>
                 <div className="flex-1 min-w-0">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">
-                    ¿Qué muestra esta foto? (Instrucción para IA):
+                    {esVideo(img.url) ? '¿Cuándo mandar este VIDEO? (ej: cuando pregunten cómo funciona)' : '¿Qué muestra esta foto? (Instrucción para IA):'}
                   </label>
                   <input
                     type="text"
                     value={img.desc || ''}
                     onChange={(e) => updateImageDesc(i, e.target.value, setter)}
-                    placeholder="Ej: Foto del motor instalado, control remoto, tabla de cuotas..."
+                    placeholder={esVideo(img.url) ? 'Ej: cuando pregunten cómo funciona, cuando pidan el video' : 'Ej: Foto del motor instalado, control remoto, tabla de cuotas...'}
                     className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-medium outline-none focus:ring-1 focus:ring-[#FF6B00] text-slate-800"
                   />
                 </div>
