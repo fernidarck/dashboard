@@ -309,16 +309,16 @@ export default function App() {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC]">
+      <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden bg-[#F8FAFC]">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 md:px-10 shrink-0 sticky top-0 z-20">
-          <div className="flex items-center space-x-4 md:space-x-6 flex-1">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 bg-slate-100 rounded-xl text-slate-600">
+          <div className="flex items-center space-x-4 md:space-x-6 flex-1 min-w-0">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 bg-slate-100 rounded-xl text-slate-600 shrink-0">
               <MoreVertical size={20} />
             </button>
             <div className="hidden md:flex bg-slate-100 p-2.5 rounded-xl text-slate-400"><Search size={18} /></div>
             
             {/* Filtro de Canal de WhatsApp */}
-            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2 shadow-sm hover:border-[#FF6B00] transition-all">
+            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2 shadow-sm hover:border-[#FF6B00] transition-all min-w-0 shrink">
               <select
                 value={selectedChannel || 'all'}
                 disabled={!!currentUser?.channel_phone}
@@ -326,7 +326,7 @@ export default function App() {
                   setSelectedChannel(e.target.value);
                   fetchLeads(e.target.value);
                 }}
-                className={`bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none appearance-none pr-6 pl-1 ${currentUser?.channel_phone ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
+                className={`bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none appearance-none pr-6 pl-1 truncate max-w-[42vw] md:max-w-none ${currentUser?.channel_phone ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
               >
                 {!currentUser?.channel_phone && <option value="all">📞 Todos los Canales</option>}
                 {channels.map(chan => (
@@ -345,7 +345,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="hidden sm:flex items-center space-x-2 shrink-0">
               <Globe size={14} className="text-slate-400" />
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none italic">Guatemala</span>
             </div>
