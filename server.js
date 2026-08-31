@@ -323,6 +323,15 @@ async function setup() {
         FOREIGN KEY(user_id) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS media_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        url TEXT,
+        mimetype TEXT,
+        size INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS redes_comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         platform TEXT DEFAULT 'instagram',
@@ -2935,6 +2944,34 @@ app.post('/api/comments/sync', async (_req, res) => {
       }
     }
     res.json({ success: true, nuevos, revisados: total, posts: media.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── ARCHIVOS / MEDIA (subir y copiar links, para campañas de Claude/Hermes) ──
+app.post('/api/media/upload', productImagesUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta el archivo' });
+    const url = `https://${req.get('host')}/uploads/${req.file.filename}`;
+    const name = req.file.originalname || req.file.filename;
+    const r = await db.run(
+      "INSERT INTO media_files (name, url, mimetype, size) VALUES (?, ?, ?, ?)",
+      name, url, req.file.mimetype || '', req.file.size || 0
+    );
+    res.json({ success: true, id: r.lastID, name, url, mimetype: req.file.mimetype, size: req.file.size });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/media', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM media_files ORDER BY id DESC LIMIT 300");
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/media/:id', async (req, res) => {
+  try {
+    await db.run("DELETE FROM media_files WHERE id = ?", req.params.id);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
