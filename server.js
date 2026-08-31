@@ -538,6 +538,35 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
   }
 }
 
+// Enviar un VIDEO por YCloud (WhatsApp: mp4, máx 16MB)
+async function sendVideoViaYCloud(toPhone, videoUrl, caption = '', channelPhone = null) {
+  try {
+    const channel = await getChannelConfig(channelPhone);
+    const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
+    if (!apiKey || !fromNum || !toPhone || !videoUrl) return;
+
+    const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
+    const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
+    const link = String(videoUrl || '').replace(/^http:\/\//, 'https://');
+
+    const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({
+        from: cleanFrom,
+        to: cleanTo,
+        type: 'video',
+        video: { link, ...(caption ? { caption } : {}) }
+      })
+    });
+    if (!r.ok) { const t = await r.text(); console.error(`❌ Error video YCloud: ${r.status} ${t}`); }
+    else console.log(`🎬 Video enviado a ${cleanTo} desde ${cleanFrom}`);
+  } catch(e) {
+    console.error('❌ Error enviando video via YCloud:', e.message);
+  }
+}
+
 // Enviar texto por YCloud
 async function sendTextViaYCloud(toPhone, text, channelPhone = null) {
   try {
@@ -1875,16 +1904,19 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
     const docUrl = `https://${req.get('host')}/uploads/${req.file.filename}`;
     const time = horaGuate();
-    // Si el archivo es una imagen, se manda como FOTO (tipo WhatsApp), no como documento.
-    const isImage = String(req.file.mimetype || '').startsWith('image/');
-    const mediaType = isImage ? 'image' : 'document';
+    // Según el tipo: imagen → FOTO, video → VIDEO, resto → documento (tipos WhatsApp).
+    const mime = String(req.file.mimetype || '');
+    const isImage = mime.startsWith('image/');
+    const isVideo = mime.startsWith('video/');
+    const mediaType = isImage ? 'image' : isVideo ? 'video' : 'document';
     const result = await db.run(
       "INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-      leadId, 'agent', isImage ? (caption || '') : fileName, docUrl, mediaType, time
+      leadId, 'agent', (isImage || isVideo) ? (caption || '') : fileName, docUrl, mediaType, time
     );
     if (lead.phone) {
-      if (isImage) sendImageViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
-      else         sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
+      if (isImage)      sendImageViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
+      else if (isVideo) sendVideoViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
+      else              sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
     }
     res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType });
   } catch (err) {

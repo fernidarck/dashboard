@@ -336,6 +336,13 @@ export default function ViewConversaciones({
                       </div>
                     )}
 
+                    {/* Video adjunto */}
+                    {m.mediaUrl && m.mediaType === 'video' && (
+                      <div className="px-3 pt-2">
+                        <video src={m.mediaUrl} controls className="w-full max-w-sm rounded-xl max-h-72 border border-black/10" />
+                      </div>
+                    )}
+
                     {/* Documento adjunto */}
                     {m.mediaUrl && m.mediaType === 'document' && (
                       <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 px-4 py-3 hover:opacity-90 transition-opacity bg-black/10">
@@ -388,7 +395,7 @@ export default function ViewConversaciones({
             </button>
 
             {/* BOTÓN: ADJUNTAR ARCHIVO / PDF */}
-            <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" onChange={handleFile} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*" onChange={handleFile} className="hidden" />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
