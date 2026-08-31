@@ -375,6 +375,9 @@ async function setup() {
 
     // Migraciones rápidas (Columnas nuevas)
     try { await db.exec("ALTER TABLE leads ADD COLUMN archived INTEGER DEFAULT 0"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN ctwa_clid TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN ad_source_id TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN ad_source_url TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN direccion TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN notas TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN nit TEXT"); } catch(e){}
@@ -958,14 +961,20 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       // Crear nuevo lead
       const initialEstado = parsed.isEcho ? 'En Seguimiento' : (data.etiqueta || 'Nuevo');
       const initialBotActive = parsed.isEcho ? 0 : 1;
+      // Atribución de anuncio (click-to-WhatsApp): guardar de qué anuncio vino el lead.
+      const ref = data.referral || data.whatsappMessage?.referral || data.whatsappInboundMessage?.referral || {};
+      const ctwaClid   = data.ctwa_clid    || ref.ctwa_clid  || null;
+      const adSourceId  = data.ad_source_id  || ref.source_id  || null;
+      const adSourceUrl = data.ad_source_url || ref.source_url || null;
       const result = await db.run(
-        `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone, priority)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone, priority, ctwa_clid, ad_source_id, ad_source_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         parsed.nombre || 'Cliente WhatsApp', data.phone || parsed.clientPhoneRaw, data.email || 'N/A',
         data.score || 50, initialEstado, `WhatsApp (${sourceName})`, initialBotActive,
         data.motor || 'N/A', data.falla || 'N/A', data.zona || 'N/A',
         data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone,
-        initialEstado === 'Intervención Requerida' ? 'urgent' : 'normal'
+        initialEstado === 'Intervención Requerida' ? 'urgent' : 'normal',
+        ctwaClid, adSourceId, adSourceUrl
       );
       leadId = result.lastID;
       console.log(`🆕 [${sourceName}] Creado nuevo lead ID ${leadId} (${cleanPhone})`);
