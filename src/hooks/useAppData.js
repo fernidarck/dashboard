@@ -624,6 +624,26 @@ export function useAppData(apiBase, authToken) {
     }
   }, [apiFetch, apiBase, notify]);
 
+  // Subir cualquier archivo (video, foto, PDF) sin procesarlo — devuelve su URL directo.
+  const uploadMediaFile = useCallback(async (file) => {
+    if (!file) return null;
+    const formData = new FormData();
+    formData.append('file', file);
+    setLoading(true);
+    try {
+      const res = await apiFetch(`${apiBase}/api/media/upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.success && data.url) { notify('✅ Archivo subido', 2500); return data.url; }
+      notify('❌ Error al subir el archivo', 3000);
+      return null;
+    } catch {
+      notify('❌ Error de conexión', 3000);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, apiBase, notify]);
+
   const uploadProductImage = useCallback(async (file, type, setNew, setEdit) => {
     const imageUrl = await uploadImageFile(file);
     if (!imageUrl) return;
@@ -713,7 +733,7 @@ export function useAppData(apiBase, authToken) {
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
-    uploadProductImage, uploadDocument, uploadImageFile, runTestSearch, syncBrainConfig,
+    uploadProductImage, uploadDocument, uploadImageFile, uploadMediaFile, runTestSearch, syncBrainConfig,
     saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     // Alerts
     playMessageAlert, notify,

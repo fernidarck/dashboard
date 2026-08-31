@@ -69,6 +69,7 @@ export default function ViewRAG({
   onDeleteProduct,
   onUploadDocument,
   onUploadImageFile,
+  onUploadMediaFile,
   onRunTestSearch,
 }) {
   const [ragSubTab,      setRagSubTab]      = useState('conocimiento');
@@ -200,6 +201,20 @@ export default function ViewRAG({
   };
   const esVideo = (u = '') => /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(u);
 
+  // Subir un archivo (video) directo desde la PC → lo agrega al ítem con su URL.
+  const handleMediaUpload = async (e, setter) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) { alert('El video es muy grande (máximo 15 MB para WhatsApp).'); return; }
+    const url = await onUploadMediaFile?.(file);
+    if (!url) return;
+    setter(prev => {
+      const existing = [...getImagesMeta(prev), { url, desc: '' }];
+      return { ...prev, imagenes_meta: existing, imagenes: existing.map(x => x.url), imagen: existing[0]?.url || '' };
+    });
+  };
+
   // Componente reutilizable para galería y especificación de fotos
   const renderImageManager = (item, type, isCard = false) => {
     const images = getImagesMeta(item);
@@ -221,14 +236,18 @@ export default function ViewRAG({
             </p>
           </div>
           {images.length < maxImgs && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <label className="cursor-pointer px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
                 <Plus size={12} /> Subir Foto
                 <input type="file" onChange={(e) => onUpload(e, type)} className="hidden" accept="image/*" />
               </label>
+              <label className="cursor-pointer px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
+                🎬 Subir Video
+                <input type="file" onChange={(e) => handleMediaUpload(e, setter)} className="hidden" accept="video/*" />
+              </label>
               <button type="button" onClick={() => addMediaByUrl(setter)}
-                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
-                <Plus size={12} /> Video por URL
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-400 hover:text-[#FF6B00] hover:border-orange-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs">
+                <Plus size={12} /> Por URL
               </button>
             </div>
           )}
