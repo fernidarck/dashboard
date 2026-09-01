@@ -388,6 +388,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN whatsapp_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN reglas_bot TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes_meta TEXT"); } catch(e){}
@@ -2181,7 +2182,8 @@ app.get('/api/agent/prompt', async (req, res) => {
         prodImages.forEach(img => {
           catalogText += `  IMAGEN_PARA_ENVIAR: ${img.url}${img.desc ? `\n  ⚠️ ENVIÁ ESTA FOTO (la URL de arriba) automáticamente cuando el cliente pida o diga: ${img.desc}` : ''}\n`;
         });
-        if (p.catalog_link) catalogText += `  Link catálogo: ${p.catalog_link}\n`;
+        if (p.whatsapp_link) catalogText += `  Link de WhatsApp (catálogo, compartilo para que vean el producto): ${p.whatsapp_link}\n`;
+        if (p.catalog_link) catalogText += `  Link de la tienda online onecontrol.shop (compartilo para más info/comprar): ${p.catalog_link}\n`;
       });
     }
 
@@ -2310,14 +2312,14 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', ts
+      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2325,12 +2327,12 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link } = req.body;
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=? WHERE id=?",
-      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2577,7 +2579,7 @@ app.get('/api/rag/context', async (req, res) => {
       const agotado  = AGOT_STOCK.test(stockStr) || AGOT_RULE.test(String(p.reglas_bot));
       const aPedido  = !agotado && APEDIDO.test(stockStr);
       // Formato IDÉNTICO al anterior para los disponibles (no rompe nada).
-      let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + ' - Link: ' + p.catalog_link;
+      let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + (p.whatsapp_link ? ' - Link WhatsApp (compartilo para que vean el producto): ' + p.whatsapp_link : '') + (p.catalog_link ? ' - Link tienda onecontrol.shop (compartilo para más info): ' + p.catalog_link : '');
       if (agotado) {
         // Vendemos SIEMPRE: el agotado se ofrece igual, aclarando que se fabrica según disponibilidad de material.
         content = 'ESTADO: SIN STOCK — este modelo se FABRICA y el plazo DEPENDE de la disponibilidad de material. OFRECELO igual (lo vendemos), presentándolo junto a los demás, pero dejando CLARO que este hay que FABRICARLO según disponibilidad de material: NUNCA digas que hay en stock, ni prometas entrega inmediata, ni una fecha fija. ' + content;
