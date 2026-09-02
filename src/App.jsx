@@ -3,7 +3,7 @@ import {
   LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
   Brain, Database, Zap, Search, Bell, X, MoreVertical,
   Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown, AtSign, AlertTriangle, Paperclip,
-  GraduationCap
+  GraduationCap, Laptop
 } from 'lucide-react';
 import Login from './components/Login.jsx';
 import LogoMark from './components/LogoMark.jsx';
@@ -18,6 +18,7 @@ import ViewRAG from './components/views/ViewRAG.jsx';
 import ViewComentarios from './components/views/ViewComentarios.jsx';
 import ViewArchivos from './components/views/ViewArchivos.jsx';
 import ViewEntrenamiento from './components/views/ViewEntrenamiento.jsx';
+import ViewWebChat from './components/views/ViewWebChat.jsx';
 
 const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 const CURRENT_USER_ID = 'fer';
@@ -268,6 +269,7 @@ export default function App() {
               <SidebarItem icon={Calendar}      label="Agenda IA"        id="agenda" />
               <SidebarItem icon={ShoppingBag}   label="Pedidos IA"       id="pedidos" />
               <SidebarItem icon={Globe}         label="Redes Sociales"  id="comentarios" />
+              <SidebarItem icon={Laptop}        label="Bot Web (WP)"     id="webchat" />
               <SidebarItem icon={Paperclip}     label="Archivos"         id="archivos" />
             </div>
             {currentUser?.role === 'admin' && (
@@ -456,7 +458,10 @@ export default function App() {
               />
             )}
             {activeTab === 'comentarios' && (
-              <ViewComentarios apiBase={API_BASE_URL} authToken={authToken} />
+              <ViewComentarios apiBase={API_BASE_URL} authToken={authToken} products={products} />
+            )}
+            {activeTab === 'webchat' && (
+              <ViewWebChat apiBase={API_BASE_URL} />
             )}
             {activeTab === 'archivos' && (
               <ViewArchivos apiBase={API_BASE_URL} authToken={authToken} />

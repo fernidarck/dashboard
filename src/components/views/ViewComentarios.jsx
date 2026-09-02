@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Send, AlertTriangle, RefreshCw, MessageCircle, Heart, Users,
   ExternalLink, Sparkles, Bot, Settings, ShieldCheck, CheckCircle2,
-  Video, Image as ImageIcon, Eye, Check, Globe
+  Video, Image as ImageIcon, Eye, Check, Globe, Calendar, Clock,
+  Plus, Trash2, ArrowRight, Share2, UploadCloud
 } from 'lucide-react';
 
-export default function ViewComentarios({ apiBase, authToken }) {
-  const [activeTab, setActiveTab] = useState('comentarios'); // 'comentarios' | 'feed' | 'bot_settings'
+export default function ViewComentarios({ apiBase, authToken, products = [] }) {
+  const [activeTab, setActiveTab] = useState('comentarios'); // 'comentarios' | 'feed' | 'bot_settings' | 'calendario'
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState({});
@@ -34,6 +35,22 @@ export default function ViewComentarios({ apiBase, authToken }) {
   const [testCommentText, setTestCommentText] = useState('');
   const [testCommentReply, setTestCommentReply] = useState('');
   const [testingComment, setTestingComment] = useState(false);
+
+  // Calendario y Publicador
+  const [scheduledPosts, setScheduledPosts] = useState([]);
+  const [loadingScheduled, setLoadingScheduled] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishStatus, setPublishStatus] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const [postForm, setPostForm] = useState({
+    platform: 'both',
+    mediaType: 'image',
+    mediaUrl: '',
+    caption: '',
+    scheduledTime: '',
+    mode: 'now' // 'now' | 'schedule'
+  });
 
   const apiFetch = useCallback((url, opts = {}) => {
     const headers = { Authorization: `Bearer ${authToken}`, ...(opts.headers || {}) };
@@ -72,13 +89,26 @@ export default function ViewComentarios({ apiBase, authToken }) {
     } catch { /* silencioso */ }
   }, [apiFetch, apiBase]);
 
+  const loadScheduledPosts = useCallback(async () => {
+    setLoadingScheduled(true);
+    try {
+      const res = await apiFetch(`${apiBase}/api/meta/scheduled`);
+      if (res.ok) {
+        const data = await res.json();
+        setScheduledPosts(Array.isArray(data) ? data : []);
+      }
+    } catch { /* silencioso */ }
+    setLoadingScheduled(false);
+  }, [apiFetch, apiBase]);
+
   useEffect(() => {
     loadComments();
     loadMetaInsights();
     loadBotSettings();
+    loadScheduledPosts();
     const t = setInterval(loadComments, 20000);
     return () => clearInterval(t);
-  }, [loadComments, loadMetaInsights, loadBotSettings]);
+  }, [loadComments, loadMetaInsights, loadBotSettings, loadScheduledPosts]);
 
   const handleSaveSettings = async (e) => {
     if (e) e.preventDefault();
@@ -120,63 +150,26 @@ export default function ViewComentarios({ apiBase, authToken }) {
     setGeneratingAI((s) => ({ ...s, [id]: true }));
     try {
       const res = await apiFetch(`${apiBase}/api/comments/${id}/ai-reply`, {
-        method: 'POST',
-        body: JSON.stringify({ preview: true }),
+        method: 'POST', body: JSON.stringify({ preview: true }),
       });
-      const d = await res.json();
-      if (res.ok && d.reply) {
-        setReplyText((r) => ({ ...r, [id]: d.reply }));
-      } else {
-        alert('Error generando respuesta IA: ' + (d.error || 'intenta de nuevo'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reply) setReplyText((r) => ({ ...r, [id]: data.reply }));
       }
-    } catch {
-      alert('Error de conexión con la IA');
-    } finally {
-      setGeneratingAI((s) => ({ ...s, [id]: false }));
-    }
+    } catch { /* silencioso */ }
+    setGeneratingAI((s) => ({ ...s, [id]: false }));
   };
 
-  const responderConIAInstantaneo = async (id) => {
-    if (!confirm('¿Deseas que la IA responda automáticamente a este comentario en la red social?')) return;
+  const responderConIAUnClic = async (id) => {
     setSending((s) => ({ ...s, [id]: true }));
     try {
       const res = await apiFetch(`${apiBase}/api/comments/${id}/ai-reply`, {
-        method: 'POST',
-        body: JSON.stringify({ preview: false }),
+        method: 'POST', body: JSON.stringify({ preview: false }),
       });
-      const d = await res.json();
-      if (res.ok) {
-        loadComments();
-      } else {
-        alert('Error respondiendo con IA: ' + (d.error || 'intenta de nuevo'));
-      }
-    } catch {
-      alert('Error de conexión');
-    } finally {
-      setSending((s) => ({ ...s, [id]: false }));
-    }
-  };
-
-  const sincronizar = async () => {
-    setSyncing(true); setSyncMsg('');
-    try {
-      const res = await apiFetch(`${apiBase}/api/comments/sync`, { method: 'POST' });
-      const d = await res.json();
-      if (res.ok) {
-        setSyncMsg(d.nuevos > 0 ? `✅ ${d.nuevos} comentario(s) nuevo(s)` : 'Feed y comentarios sincronizados');
-        loadComments();
-        loadMetaInsights();
-      } else {
-        setSyncMsg('⚠️ ' + (d.error || 'no se pudo sincronizar'));
-      }
-    } catch { setSyncMsg('⚠️ Error de conexión'); }
-    setSyncing(false);
-    setTimeout(() => setSyncMsg(''), 5000);
-  };
-
-  const marcarVisto = async (id) => {
-    await apiFetch(`${apiBase}/api/comments/${id}/status`, { method: 'POST', body: JSON.stringify({ status: 'visto' }) });
-    loadComments();
+      if (res.ok) loadComments();
+      else { const d = await res.json().catch(() => ({})); alert('Error: ' + (d.error || 'no se pudo enviar')); }
+    } catch { alert('Error de conexión'); }
+    setSending((s) => ({ ...s, [id]: false }));
   };
 
   const testearComentario = async (e) => {
@@ -185,71 +178,153 @@ export default function ViewComentarios({ apiBase, authToken }) {
     setTestingComment(true);
     setTestCommentReply('');
     try {
-      const res = await apiFetch(`${apiBase}/api/training/test`, {
+      const res = await apiFetch(`${apiBase}/api/comments/test-reply`, {
         method: 'POST',
-        body: JSON.stringify({ question: testCommentText })
+        body: JSON.stringify({ text: testCommentText })
       });
-      const d = await res.json();
-      if (res.ok && d.reply) {
-        setTestCommentReply(d.reply);
+      if (res.ok) {
+        const data = await res.json();
+        setTestCommentReply(data.reply || 'Sin respuesta');
       }
     } catch {
-      setTestCommentReply('Error al probar');
+      setTestCommentReply('Error de conexión con el evaluador.');
     } finally {
       setTestingComment(false);
     }
   };
 
+  const marcarEstado = async (id, status) => {
+    await apiFetch(`${apiBase}/api/comments/${id}/status`, {
+      method: 'POST', body: JSON.stringify({ status }),
+    });
+    loadComments();
+  };
+
+  const sincronizar = async () => {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      const res = await apiFetch(`${apiBase}/api/comments/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setSyncMsg(`✅ Sincronizados: ${data.nuevos || 0} nuevos (${data.posts || 0} publicaciones revisadas)`);
+        loadComments();
+        loadMetaInsights();
+      } else {
+        setSyncMsg(`❌ ${data.error || 'Error al sincronizar'}`);
+      }
+    } catch {
+      setSyncMsg('❌ Error de conexión al sincronizar');
+    }
+    setSyncing(false);
+    setTimeout(() => setSyncMsg(''), 6000);
+  };
+
+  // Subir archivo multimedia para el post
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await apiFetch(`${apiBase}/api/media/upload`, {
+        method: 'POST',
+        body: fd
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        const isVid = file.type.startsWith('video');
+        setPostForm(prev => ({
+          ...prev,
+          mediaUrl: data.url,
+          mediaType: isVid ? 'video' : 'image'
+        }));
+      } else {
+        alert('Error al subir archivo: ' + (data.error || 'Desconocido'));
+      }
+    } catch {
+      alert('Error de conexión al subir archivo');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  // Publicar o programar post
+  const handlePublishOrSchedule = async (e) => {
+    if (e) e.preventDefault();
+    if (!postForm.caption && !postForm.mediaUrl) {
+      alert('Por favor ingresa al menos texto o una imagen/video');
+      return;
+    }
+    if (postForm.mode === 'schedule' && !postForm.scheduledTime) {
+      alert('Por favor selecciona la fecha y hora programada');
+      return;
+    }
+
+    setPublishing(true);
+    setPublishStatus('');
+    try {
+      const endpoint = postForm.mode === 'schedule' ? '/api/meta/schedule' : '/api/meta/publish';
+      const res = await apiFetch(`${apiBase}${endpoint}`, {
+        method: 'POST',
+        body: JSON.stringify(postForm)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPublishStatus(postForm.mode === 'schedule' ? '✅ ¡Publicación programada exitosamente!' : '🚀 ¡Publicado con éxito en Meta!');
+        setPostForm({
+          platform: 'both',
+          mediaType: 'image',
+          mediaUrl: '',
+          caption: '',
+          scheduledTime: '',
+          mode: 'now'
+        });
+        loadScheduledPosts();
+        loadMetaInsights();
+      } else {
+        setPublishStatus(`❌ Error: ${data.error || data.errors?.join(', ') || 'No se pudo publicar'}`);
+      }
+    } catch (err) {
+      setPublishStatus(`❌ Error de conexión: ${err.message}`);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleDeleteScheduled = async (id) => {
+    if (!confirm('¿Eliminar esta publicación programada?')) return;
+    try {
+      await apiFetch(`${apiBase}/api/meta/scheduled/${id}`, { method: 'DELETE' });
+      loadScheduledPosts();
+    } catch (e) {
+      alert('Error al eliminar');
+    }
+  };
+
+  const nuevos = comments.filter((c) => c.status === 'nuevo' && !c.bot_reply).length;
+  const delicados = comments.filter((c) => c.is_delicate && c.status === 'nuevo').length;
+
   const filtered = comments.filter((c) => {
     if (platformFilter !== 'todos' && c.platform !== platformFilter) return false;
-    if (filter === 'delicados') return c.is_delicate;
-    if (filter === 'nuevos') return c.status === 'nuevo';
-    if (filter === 'respondidos') return ['respondido', 'manual'].includes(c.status);
+    if (filter === 'nuevos') return c.status === 'nuevo' && !c.bot_reply;
+    if (filter === 'delicados') return c.is_delicate && c.status === 'nuevo';
+    if (filter === 'respondidos') return c.status === 'respondido' || c.bot_reply;
     return true;
   });
 
-  const nuevos = comments.filter((c) => c.status === 'nuevo').length;
-  const delicados = comments.filter((c) => c.is_delicate && c.status === 'nuevo').length;
-  const respondidos = comments.filter((c) => ['respondido', 'manual'].includes(c.status)).length;
-
-  const ig = metaInsights?.instagram;
-  const fb = metaInsights?.facebook;
-  const posts = metaInsights?.posts || [];
-
-  const platformBadge = (platform) => {
-    if (platform === 'facebook') {
-      return (
-        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-          📘 Facebook
-        </span>
-      );
-    }
-    return (
-      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
-        📸 Instagram
-      </span>
-    );
-  };
-
-  const badge = (c) => {
-    if (c.status === 'manual') return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Respondido (Manual)</span>;
-    if (c.status === 'respondido') return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1"><Bot size={11} /> Respondido (Bot IA)</span>;
-    if (c.status === 'visto') return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Visto</span>;
-    if (c.is_delicate) return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex items-center gap-1"><AlertTriangle size={11} /> Delicado</span>;
-    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Nuevo</span>;
-  };
-
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-7 animate-in fade-in duration-500 pb-12">
+    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-12">
       
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2.5">
-            <Globe className="text-[#FF6B00]" size={28} /> Redes Sociales & Meta
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+            <Share2 className="text-[#FF6B00]" size={28} /> Redes Sociales & Calendario de Publicaciones
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Instagram <span className="font-bold text-pink-600">@0ne_control</span> & Facebook <span className="font-bold text-blue-600">Onecontrolshop</span> · Gestión de Likes, Feed y Respuestas IA
+            Instagram <span className="font-bold text-pink-600">@0ne_control</span> & Facebook <span className="font-bold text-blue-600">Onecontrolshop</span> · Publicador, Calendario, Likes y Respuestas IA
           </p>
         </div>
 
@@ -267,7 +342,7 @@ export default function ViewComentarios({ apiBase, authToken }) {
       </div>
 
       {/* TABS PRINCIPALES */}
-      <div className="flex items-center space-x-2 bg-slate-100 p-1.5 rounded-2xl self-start w-fit">
+      <div className="flex items-center space-x-2 bg-slate-100 p-1.5 rounded-2xl self-start w-fit flex-wrap gap-y-1">
         <button
           onClick={() => setActiveTab('comentarios')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold text-xs transition-all cursor-pointer ${
@@ -279,6 +354,21 @@ export default function ViewComentarios({ apiBase, authToken }) {
           {nuevos > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black">
               {nuevos}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('calendario')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+            activeTab === 'calendario' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <Calendar size={14} className="text-[#FF6B00]" />
+          <span>📅 Calendario & Publicador</span>
+          {scheduledPosts.filter(p => p.status === 'pending').length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-[#FF6B00] text-white text-[10px] font-black">
+              {scheduledPosts.filter(p => p.status === 'pending').length}
             </span>
           )}
         </button>
@@ -306,6 +396,253 @@ export default function ViewComentarios({ apiBase, authToken }) {
       </div>
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
+      {/* TAB: CALENDARIO & PUBLICADOR (NUEVO) */}
+      {/* ──────────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'calendario' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* FORMULARIO DE PUBLICACIÓN */}
+          <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-5">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Share2 size={18} className="text-[#FF6B00]" /> Crear o Programar Publicación
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">Publica directamente en Instagram y Facebook sin intermediarios.</p>
+            </div>
+
+            {publishStatus && (
+              <div className={`p-3.5 rounded-2xl text-xs font-bold ${publishStatus.includes('✅') || publishStatus.includes('🚀') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                {publishStatus}
+              </div>
+            )}
+
+            <form onSubmit={handlePublishOrSchedule} className="space-y-4">
+              
+              {/* Selector de Red */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Publicar en:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'both', label: '🌟 Ambas', color: 'border-orange-500 bg-orange-50/50 text-orange-700' },
+                    { id: 'instagram', label: '📸 Instagram', color: 'border-pink-500 bg-pink-50/50 text-pink-700' },
+                    { id: 'facebook', label: '📘 Facebook', color: 'border-blue-500 bg-blue-50/50 text-blue-700' }
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPostForm({ ...postForm, platform: p.id })}
+                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
+                        postForm.platform === p.id ? p.color : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Selector de Producto Rápido */}
+              {products.length > 0 && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Seleccionar Foto de Producto:</label>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    {products.slice(0, 5).map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          const imgUrl = p.imagenes ? JSON.parse(p.imagenes)[0] : p.imagen_url;
+                          setPostForm(prev => ({
+                            ...prev,
+                            mediaUrl: imgUrl || prev.mediaUrl,
+                            caption: prev.caption || `✨ ${p.nombre} ✨\n\n💰 Precio: Q${p.precio}\n🚚 Envío a toda Guatemala con pago contra entrega.\n\n📲 Escribinos hoy por WhatsApp al 35154362 para pedir el tuyo.`
+                          }));
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-orange-100 text-slate-700 text-[10px] font-bold shrink-0 transition-colors cursor-pointer"
+                      >
+                        {p.nombre}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Imagen / Video */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-700">URL de Imagen o Video:</label>
+                  <label className="text-[10px] font-bold text-[#FF6B00] hover:underline cursor-pointer flex items-center gap-1">
+                    <UploadCloud size={12} />
+                    <span>{uploadingFile ? 'Subiendo...' : 'Subir Archivo'}</span>
+                    <input type="file" accept="image/*,video/*" onChange={handleFileUpload} className="hidden" />
+                  </label>
+                </div>
+                <input
+                  type="url"
+                  value={postForm.mediaUrl}
+                  onChange={e => setPostForm({ ...postForm, mediaUrl: e.target.value })}
+                  placeholder="https://..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:border-[#FF6B00]"
+                />
+                {postForm.mediaUrl && (
+                  <div className="mt-2 relative rounded-2xl overflow-hidden border border-slate-200 h-36 bg-slate-100 flex items-center justify-center">
+                    {postForm.mediaType === 'video' ? (
+                      <video src={postForm.mediaUrl} className="h-full w-full object-cover" controls />
+                    ) : (
+                      <img src={postForm.mediaUrl} alt="Preview" className="h-full w-full object-cover" />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Texto / Caption */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-700">Texto / Caption:</label>
+                  <span className="text-[10px] text-slate-400">{postForm.caption.length} caracteres</span>
+                </div>
+                <textarea
+                  rows={4}
+                  required
+                  value={postForm.caption}
+                  onChange={e => setPostForm({ ...postForm, caption: e.target.value })}
+                  placeholder="Escribe el texto de tu publicación, emojis, precio y llamado a la acción..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:border-[#FF6B00] resize-none"
+                />
+              </div>
+
+              {/* Modo: Publicar Ahora vs Programar */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPostForm({ ...postForm, mode: 'now' })}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      postForm.mode === 'now' ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    🚀 Publicar Ahora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPostForm({ ...postForm, mode: 'schedule' })}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      postForm.mode === 'schedule' ? 'bg-[#FF6B00] text-white border-[#FF6B00]' : 'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    ⏰ Programar Fecha
+                  </button>
+                </div>
+
+                {postForm.mode === 'schedule' && (
+                  <div className="space-y-1 animate-in fade-in duration-200">
+                    <label className="text-[10px] font-bold text-slate-600">Fecha y Hora de Publicación (Guate):</label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={postForm.scheduledTime}
+                      onChange={e => setPostForm({ ...postForm, scheduledTime: e.target.value.replace('T', ' ') })}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#FF6B00]"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={publishing}
+                className="w-full py-3 bg-[#FF6B00] hover:bg-[#e05e00] text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {publishing ? <RefreshCw size={14} className="animate-spin" /> : (postForm.mode === 'schedule' ? <Clock size={14} /> : <Send size={14} />)}
+                <span>{publishing ? 'Procesando en Meta...' : (postForm.mode === 'schedule' ? 'Guardar en Calendario' : 'Publicar Ahora')}</span>
+              </button>
+            </form>
+          </div>
+
+          {/* HISTORIAL Y COLA DEL CALENDARIO */}
+          <div className="lg:col-span-7 space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Publicaciones Programadas e Historial</h3>
+              <button
+                onClick={loadScheduledPosts}
+                disabled={loadingScheduled}
+                className="text-[11px] font-bold text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw size={11} className={loadingScheduled ? 'animate-spin' : ''} />
+                <span>Actualizar</span>
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-[75vh] overflow-y-auto pr-1">
+              {scheduledPosts.map(post => (
+                <div key={post.id} className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        post.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
+                        post.status === 'failed' ? 'bg-rose-100 text-rose-700' :
+                        'bg-amber-100 text-amber-700 animate-pulse'
+                      }`}>
+                        {post.status === 'published' ? '✅ Publicado' : post.status === 'failed' ? '❌ Fallido' : '⏳ Programado'}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 uppercase">
+                        {post.platform}
+                      </span>
+                    </div>
+
+                    {post.status === 'pending' && (
+                      <button
+                        onClick={() => handleDeleteScheduled(post.id)}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-600 hover:text-white text-slate-500 transition-colors cursor-pointer"
+                        title="Cancelar publicación"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    {post.media_url && (
+                      <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                        {post.media_type === 'video' ? (
+                          <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={20} /></div>
+                        ) : (
+                          <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
+                        )}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed line-clamp-3">
+                        {post.caption}
+                      </p>
+                      <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium pt-1">
+                        <span className="flex items-center gap-1">
+                          <Clock size={11} />
+                          {post.status === 'published' ? `Publicado: ${post.published_at || post.scheduled_time}` : `Programado: ${post.scheduled_time}`}
+                        </span>
+                      </div>
+                      {post.error_msg && (
+                        <p className="text-[10px] text-rose-600 font-bold">{post.error_msg}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {scheduledPosts.length === 0 && (
+                <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-2">
+                  <Calendar className="mx-auto text-slate-300" size={36} />
+                  <p className="text-xs font-bold text-slate-500">No hay publicaciones programadas</p>
+                  <p className="text-[11px] text-slate-400">Crea tu primer post con foto y fecha programada desde el panel izquierdo.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────────────────────── */}
       {/* TAB 1: COMENTARIOS Y RESPUESTAS */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'comentarios' && (
@@ -321,47 +658,48 @@ export default function ViewComentarios({ apiBase, authToken }) {
               <p className="text-2xl font-black text-rose-600 mt-1">{delicados}</p>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Respondidos</span>
-              <p className="text-2xl font-black text-emerald-600 mt-1">{respondidos}</p>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Comentarios</span>
+              <p className="text-2xl font-black text-slate-900 mt-1">{comments.length}</p>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Registrados</span>
-              <p className="text-2xl font-black text-slate-900 mt-1">{comments.length}</p>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Auto-Respuesta</span>
+              <p className="text-xs font-black text-purple-700 mt-2 flex items-center gap-1">
+                <span className={`h-2 w-2 rounded-full ${botSettings.bot_comments_enabled === '1' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                {botSettings.bot_comments_enabled === '1' ? 'Bot Activo' : 'Manual'}
+              </p>
             </div>
           </div>
 
           {/* Filtros */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200">
-            <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
-              {[
-                { id: 'todos', label: 'Todas las Redes' },
-                { id: 'instagram', label: '📸 Instagram' },
-                { id: 'facebook', label: '📘 Facebook' },
-              ].map(tab => (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200">
+            <div className="flex items-center space-x-1.5 flex-wrap">
+              {['todos', 'nuevos', 'delicados', 'respondidos'].map((f) => (
                 <button
-                  key={tab.id}
-                  onClick={() => setPlatformFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    platformFilter === tab.id
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
+                    filter === f ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  {tab.label}
+                  {f}
                 </button>
               ))}
             </div>
 
-            <div className="flex gap-1.5 flex-wrap">
-              {[['todos', 'Todos'], ['nuevos', 'Nuevos'], ['delicados', 'Delicados ⚠️'], ['respondidos', 'Respondidos']].map(([id, label]) => (
+            <div className="flex items-center space-x-1.5">
+              {[
+                { id: 'todos', label: 'Todas las redes' },
+                { id: 'instagram', label: '📸 Instagram' },
+                { id: 'facebook', label: '📘 Facebook' }
+              ].map((p) => (
                 <button
-                  key={id}
-                  onClick={() => setFilter(id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    filter === id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  key={p.id}
+                  onClick={() => setPlatformFilter(p.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    platformFilter === p.id ? 'bg-[#FF6B00] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {label}
+                  {p.label}
                 </button>
               ))}
             </div>
@@ -369,240 +707,240 @@ export default function ViewComentarios({ apiBase, authToken }) {
 
           {/* Lista de Comentarios */}
           {loading ? (
-            <div className="py-16 text-center text-slate-400 text-xs">Cargando comentarios...</div>
+            <div className="p-12 text-center text-xs text-slate-400 flex items-center justify-center space-x-2">
+              <RefreshCw className="animate-spin text-[#FF6B00]" size={16} />
+              <span>Cargando comentarios...</span>
+            </div>
           ) : filtered.length === 0 ? (
-            <div className="py-16 text-center bg-white border border-slate-200 rounded-2xl">
-              <p className="text-sm font-bold text-slate-700">No hay comentarios en este filtro</p>
-              <p className="text-xs text-slate-400 mt-1">Usa el botón "Sincronizar Feed & Comentarios" para verificar si hay nuevos en Instagram o Facebook.</p>
+            <div className="p-12 text-center bg-white rounded-3xl border border-slate-200/80 space-y-2">
+              <MessageCircle className="mx-auto text-slate-300" size={32} />
+              <p className="text-xs font-bold text-slate-500">No hay comentarios en este filtro</p>
+              <p className="text-[11px] text-slate-400">Pulsa &quot;Sincronizar Feed & Comentarios&quot; para buscar los últimos de tus publicaciones.</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {filtered.map((c) => (
-                <div key={c.id} className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-3 transition-all hover:border-slate-300">
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      {platformBadge(c.platform)}
-                      <span className="font-black text-sm text-slate-900">{c.from_name || 'Usuario'}</span>
-                      {badge(c)}
-                    </div>
-                    <span className="text-[11px] font-medium text-slate-400">{c.timestamp}</span>
-                  </div>
+              {filtered.map((c) => {
+                const isIG = c.platform === 'instagram';
+                const isDelicate = !!c.is_delicate;
 
-                  <p className="text-sm text-slate-800 bg-slate-50/80 p-3 rounded-xl border border-slate-100 font-medium">
-                    "{c.text}"
-                  </p>
-
-                  {/* Si ya fue respondido, mostrar respuesta */}
-                  {c.bot_reply && (
-                    <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-3 text-xs text-emerald-950 space-y-1">
-                      <div className="flex items-center gap-1.5 font-bold text-emerald-800 text-[11px]">
-                        <CheckCircle2 size={13} />
-                        <span>Respuesta enviada a la red social:</span>
+                return (
+                  <div
+                    key={c.id}
+                    className={`bg-white rounded-3xl p-5 border transition-all space-y-3.5 ${
+                      isDelicate ? 'border-rose-300 bg-rose-50/20' : 'border-slate-200/90 shadow-xs'
+                    }`}
+                  >
+                    {/* Header del comentario */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center space-x-2.5">
+                        <span className="text-lg">{isIG ? '📸' : '📘'}</span>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-black text-slate-900">{c.from_name || 'Usuario'}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                              {isIG ? 'Instagram' : 'Facebook'}
+                            </span>
+                            {isDelicate && (
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-500 text-white flex items-center gap-1">
+                                <AlertTriangle size={10} /> Delicado (Atención Humana)
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-medium">{c.timestamp || c.created_at}</span>
+                        </div>
                       </div>
-                      <p className="pl-4 font-medium text-slate-800">{c.bot_reply}</p>
+
+                      <div className="flex items-center space-x-1.5">
+                        {c.status !== 'resuelto' && (
+                          <button
+                            onClick={() => marcarEstado(c.id, 'resuelto')}
+                            className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                          >
+                            Marcar Resuelto
+                          </button>
+                        )}
+                        {c.permalink && (
+                          <a
+                            href={c.permalink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                            title="Ver en la red social"
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  {/* Acciones si no está respondido o para responder de nuevo */}
-                  <div className="pt-2 border-t border-slate-100 flex flex-col gap-2.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => sugerirRespuestaIA(c.id)}
-                        disabled={generatingAI[c.id]}
-                        className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs border border-purple-200 flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <Sparkles size={13} className={generatingAI[c.id] ? "animate-spin" : ""} />
-                        <span>{generatingAI[c.id] ? 'Generando con IA...' : '✨ Sugerir con IA'}</span>
-                      </button>
+                    {/* Contenido del comentario */}
+                    <p className="text-xs font-medium text-slate-800 bg-slate-50 p-3 rounded-2xl leading-relaxed">
+                      &quot;{c.text}&quot;
+                    </p>
 
-                      <button
-                        onClick={() => responderConIAInstantaneo(c.id)}
-                        disabled={sending[c.id]}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                      >
-                        <Bot size={13} />
-                        <span>{sending[c.id] ? 'Enviando...' : '🤖 Responder con IA (1-Clic)'}</span>
-                      </button>
+                    {/* Si ya fue respondido */}
+                    {c.bot_reply && (
+                      <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-1">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 flex items-center gap-1">
+                          <Bot size={11} /> Respuesta enviada:
+                        </span>
+                        <p className="text-xs text-purple-950 font-medium leading-relaxed">{c.bot_reply}</p>
+                      </div>
+                    )}
 
-                      {c.status === 'nuevo' && (
+                    {/* Caja de Respuesta Manual / IA */}
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Responder al comentario:</span>
+                        <div className="flex items-center space-x-1.5">
+                          <button
+                            onClick={() => sugerirRespuestaIA(c.id)}
+                            disabled={generatingAI[c.id]}
+                            className="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <Sparkles size={11} className={generatingAI[c.id] ? 'animate-spin' : ''} />
+                            <span>{generatingAI[c.id] ? 'Generando...' : 'Sugerir con IA'}</span>
+                          </button>
+                          <button
+                            onClick={() => responderConIAUnClic(c.id)}
+                            disabled={sending[c.id]}
+                            className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                          >
+                            <Bot size={11} />
+                            <span>Responder con IA (1-Clic)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={replyText[c.id] || ''}
+                          onChange={(e) => setReplyText({ ...replyText, [c.id]: e.target.value })}
+                          placeholder="Escribe tu respuesta pública..."
+                          className="flex-1 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#FF6B00]"
+                          onKeyDown={(e) => e.key === 'Enter' && enviarRespuesta(c.id)}
+                        />
                         <button
-                          onClick={() => marcarVisto(c.id)}
-                          className="text-[11px] font-bold text-slate-400 hover:text-slate-600 px-2 py-1 transition-colors cursor-pointer"
+                          onClick={() => enviarRespuesta(c.id)}
+                          disabled={sending[c.id] || !(replyText[c.id] || '').trim()}
+                          className="px-4 py-2.5 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black rounded-xl transition-all flex items-center gap-1 shadow-sm disabled:opacity-50 cursor-pointer"
                         >
-                          Marcar como visto
+                          <Send size={12} />
+                          <span>{sending[c.id] ? 'Enviando...' : 'Enviar'}</span>
                         </button>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={replyText[c.id] || ''}
-                        onChange={(e) => setReplyText({ ...replyText, [c.id]: e.target.value })}
-                        onKeyDown={(e) => { if (e.key === 'Enter') enviarRespuesta(c.id); }}
-                        placeholder="Escribe una respuesta personalizada o usa 'Sugerir con IA'..."
-                        className="flex-1 px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-slate-800"
-                      />
-                      <button
-                        onClick={() => enviarRespuesta(c.id)}
-                        disabled={sending[c.id] || !replyText[c.id]?.trim()}
-                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 disabled:opacity-40 flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <Send size={13} />
-                        <span>Enviar</span>
-                      </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* TAB 2: MÉTRICAS Y FEED (LIKES Y POSTS) */}
+      {/* TAB 2: MÉTRICAS & LIKES (FEED COMPLETO) */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'feed' && (
         <div className="space-y-6">
-          {/* Resumen Canales */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Instagram Profile */}
-            <div className="p-5 rounded-3xl border border-pink-100 bg-gradient-to-br from-pink-50/50 via-white to-orange-50/40 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  {ig?.profile_picture_url ? (
-                    <img src={ig.profile_picture_url} alt="IG" className="h-12 w-12 rounded-full object-cover border-2 border-pink-200 shadow-xs" />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 text-white flex items-center justify-center font-black text-base">IG</div>
-                  )}
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900">{ig?.name || '@onecontrol.shop'}</h3>
-                    <p className="text-xs font-bold text-pink-600">@{ig?.username || '0ne_control'}</p>
-                  </div>
-                </div>
-                <a
-                  href={`https://instagram.com/${ig?.username || '0ne_control'}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-2 rounded-xl bg-white border border-pink-200 text-pink-600 hover:bg-pink-50 font-bold text-xs flex items-center gap-1 shadow-xs transition-colors"
-                >
-                  <span>Abrir Instagram</span>
-                  <ExternalLink size={13} />
-                </a>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-pink-100 text-center">
-                <div>
-                  <p className="text-xl font-black text-slate-900">{ig?.followers_count ?? '—'}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Seguidores</p>
-                </div>
-                <div>
-                  <p className="text-xl font-black text-slate-900">{ig?.media_count ?? posts.length}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Publicaciones</p>
-                </div>
-                <div>
-                  <p className="text-xl font-black text-pink-600 flex items-center justify-center gap-1">
-                    <Heart size={14} className="fill-pink-500 text-pink-500" />
-                    <span>{metaInsights?.stats?.totalLikes || 0}</span>
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Likes Totales</p>
-                </div>
-              </div>
+          {/* Summary KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Likes Meta</span>
+              <p className="text-3xl font-black text-pink-600 mt-2 flex items-center gap-2">
+                <Heart className="fill-pink-500 text-pink-500" size={24} />
+                {metaInsights?.stats?.totalLikes || 0}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-1">Acumulado en publicaciones</p>
             </div>
 
-            {/* Facebook Profile */}
-            <div className="p-5 rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50/50 via-white to-slate-50 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  {fb?.picture ? (
-                    <img src={fb.picture} alt="FB" className="h-12 w-12 rounded-full object-cover border-2 border-blue-200 shadow-xs" />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-base">FB</div>
-                  )}
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900">{fb?.name || 'Onecontrolshop'}</h3>
-                    <p className="text-xs font-bold text-blue-600">Página Oficial de Facebook</p>
-                  </div>
-                </div>
-                <a
-                  href={fb?.link || 'https://facebook.com/1059922890527747'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-2 rounded-xl bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 font-bold text-xs flex items-center gap-1 shadow-xs transition-colors"
-                >
-                  <span>Abrir Facebook</span>
-                  <ExternalLink size={13} />
-                </a>
-              </div>
+            <div className="bg-white border border-pink-200 bg-pink-50/30 rounded-3xl p-5 shadow-xs">
+              <span className="text-[10px] font-black uppercase tracking-wider text-pink-700">Instagram (@0ne_control)</span>
+              <p className="text-3xl font-black text-slate-900 mt-2">{metaInsights?.instagram?.followers || 0}</p>
+              <p className="text-[11px] text-pink-600 font-bold mt-1">{metaInsights?.instagram?.mediaCount || 0} Publicaciones & Reels</p>
+            </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-blue-100 text-center">
-                <div>
-                  <p className="text-xl font-black text-slate-900">{fb?.fan_count ?? '—'}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Me Gusta</p>
-                </div>
-                <div>
-                  <p className="text-xl font-black text-blue-600">{fb?.followers_count ?? fb?.fan_count ?? '—'}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Seguidores</p>
-                </div>
-              </div>
+            <div className="bg-white border border-blue-200 bg-blue-50/30 rounded-3xl p-5 shadow-xs">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700">Facebook Page</span>
+              <p className="text-3xl font-black text-slate-900 mt-2">{metaInsights?.facebook?.fanCount || 0}</p>
+              <p className="text-[11px] text-blue-600 font-bold mt-1">Seguidores / Fans</p>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Comentarios</span>
+              <p className="text-3xl font-black text-slate-900 mt-2">{comments.length}</p>
+              <p className="text-[11px] text-slate-400 mt-1">Gestionados en CRM</p>
             </div>
           </div>
 
-          {/* Galería de Posts y Reels */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Publicaciones y Reels de Instagram</span>
-              <span className="text-[11px] font-bold text-slate-500">Likes y Comentarios en Vivo</span>
-            </div>
+          {/* Cuadrícula de Publicaciones con Likes */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-black text-slate-900">Publicaciones Recientes & Engagement</h3>
 
-            {posts.length === 0 ? (
-              <p className="text-xs text-slate-400 py-8 text-center">No se encontraron publicaciones recientes. Pulsa 'Sincronizar Feed'.</p>
+            {loadingMeta ? (
+              <div className="p-12 text-center text-xs text-slate-400 flex items-center justify-center space-x-2">
+                <RefreshCw className="animate-spin text-[#FF6B00]" size={16} />
+                <span>Cargando feed de Meta...</span>
+              </div>
+            ) : (metaInsights?.feed || []).length === 0 ? (
+              <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-xs text-slate-400">
+                No se encontraron publicaciones recientes.
+              </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {posts.map((post) => (
-                  <div key={post.id} className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden hover:border-pink-300 hover:shadow-md transition-all flex flex-col group">
-                    <div className="relative aspect-square bg-slate-900 overflow-hidden">
-                      {post.thumbnail ? (
+                {(metaInsights?.feed || []).map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-white border border-slate-200/90 rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col group"
+                  >
+                    {/* Media Thumbnail */}
+                    <div className="relative aspect-square bg-slate-100 overflow-hidden">
+                      {item.media_type === 'VIDEO' ? (
+                        <video src={item.media_url} className="w-full h-full object-cover" muted />
+                      ) : (
                         <img
-                          src={post.thumbnail}
+                          src={item.media_url || item.thumbnail_url}
                           alt="Post"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          onError={(e) => { e.target.style.display = 'none'; }}
                         />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">Sin imagen</div>
                       )}
-                      <span className="absolute top-2 left-2 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white flex items-center gap-1">
-                        {post.media_type === 'VIDEO' ? <Video size={10} /> : <ImageIcon size={10} />}
-                        <span>{post.media_type === 'VIDEO' ? 'Reel' : 'Post'}</span>
+                      
+                      <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-black/60 text-white backdrop-blur-xs flex items-center gap-1">
+                        {item.platform === 'instagram' ? '📸 IG' : '📘 FB'}
+                        {item.media_type === 'VIDEO' && <Video size={10} />}
                       </span>
+
+                      <div className="absolute bottom-2.5 right-2.5 flex items-center space-x-2 bg-black/70 text-white px-2.5 py-1 rounded-xl text-xs font-black backdrop-blur-xs">
+                        <span className="flex items-center gap-1">
+                          <Heart size={12} className="fill-pink-500 text-pink-500" />
+                          {item.like_count || 0}
+                        </span>
+                        <span className="flex items-center gap-1 opacity-80">
+                          <MessageCircle size={12} />
+                          {item.comments_count || 0}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="p-3.5 flex-1 flex flex-col justify-between space-y-2.5 bg-white">
-                      <p className="text-[11px] text-slate-700 font-medium line-clamp-2 leading-snug">
-                        {post.caption || 'Publicación en Instagram'}
+                    {/* Caption & Actions */}
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      <p className="text-xs text-slate-700 font-medium line-clamp-3 leading-relaxed">
+                        {item.caption || item.message || 'Sin descripción'}
                       </p>
 
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                        <div className="flex items-center space-x-3">
-                          <span className="flex items-center gap-1 font-bold text-pink-600">
-                            <Heart size={13} className="fill-pink-500 text-pink-500" />
-                            <span>{post.like_count}</span>
-                          </span>
-                          <span className="flex items-center gap-1 font-bold text-slate-500">
-                            <MessageCircle size={13} />
-                            <span>{post.comments_count}</span>
-                          </span>
-                        </div>
-                        <a
-                          href={post.permalink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] font-bold text-[#FF6B00] hover:underline"
-                        >
-                          Ver en IG →
-                        </a>
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                        <span>{item.timestamp?.slice(0, 10)}</span>
+                        {item.permalink && (
+                          <a
+                            href={item.permalink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[#FF6B00] font-bold hover:underline flex items-center gap-0.5"
+                          >
+                            Ver Post <ExternalLink size={10} />
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -614,38 +952,44 @@ export default function ViewComentarios({ apiBase, authToken }) {
       )}
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* TAB 3: CONFIGURACIÓN DE AUTO-RESPUESTA DEL BOT */}
+      {/* TAB 3: CONFIGURACIÓN DE AUTO-RESPUESTA CON IA */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'bot_settings' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                  <Bot className="text-purple-600" size={18} /> Auto-Respuesta Inteligente con IA
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">El bot responderá comentarios en publicaciones de Instagram y Facebook de forma autónoma.</p>
-              </div>
-              {settingsMsg && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">{settingsMsg}</span>}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          {/* Ajustes Generales */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Bot className="text-purple-600" size={20} /> Auto-Respuesta del Bot en Comentarios
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">Configura cómo responde el bot automáticamente a las personas que comentan tus posts y reels.</p>
             </div>
 
+            {settingsMsg && (
+              <div className={`p-3.5 rounded-2xl text-xs font-bold ${settingsMsg.includes('✅') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                {settingsMsg}
+              </div>
+            )}
+
             <form onSubmit={handleSaveSettings} className="space-y-5">
-              {/* Switch Toggle */}
-              <div className="flex items-center justify-between p-4.5 rounded-2xl bg-slate-50 border border-slate-200">
+              {/* Switch Activar */}
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
                 <div>
-                  <p className="text-xs font-black text-slate-900">Activar Auto-Respuesta en Comentarios</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Responde con precios, disponibilidad del catálogo RAG e invita a WhatsApp.</p>
+                  <h4 className="text-xs font-black text-slate-900">Auto-Responder Comentarios</h4>
+                  <p className="text-[11px] text-slate-500">Responder automáticamente a preguntas de precio, catálogo y envíos.</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setBotSettings(s => ({ ...s, bot_comments_enabled: s.bot_comments_enabled === '1' ? '0' : '1' }))}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                    botSettings.bot_comments_enabled === '1' ? 'bg-emerald-500' : 'bg-slate-300'
+                  onClick={() => setBotSettings({ ...botSettings, bot_comments_enabled: botSettings.bot_comments_enabled === '1' ? '0' : '1' })}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    botSettings.bot_comments_enabled === '1' ? 'bg-purple-600' : 'bg-slate-300'
                   }`}
                 >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    botSettings.bot_comments_enabled === '1' ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
+                  <span
+                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                      botSettings.bot_comments_enabled === '1' ? 'left-7' : 'left-1'
+                    }`}
+                  />
                 </button>
               </div>
 
