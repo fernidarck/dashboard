@@ -58,6 +58,7 @@ async function requireAuth(req, res, next) {
   // Webhooks de entrada y endpoints públicos del bot no requieren auth
   const publicPaths = [
     '/webhook/',
+    '/webhooks/',
     '/bot/status/',
     '/agent/prompt',
     '/auth/login',
@@ -348,6 +349,14 @@ async function setup() {
         timestamp TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_lead_id_id ON messages(lead_id, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_messages_lead_client ON messages(lead_id, sender, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
+      CREATE INDEX IF NOT EXISTS idx_leads_channel ON leads(channel_phone);
+      CREATE INDEX IF NOT EXISTS idx_leads_archived ON leads(archived);
+      CREATE INDEX IF NOT EXISTS idx_leads_priority ON leads(priority);
+      CREATE INDEX IF NOT EXISTS idx_leads_origen ON leads(origen);
     `);
 
     // Migration: add bot_active column to whatsapp_channels if not exists
@@ -593,7 +602,70 @@ async function sendTextViaYCloud(toPhone, text, channelPhone = null) {
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
       body: JSON.stringify({ from: fromNum, to: toPhone, type: 'text', text: { body: text } })
     });
-  } catch(e) { console.error('❌ Error enviando texto via YCloud:', e.message); }
+  } catch(e) {
+    console.error('❌ Error enviando texto via YCloud:', e.message);
+  }
+}
+
+// ─── META GRAPH API (Facebook Messenger & Instagram Direct) ─────────────────
+const META_GRAPH = 'https://graph.facebook.com/v21.0';
+
+async function getMetaConfig() {
+  const token = await getDynamicSetting('meta_page_token', process.env.META_PAGE_TOKEN);
+  const verifyToken = await getDynamicSetting('meta_verify_token', process.env.META_VERIFY_TOKEN || 'onecontrol_ig_verify_2026');
+  const igUserId = await getDynamicSetting('ig_user_id', process.env.IG_USER_ID || '17841477412607895');
+  const fbPageId = await getDynamicSetting('fb_page_id', process.env.FB_PAGE_ID || '1059922890527747');
+  return { token, verifyToken, igUserId, fbPageId };
+}
+
+async function sendMetaMessage(recipientId, text, mediaUrl = null, mediaType = 'image') {
+  try {
+    const { token } = await getMetaConfig();
+    if (!token) {
+      console.error('❌ No hay token de Meta configurado (META_PAGE_TOKEN)');
+      return false;
+    }
+    if (!recipientId) return false;
+
+    let payload;
+    if (mediaUrl) {
+      let type = 'image';
+      if (mediaType === 'video') type = 'video';
+      else if (mediaType === 'audio') type = 'audio';
+      else if (mediaType === 'document' || mediaType === 'file') type = 'file';
+
+      payload = {
+        recipient: { id: recipientId },
+        message: {
+          attachment: {
+            type,
+            payload: { url: mediaUrl, is_reusable: true }
+          }
+        }
+      };
+    } else {
+      payload = {
+        recipient: { id: recipientId },
+        message: { text: text || '' }
+      };
+    }
+
+    const r = await fetch(`${META_GRAPH}/me/messages?access_token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.error) {
+      console.error(`❌ Error enviando mensaje Meta a ${recipientId}:`, data.error?.message || JSON.stringify(data));
+      return false;
+    }
+    console.log(`✅ Mensaje Meta enviado a ${recipientId}`);
+    return true;
+  } catch (err) {
+    console.error('❌ Excepción enviando mensaje Meta:', err.message);
+    return false;
+  }
 }
 
 // Helper para normalizar textos para comparación
@@ -753,9 +825,30 @@ app.get('/api/leads', async (req, res) => {
     const params = [isArchived];
 
     if (activeChannelPhone && activeChannelPhone !== 'all') {
-      const cleanChan = String(activeChannelPhone).replace(/\D/g, '');
-      query += ` AND REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?`;
-      params.push(cleanChan);
+      const lowerChan = String(activeChannelPhone).toLowerCase();
+      if (lowerChan === 'instagram') {
+        query += ` AND (LOWER(l.origen) LIKE '%instagram%')`;
+      } else if (lowerChan === 'facebook') {
+        query += ` AND (LOWER(l.origen) LIKE '%facebook%')`;
+      } else if (lowerChan === 'whatsapp') {
+        query += ` AND (LOWER(l.origen) LIKE '%whatsapp%' OR l.origen = 'Manual' OR l.origen IS NULL)`;
+      } else {
+        const cleanChan = String(activeChannelPhone).replace(/\D/g, '');
+        if (cleanChan) {
+          query += ` AND REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?`;
+          params.push(cleanChan);
+        }
+      }
+    }
+
+    if (req.query.origen && req.query.origen !== 'all') {
+      const lowerOrigen = String(req.query.origen).toLowerCase();
+      if (lowerOrigen === 'whatsapp') {
+        query += ` AND (LOWER(l.origen) LIKE '%whatsapp%' OR l.origen = 'Manual' OR l.origen IS NULL)`;
+      } else {
+        query += ` AND LOWER(l.origen) LIKE ?`;
+        params.push(`%${lowerOrigen}%`);
+      }
     }
 
     query += ` ORDER BY (CASE WHEN l.priority = 'urgent' THEN 1 ELSE 0 END) DESC, COALESCE((SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1), 0) DESC, l.id DESC`;
@@ -906,13 +999,13 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
     let existingLead;
     if (cleanChannelPhone) {
       existingLead = await db.get(
-        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ?",
+        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1",
         cleanPhone, cleanChannelPhone
       );
     }
     if (!existingLead) {
       existingLead = await db.get(
-        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?",
+        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1",
         cleanPhone
       );
     }
@@ -1859,43 +1952,57 @@ app.post('/api/messages/send', async (req, res) => {
     }
 
     if (msgSender === 'agent') {
-      const lead = await db.get("SELECT phone, channel_phone FROM leads WHERE id = ?", leadId);
-      const targetPhone = phone || lead?.phone;
-      if (targetPhone) {
-        const channel = await getChannelConfig(lead?.channel_phone);
-        const outboundWebhook = channel?.outbound_webhook || await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK);
-        const chanPhone = lead?.channel_phone || channel?.phone || '+50244315578';
-        const formattedChanPhone = String(chanPhone).startsWith('+') ? String(chanPhone) : `+${String(chanPhone).replace(/\D/g, '')}`;
-        const formattedTargetPhone = String(targetPhone).startsWith('+') ? String(targetPhone) : `+${String(targetPhone).replace(/\D/g, '')}`;
+      const lead = await db.get("SELECT phone, channel_phone, origen, whatsapp_id FROM leads WHERE id = ?", leadId);
+      const isInstagram = lead?.origen && String(lead.origen).toLowerCase().includes('instagram');
+      const isFacebook = lead?.origen && String(lead.origen).toLowerCase().includes('facebook');
 
-        if (outboundWebhook && outboundWebhook.trim() !== '') {
-          fetch(outboundWebhook, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phone: formattedTargetPhone,
-              text: cleanText,
-              image_url: imageUrl || null,
-              channel_phone: formattedChanPhone
-            })
-          }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
-        } else {
-          // FALLBACK DIRECTO A YCLOUD: Si no hay webhook de n8n
+      if (isInstagram || isFacebook) {
+        const recipientId = lead.whatsapp_id || lead.phone || phone;
+        if (recipientId) {
           if (imageUrl) {
-            sendImageViaYCloud(formattedTargetPhone, imageUrl, cleanText, formattedChanPhone);
+            await sendMetaMessage(recipientId, cleanText, imageUrl, 'image');
           } else if (cleanText) {
-            const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-            if (apiKey) {
-              fetch('https://api.ycloud.com/v2/whatsapp/messages', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-                body: JSON.stringify({
-                  from: formattedChanPhone,
-                  to: formattedTargetPhone,
-                  type: 'text',
-                  text: { body: cleanText, preview_url: true }
-                })
-              }).catch(err => console.error("❌ Error directo YCloud:", err.message));
+            await sendMetaMessage(recipientId, cleanText);
+          }
+        }
+      } else {
+        const targetPhone = phone || lead?.phone;
+        if (targetPhone) {
+          const channel = await getChannelConfig(lead?.channel_phone);
+          const outboundWebhook = channel?.outbound_webhook || await getDynamicSetting('n8n_outbound_webhook', process.env.N8N_OUTBOUND_WEBHOOK);
+          const chanPhone = lead?.channel_phone || channel?.phone || '+50244315578';
+          const formattedChanPhone = String(chanPhone).startsWith('+') ? String(chanPhone) : `+${String(chanPhone).replace(/\D/g, '')}`;
+          const formattedTargetPhone = String(targetPhone).startsWith('+') ? String(targetPhone) : `+${String(targetPhone).replace(/\D/g, '')}`;
+
+          if (outboundWebhook && outboundWebhook.trim() !== '') {
+            fetch(outboundWebhook, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: formattedTargetPhone,
+                text: cleanText,
+                image_url: imageUrl || null,
+                channel_phone: formattedChanPhone
+              })
+            }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
+          } else {
+            // FALLBACK DIRECTO A YCLOUD: Si no hay webhook de n8n
+            if (imageUrl) {
+              sendImageViaYCloud(formattedTargetPhone, imageUrl, cleanText, formattedChanPhone);
+            } else if (cleanText) {
+              const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+              if (apiKey) {
+                fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+                  body: JSON.stringify({
+                    from: formattedChanPhone,
+                    to: formattedTargetPhone,
+                    type: 'text',
+                    text: { body: cleanText, preview_url: true }
+                  })
+                }).catch(err => console.error("❌ Error directo YCloud:", err.message));
+              }
             }
           }
         }
@@ -1913,7 +2020,7 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
   try {
     const { leadId, caption } = req.body;
     if (!leadId || !req.file) return res.status(400).json({ error: "Falta leadId o archivo" });
-    const lead = await db.get("SELECT phone, channel_phone FROM leads WHERE id = ?", leadId);
+    const lead = await db.get("SELECT phone, channel_phone, origen, whatsapp_id FROM leads WHERE id = ?", leadId);
     if (!lead) return res.status(404).json({ error: "Lead no encontrado" });
     if (req.user && req.user.channel_phone) {
       const a = String(lead.channel_phone || '').replace(/\D/g, '');
@@ -1923,7 +2030,7 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
     const docUrl = `https://${req.get('host')}/uploads/${req.file.filename}`;
     const time = horaGuate();
-    // Según el tipo: imagen → FOTO, video → VIDEO, resto → documento (tipos WhatsApp).
+    // Según el tipo: imagen → FOTO, video → VIDEO, resto → documento (tipos WhatsApp/Meta).
     const mime = String(req.file.mimetype || '');
     const isImage = mime.startsWith('image/');
     const isVideo = mime.startsWith('video/');
@@ -1932,7 +2039,16 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
       "INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
       leadId, 'agent', (isImage || isVideo) ? (caption || '') : fileName, docUrl, mediaType, time
     );
-    if (lead.phone) {
+
+    const isInstagram = lead?.origen && String(lead.origen).toLowerCase().includes('instagram');
+    const isFacebook = lead?.origen && String(lead.origen).toLowerCase().includes('facebook');
+
+    if (isInstagram || isFacebook) {
+      const recipientId = lead.whatsapp_id || lead.phone;
+      if (recipientId) {
+        await sendMetaMessage(recipientId, caption || '', docUrl, isImage ? 'image' : isVideo ? 'video' : 'document');
+      }
+    } else if (lead.phone) {
       if (isImage)      sendImageViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
       else if (isVideo) sendVideoViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
       else              sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
@@ -2831,16 +2947,8 @@ app.get('/api/rag/test-search', async (req, res) => {
   }
 });
 
-// ─── COMENTARIOS DE REDES (Instagram) ────────────────────────────────────────
-// Módulo NUEVO y AISLADO: no toca el flujo de WhatsApp. El bot de WhatsApp usa
-// YCloud; esto usa el token de Meta (getDynamicSetting 'meta_page_token').
-const IG_GRAPH = 'https://graph.facebook.com/v21.0';
-
-async function getMetaPageToken() {
-  return await getDynamicSetting('meta_page_token', process.env.META_PAGE_TOKEN);
-}
-
-// Clasificación mixta: ¿el comentario es DELICADO (requiere que conteste un humano)?
+// ─── META INTEGRATION (Facebook Page, Instagram & Comentarios) ───────────────
+// Helper para clasificar si un comentario o mensaje es DELICADO (queja/reclamo)
 function comentarioEsDelicado(text) {
   const t = normalize(text || '');
   const claves = ['queja','reclamo','pesimo','malo','horrible','estafa','engan','engañ','fraude',
@@ -2850,11 +2958,30 @@ function comentarioEsDelicado(text) {
   return claves.some(k => t.includes(k));
 }
 
-// Responder un comentario de Instagram (respuesta pública)
-async function replyToIGComment(commentId, message) {
-  const token = await getMetaPageToken();
+// Obtener nombre del perfil de Facebook o Instagram vía Graph API
+async function fetchMetaUserName(userId, platform = 'facebook') {
+  try {
+    const { token } = await getMetaConfig();
+    if (!token || !userId) return null;
+    const r = await fetch(`${META_GRAPH}/${userId}?fields=name,first_name,last_name,username&access_token=${token}`);
+    const data = await r.json().catch(() => ({}));
+    if (data && !data.error) {
+      if (data.name) return data.name;
+      if (data.username) return `@${data.username}`;
+      if (data.first_name) return `${data.first_name} ${data.last_name || ''}`.trim();
+    }
+  } catch(e) {}
+  return null;
+}
+
+// Responder comentario en Facebook o Instagram
+async function replyToComment(commentId, message, platform = 'instagram') {
+  const { token } = await getMetaConfig();
   if (!token) throw new Error('No hay token de Meta configurado (META_PAGE_TOKEN)');
-  const r = await fetch(`${IG_GRAPH}/${commentId}/replies`, {
+  const endpoint = platform === 'facebook'
+    ? `${META_GRAPH}/${commentId}/comments`
+    : `${META_GRAPH}/${commentId}/replies`;
+  const r = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, access_token: token })
@@ -2864,48 +2991,191 @@ async function replyToIGComment(commentId, message) {
   return data;
 }
 
-// Webhook de Meta — verificación (GET)
-app.get('/webhooks/instagram', async (req, res) => {
-  const verifyToken = await getDynamicSetting('meta_verify_token', process.env.META_VERIFY_TOKEN || 'onecontrol_ig_verify_2026');
+// Procesador universal de Webhooks de Meta (Facebook Messenger, Instagram Direct & Comentarios)
+async function processIncomingMetaWebhook(body) {
+  const { token, igUserId, fbPageId } = await getMetaConfig();
+  const time = horaGuate();
+  const entries = body?.entry || [];
+
+  for (const entry of entries) {
+    const entryId = String(entry.id || '');
+    const isInstagramEntry = body.object === 'instagram' || body.object === 'instagram_business_account' || entryId === String(igUserId);
+
+    // 1. Mensajes Directos (Messenger / Instagram Direct)
+    const messagingList = entry.messaging || entry.standby || [];
+    for (const event of messagingList) {
+      const isEcho = !!event.message?.is_echo ||
+        String(event.sender?.id) === entryId ||
+        String(event.sender?.id) === String(igUserId) ||
+        String(event.sender?.id) === String(fbPageId);
+
+      const customerId = isEcho ? String(event.recipient?.id || '') : String(event.sender?.id || '');
+      const channelId = isEcho ? String(event.sender?.id || '') : String(event.recipient?.id || '');
+      if (!customerId) continue;
+
+      const platform = isInstagramEntry ? 'Instagram Direct' : 'Facebook Messenger';
+      const text = event.message?.text || event.postback?.title || '';
+
+      let mediaUrl = null;
+      let mediaType = null;
+      const att = event.message?.attachments?.[0];
+      if (att) {
+        mediaUrl = att.payload?.url || null;
+        mediaType = att.type || (mediaUrl ? 'image' : null);
+      }
+
+      const sender = isEcho ? 'agent' : 'client';
+
+      // Buscar lead existente
+      let existingLead = await db.get(
+        "SELECT id, nombre, estado, score, botActive, origen FROM leads WHERE (whatsapp_id = ? OR phone = ?) AND (origen LIKE '%Instagram%' OR origen LIKE '%Facebook%')",
+        customerId, customerId
+      );
+      if (!existingLead) {
+        existingLead = await db.get(
+          "SELECT id, nombre, estado, score, botActive, origen FROM leads WHERE whatsapp_id = ? OR phone = ?",
+          customerId, customerId
+        );
+      }
+
+      let leadId;
+      if (existingLead) {
+        leadId = existingLead.id;
+        const updates = [];
+        const params = [];
+
+        if (isEcho) {
+          updates.push("botActive = 0");
+          updates.push("priority = 'normal'");
+          updates.push("handoff_reason = NULL");
+          if (existingLead.estado === 'Nuevo' || existingLead.estado === 'Intervención Requerida') {
+            updates.push("estado = 'En Seguimiento'");
+          }
+        }
+
+        if (updates.length > 0) {
+          params.push(leadId);
+          await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
+        }
+      } else {
+        // Obtener nombre del perfil desde Meta API si está disponible
+        let userName = await fetchMetaUserName(customerId, isInstagramEntry ? 'instagram' : 'facebook');
+        if (!userName) {
+          userName = isInstagramEntry ? `Cliente Instagram (${customerId.slice(-4)})` : `Cliente Facebook (${customerId.slice(-4)})`;
+        }
+
+        const initialEstado = isEcho ? 'En Seguimiento' : 'Nuevo';
+        const initialBotActive = isEcho ? 0 : 1;
+
+        const result = await db.run(
+          `INSERT INTO leads (nombre, phone, whatsapp_id, score, estado, origen, botActive, channel_phone, priority)
+           VALUES (?, ?, ?, 50, ?, ?, ?, ?, 'normal')`,
+          userName, customerId, customerId, initialEstado, platform, initialBotActive, channelId || entryId
+        );
+        leadId = result.lastID;
+        console.log(`🆕 [${platform}] Creado nuevo lead ID ${leadId} (${userName} - ${customerId})`);
+      }
+
+      // Guardar mensaje en el historial
+      if (text || mediaUrl) {
+        await saveSmartMessage(leadId, sender, text, time, mediaUrl, mediaType);
+        console.log(`💾 [${platform}] Mensaje guardado para lead ${leadId} (${sender}): "${(text || mediaUrl)?.slice(0, 60)}"`);
+      }
+
+      // Handoff automático si el cliente pide ayuda
+      if (!isEcho && (await detectHandoff(text))) {
+        const handoffReason = await detectHandoff(text);
+        await db.run(
+          "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
+          handoffReason, leadId
+        );
+        try {
+          const l = await db.get("SELECT nombre, phone FROM leads WHERE id = ?", leadId);
+          const alerta = `🙋 *SOLICITUD DE AYUDA (${platform})*\n\nUn cliente necesita atención humana.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ID: ${customerId}\n📝 ${handoffReason}${text ? `\n💬 "${text.slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
+          await notificarDueno(alerta);
+        } catch(e) {}
+      }
+    }
+
+    // 2. Comentarios en Publicaciones (Feed & Comments)
+    const changes = entry.changes || [];
+    for (const ch of changes) {
+      if (ch.field !== 'comments' && ch.field !== 'feed') continue;
+      const v = ch.value || {};
+      if (!v.id && !v.comment_id) continue;
+      const commentId = v.comment_id || v.id;
+      const fromId = v.from?.id || '';
+      if (fromId && (fromId === String(igUserId) || fromId === String(fbPageId) || fromId === entryId)) continue;
+
+      const text = v.message || v.text || '';
+      if (!text) continue;
+
+      const delicado = comentarioEsDelicado(text) ? 1 : 0;
+      const commentPlatform = (ch.field === 'feed' || !isInstagramEntry) ? 'facebook' : 'instagram';
+      const fromName = v.from?.name || v.from?.username || 'Usuario';
+      const mediaId = v.media?.id || v.post_id || '';
+      const parentId = v.parent_id || null;
+
+      try {
+        await db.run(
+          "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, parent_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
+          commentPlatform, commentId, mediaId, parentId, fromId, fromName, text, delicado, time
+        );
+        console.log(`💬 Comentario ${commentPlatform.toUpperCase()} de ${fromName}: "${text.slice(0, 60)}" (delicado: ${delicado})`);
+      } catch(e) {
+        console.error('Error guardando comentario:', e.message);
+      }
+    }
+  }
+}
+
+// Handlers de Webhook Meta: Verificación GET
+const handleMetaWebhookGet = async (req, res) => {
+  const { verifyToken } = await getMetaConfig();
   if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === verifyToken) {
-    console.log('✅ Webhook de Instagram verificado');
+    console.log('✅ Webhook de Meta verificado');
     return res.status(200).send(req.query['hub.challenge']);
   }
   return res.sendStatus(403);
-});
+};
 
-// Webhook de Meta — recepción de comentarios nuevos (POST)
-app.post('/webhooks/instagram', async (req, res) => {
-  res.sendStatus(200); // responder rápido a Meta
+// Handlers de Webhook Meta: Recepción POST
+const handleMetaWebhookPost = async (req, res) => {
+  res.sendStatus(200); // Responder 200 rápido a Meta
   try {
-    const ig = await getDynamicSetting('ig_user_id', process.env.IG_USER_ID || '17841477412607895');
-    for (const entry of (req.body.entry || [])) {
-      for (const ch of (entry.changes || [])) {
-        if (ch.field !== 'comments') continue;
-        const v = ch.value || {};
-        if (!v.id) continue;
-        const fromId = v.from?.id || '';
-        if (fromId && String(fromId) === String(ig)) continue; // ignorar respuestas propias
-        const text = v.text || '';
-        const delicado = comentarioEsDelicado(text) ? 1 : 0;
-        try {
-          await db.run(
-            "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, parent_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES ('instagram', ?, ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
-            v.id, v.media?.id || '', v.parent_id || null, fromId, v.from?.username || v.from?.name || '', text, delicado, horaGuate()
-          );
-          console.log(`💬 Comentario IG de ${v.from?.username || fromId}: "${String(text).slice(0, 60)}" (delicado: ${delicado})`);
-        } catch (e) { console.error('Error guardando comentario:', e.message); }
-      }
-    }
+    await processIncomingMetaWebhook(req.body);
   } catch (err) {
-    console.error('❌ Error en webhook instagram:', err.message);
+    console.error('❌ Error en webhook Meta:', err.message);
   }
-});
+};
+
+// Endpoints Webhook de Meta (Compatibilidad con múltiples rutas)
+app.get('/webhooks/instagram', handleMetaWebhookGet);
+app.post('/webhooks/instagram', handleMetaWebhookPost);
+app.get('/webhooks/facebook', handleMetaWebhookGet);
+app.post('/webhooks/facebook', handleMetaWebhookPost);
+app.get('/webhooks/meta', handleMetaWebhookGet);
+app.post('/webhooks/meta', handleMetaWebhookPost);
+
+app.get('/api/webhook/instagram', handleMetaWebhookGet);
+app.post('/api/webhook/instagram', handleMetaWebhookPost);
+app.get('/api/webhook/facebook', handleMetaWebhookGet);
+app.post('/api/webhook/facebook', handleMetaWebhookPost);
+app.get('/api/webhook/meta', handleMetaWebhookGet);
+app.post('/api/webhook/meta', handleMetaWebhookPost);
 
 // Listar comentarios (para el dashboard)
-app.get('/api/comments', async (_req, res) => {
+app.get('/api/comments', async (req, res) => {
   try {
-    const rows = await db.all("SELECT * FROM redes_comments ORDER BY id DESC LIMIT 200");
+    const { platform } = req.query;
+    let query = "SELECT * FROM redes_comments";
+    const params = [];
+    if (platform && platform !== 'todos') {
+      query += " WHERE platform = ?";
+      params.push(platform);
+    }
+    query += " ORDER BY id DESC LIMIT 200";
+    const rows = await db.all(query, ...params);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2917,7 +3187,7 @@ app.post('/api/comments/:id/reply', async (req, res) => {
     if (!message) return res.status(400).json({ error: 'Falta el mensaje' });
     const c = await db.get("SELECT * FROM redes_comments WHERE id = ?", req.params.id);
     if (!c) return res.status(404).json({ error: 'Comentario no encontrado' });
-    await replyToIGComment(c.comment_id, message);
+    await replyToComment(c.comment_id, message, c.platform || 'instagram');
     await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'manual' WHERE id = ?", message, req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2931,37 +3201,75 @@ app.post('/api/comments/:id/status', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Sincronizar comentarios desde Instagram (pull) — trae los de los últimos posts,
-// por si el webhook se perdió alguno o son anteriores a la conexión.
+// Sincronizar comentarios desde Instagram y Facebook Page (pull)
 app.post('/api/comments/sync', async (_req, res) => {
   try {
-    const token = await getMetaPageToken();
+    const { token, igUserId, fbPageId } = await getMetaConfig();
     if (!token) return res.status(400).json({ error: 'No hay token de Meta configurado (META_PAGE_TOKEN).' });
-    const ig = await getDynamicSetting('ig_user_id', process.env.IG_USER_ID || '17841477412607895');
-    // username propio para no guardar las respuestas del negocio
-    let selfUser = '';
-    try { const u = await (await fetch(`${IG_GRAPH}/${ig}?fields=username&access_token=${token}`)).json(); selfUser = (u.username || '').toLowerCase(); } catch { /* */ }
-    const mediaResp = await (await fetch(`${IG_GRAPH}/${ig}/media?fields=id&limit=25&access_token=${token}`)).json();
-    if (mediaResp.error) return res.status(400).json({ error: mediaResp.error.message });
-    const media = mediaResp.data || [];
-    let nuevos = 0, total = 0;
-    for (const m of media) {
-      const cResp = await (await fetch(`${IG_GRAPH}/${m.id}/comments?fields=id,text,username,timestamp,from&limit=50&access_token=${token}`)).json();
-      for (const c of (cResp.data || [])) {
-        total++;
-        const uname = (c.username || '').toLowerCase();
-        const fromId = c.from?.id || '';
-        if ((selfUser && uname === selfUser) || (fromId && String(fromId) === String(ig))) continue; // saltar propios
-        const delicado = comentarioEsDelicado(c.text) ? 1 : 0;
-        const r = await db.run(
-          "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES ('instagram', ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
-          c.id, m.id, fromId, c.username || '', c.text || '', delicado, horaGuate()
-        );
-        if (r.changes) nuevos++;
+
+    let nuevos = 0, total = 0, posts = 0;
+
+    // 1. Sincronizar Instagram
+    if (igUserId) {
+      try {
+        let selfUser = '';
+        try {
+          const u = await (await fetch(`${META_GRAPH}/${igUserId}?fields=username&access_token=${token}`)).json();
+          selfUser = (u.username || '').toLowerCase();
+        } catch (e) {}
+
+        const mediaResp = await (await fetch(`${META_GRAPH}/${igUserId}/media?fields=id&limit=25&access_token=${token}`)).json();
+        const media = mediaResp.data || [];
+        posts += media.length;
+        for (const m of media) {
+          const cResp = await (await fetch(`${META_GRAPH}/${m.id}/comments?fields=id,text,username,timestamp,from&limit=50&access_token=${token}`)).json();
+          for (const c of (cResp.data || [])) {
+            total++;
+            const uname = (c.username || '').toLowerCase();
+            const fromId = c.from?.id || '';
+            if ((selfUser && uname === selfUser) || (fromId && String(fromId) === String(igUserId))) continue;
+            const delicado = comentarioEsDelicado(c.text) ? 1 : 0;
+            const r = await db.run(
+              "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES ('instagram', ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
+              c.id, m.id, fromId, c.username || '', c.text || '', delicado, horaGuate()
+            );
+            if (r.changes) nuevos++;
+          }
+        }
+      } catch (err) {
+        console.error('Error sincronizando Instagram:', err.message);
       }
     }
-    res.json({ success: true, nuevos, revisados: total, posts: media.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+
+    // 2. Sincronizar Facebook Page
+    if (fbPageId) {
+      try {
+        const feedResp = await (await fetch(`${META_GRAPH}/${fbPageId}/feed?fields=id,message,comments{id,message,from,created_time}&limit=25&access_token=${token}`)).json();
+        const feedPosts = feedResp.data || [];
+        posts += feedPosts.length;
+        for (const post of feedPosts) {
+          const comments = post.comments?.data || [];
+          for (const c of comments) {
+            total++;
+            const fromId = c.from?.id || '';
+            if (fromId && String(fromId) === String(fbPageId)) continue;
+            const delicado = comentarioEsDelicado(c.message) ? 1 : 0;
+            const r = await db.run(
+              "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES ('facebook', ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
+              c.id, post.id, fromId, c.from?.name || 'Usuario Facebook', c.message || '', delicado, horaGuate()
+            );
+            if (r.changes) nuevos++;
+          }
+        }
+      } catch (err) {
+        console.error('Error sincronizando Facebook Feed:', err.message);
+      }
+    }
+
+    res.json({ success: true, nuevos, revisados: total, posts });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── ARCHIVOS / MEDIA (subir y copiar links, para campañas de Claude/Hermes) ──
