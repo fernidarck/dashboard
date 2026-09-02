@@ -2696,6 +2696,11 @@ app.get('/api/rag/context', async (req, res) => {
       const aPedido  = !agotado && APEDIDO.test(stockStr);
       // Formato IDÉNTICO al anterior para los disponibles (no rompe nada).
       let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + (p.whatsapp_link ? ' - Link WhatsApp (compartilo para que vean el producto): ' + p.whatsapp_link : '') + (p.catalog_link ? ' - Link tienda onecontrol.shop (compartilo para más info): ' + p.catalog_link : '');
+      // Avisar a la IA si el producto tiene VIDEO, para que ofrezca mandarlo y NO diga "no tengo video".
+      try {
+        const vid = normalizeProductImages(p).find(im => /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(im.url || ''));
+        if (vid) content += ` - TIENE VIDEO (${vid.desc || 'de cómo funciona'}): si el cliente pregunta por eso, decí que SÍ y que ya se lo mandás (el sistema lo envía solo). NUNCA digas que no tenés video.`;
+      } catch (e) {}
       if (agotado) {
         // Vendemos SIEMPRE: el agotado se ofrece igual, aclarando que se fabrica según disponibilidad de material.
         content = 'ESTADO: SIN STOCK — este modelo se FABRICA y el plazo DEPENDE de la disponibilidad de material. OFRECELO igual (lo vendemos), presentándolo junto a los demás, pero dejando CLARO que este hay que FABRICARLO según disponibilidad de material: NUNCA digas que hay en stock, ni prometas entrega inmediata, ni una fecha fija. ' + content;
