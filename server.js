@@ -3197,31 +3197,56 @@ app.post('/api/training/test', async (req, res) => {
     const approvedRules = await db.all("SELECT * FROM training_rules WHERE status = 'approved'");
     const qClean = question.toLowerCase();
 
-    // Encontrar reglas aplicables a esta pregunta
-    const matchingRules = approvedRules.filter(r => {
-      const matchQ = r.example_question && qClean.includes(r.example_question.toLowerCase().slice(0, 15));
-      const matchTitle = r.title && qClean.includes(r.title.toLowerCase().slice(0, 10));
-      return matchQ || matchTitle;
-    });
-
-    // Simular respuesta usando RAG y Reglas
+    // 1. Buscar en catálogo de productos con scoring inteligente
     const products = await db.all("SELECT * FROM products WHERE activo = 1");
-    const matchingProducts = products.filter(p => {
-      const np = (p.nombre || '').toLowerCase();
-      const cp = (p.categoria || '').toLowerCase();
-      return qClean.includes(np) || np.includes(qClean) || (cp && qClean.includes(cp));
+    const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
+
+    const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
+    const keywords = qClean
+      .replace(/[¿?¡!.,;:()"'*\n]/g, ' ')
+      .split(/\s+/)
+      .filter(k => k.length > 2)
+      .map(normalizeKw);
+
+    const scoredProducts = products.map(p => {
+      const fullText = `${p.nombre} ${p.categoria || ''} ${p.descripcion || ''}`.toLowerCase();
+      let score = 0;
+      keywords.forEach(kw => {
+        if (fullText.includes(kw)) {
+          score += 2;
+          if ((p.nombre || '').toLowerCase().includes(kw)) score += 6;
+        }
+      });
+      return { ...p, score };
+    }).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
+
+    // 2. Encontrar reglas de entrenamiento aplicables
+    const matchingRules = approvedRules.filter(r => {
+      const matchQ = r.example_question && keywords.some(kw => (r.example_question || '').toLowerCase().includes(kw));
+      const matchTitle = r.title && keywords.some(kw => (r.title || '').toLowerCase().includes(kw));
+      const matchRule = r.rule && keywords.some(kw => (r.rule || '').toLowerCase().includes(kw));
+      return matchQ || matchTitle || matchRule;
     });
 
-    let simulatedReply = "¡Hola! Con gusto te brindo información.";
-    if (matchingProducts.length > 0) {
-      const p = matchingProducts[0];
-      simulatedReply = `¡Claro que sí! Contamos con **${p.nombre}**.\n\n💰 Precio: **Q${p.precio}** (por unidad).\n📦 Estado: ${p.stock || 'Disponible'}.\n${p.descripcion ? `✨ ${p.descripcion.slice(0, 150)}...` : ''}\n\n¿Te gustaría que tomemos tus datos para coordinar el envío?`;
+    let simulatedReply = "";
+    if (scoredProducts.length > 0) {
+      const topProd = scoredProducts[0];
+      simulatedReply = `¡Hola! Sí, contamos con **${topProd.nombre}**.\n\n💰 Precio: **Q${topProd.precio}** (por unidad).\n📦 Estado: ${topProd.stock || 'En stock'}.\n${topProd.descripcion ? `✨ ${topProd.descripcion}\n\n` : '\n'}Se entrega **completamente armado y listo para usar**. ¿Te gustaría ver fotos o que tomemos tus datos para coordinar el envío?`;
     } else if (qClean.includes('mesa') || qClean.includes('mueble') || qClean.includes('noche')) {
-      simulatedReply = "¡Con gusto! Nuestras mesitas de noche tienen un precio de **Q550 cada una** (el par sale en Q1,100) y se entregan **completamente armadas**. ¿Te gustaría ver las fotos de los modelos disponibles?";
+      simulatedReply = "¡Con gusto! Nuestras mesitas de noche estándar tienen un precio de **Q550 cada una** (el par sale en Q1,100) y se entregan **completamente armadas**. ¿Te gustaría ver las fotos de los modelos disponibles?";
     } else if (qClean.includes('envio') || qClean.includes('costo') || qClean.includes('zona')) {
       simulatedReply = "El costo de envío varía según tu ubicación (en varias zonas está incluido y en otras tiene un costo de Q50). ¿En qué zona o municipio te encuentras para confirmarte?";
     } else if (qClean.includes('pago') || qClean.includes('tarjeta') || qClean.includes('visacuotas')) {
       simulatedReply = "Aceptamos pago contra entrega, transferencia bancaria y Visacuotas. ¿Cuál forma de pago te resulta más cómoda?";
+    } else {
+      simulatedReply = "¡Hola! Con mucho gusto te apoyo con información de nuestros productos y servicios. ¿Qué modelo o producto estás buscando?";
+    }
+
+    // Si hay una regla aprobada de tipo 'prohibido' u 'objecion', aplicarla al texto
+    if (matchingRules.some(r => r.type === 'prohibido' && (r.title || '').toLowerCase().includes('par'))) {
+      if (!simulatedReply.includes('por unidad')) {
+        simulatedReply += "\n\n*(Aclaración: El precio indicado es por unidad; el par tiene su valor correspondiente).*";
+      }
     }
 
     res.json({
@@ -3229,7 +3254,7 @@ app.post('/api/training/test', async (req, res) => {
       question,
       reply: simulatedReply,
       appliedRules: matchingRules.map(r => ({ id: r.id, title: r.title, type: r.type, rule: r.rule })),
-      productsFound: matchingProducts.map(p => p.nombre)
+      productsFound: scoredProducts.slice(0, 3).map(p => `${p.nombre} (Q${p.precio})`)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
