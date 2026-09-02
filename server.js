@@ -439,6 +439,12 @@ async function setup() {
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
+    try {
+      // Limpiar fotos asignadas por error al cliente (las fotos de /uploads/ son siempre del catalogo/bot)
+      await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%'");
+      // Eliminar mensajes vacios del bot que solo tenian imagen duplicada
+      await db.run("DELETE FROM messages WHERE sender = 'bot' AND (text IS NULL OR text = '' OR trim(text) = '') AND mediaUrl IS NOT NULL");
+    } catch(e){}
 
     // Migration of existing settings to whatsapp_channels
     try {
@@ -747,15 +753,15 @@ async function detectHandoff(text) {
 
 // Función inteligente para guardar mensajes y actualizar leads
 async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null, mediaType = null) {
-  // Dedup: no reinsertar si el último mensaje del lead es idéntico (mismo sender + texto).
-  // Evita duplicados cuando varias rutas (nodo n8n aditivo, HTTP Request2, handoff) guardan el mismo mensaje.
-  // Mirar los últimos 5 mensajes (no solo el último): el mensaje del cliente se
-  // guarda al llegar y de nuevo cuando el bot responde (con la respuesta en medio).
+  const cleanT = (text || '').trim();
+  if (!cleanT && !mediaUrl) return;
+
+  // Dedup: no reinsertar si en los ultimos 5 mensajes ya existe exactamente este mismo mensaje del mismo remitente
   const recent = await db.all(
-    "SELECT sender, text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5",
+    "SELECT sender, text, mediaUrl FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 5",
     leadId
   );
-  if (!mediaUrl && text && recent.some(m => m.sender === sender && (m.text || '') === (text || ''))) {
+  if (cleanT && recent.some(m => m.sender === sender && (m.text || '').trim() === cleanT && (m.mediaUrl === mediaUrl || (!m.mediaUrl && !mediaUrl)))) {
     console.log(`↩️  Mensaje duplicado ignorado (lead ${leadId}, ${sender})`);
     return;
   }
@@ -763,7 +769,7 @@ async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null
   // 1. Guardar mensaje
   await db.run(
     "INSERT INTO messages (lead_id, sender, text, timestamp, mediaUrl, mediaType) VALUES (?, ?, ?, ?, ?, ?)",
-    leadId, sender, text, timestamp, mediaUrl, mediaType
+    leadId, sender, cleanT, timestamp, mediaUrl, mediaType
   );
 
   // Si el bot respondió con éxito, limpiar la alerta de "bot caído" (auto-recuperación).
@@ -1167,18 +1173,24 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       console.log(`🆕 [${sourceName}] Creado nuevo lead ID ${leadId} (${cleanPhone})`);
     }
 
+    // Distinguir si el media_url recibido es del cliente o de la respuesta del bot
+    const isBotReport = !!parsed.mensajeSecundario && !parsed.isEcho;
+    const clientMedia = isBotReport ? null : parsed.mediaUrl;
+    const clientMediaType = isBotReport ? null : parsed.mediaType;
+
     // Guardar mensaje principal (cliente o agente desde el teléfono)
-    if (parsed.mensajePrincipal || parsed.mediaUrl) {
-      await saveSmartMessage(leadId, parsed.sender, parsed.mensajePrincipal || '', time, parsed.mediaUrl, parsed.mediaType);
+    if (parsed.mensajePrincipal || clientMedia) {
+      await saveSmartMessage(leadId, parsed.sender, parsed.mensajePrincipal || '', time, clientMedia, clientMediaType);
       console.log(`💾 [${sourceName}] Mensaje guardado para lead ${leadId} (sender: ${parsed.sender}): "${parsed.mensajePrincipal?.slice?.(0, 60)}"`);
     }
 
     // Guardar respuesta del bot si viene en el payload
-    if (parsed.mensajeSecundario && !parsed.isEcho) {
+    if (isBotReport) {
       const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(parsed.mensajeSecundario || '');
-      const botImageFinal = parsed.mediaUrl || botImageUrl;
-      if (cleanBot) await saveSmartMessage(leadId, 'bot', cleanBot, time);
-      if (botImageFinal) await saveSmartMessage(leadId, 'bot', '', time, botImageFinal, 'image');
+      const botImageFinal = (isBotReport ? parsed.mediaUrl : null) || botImageUrl;
+      if (cleanBot || botImageFinal) {
+        await saveSmartMessage(leadId, 'bot', cleanBot || '', time, botImageFinal || null, botImageFinal ? 'image' : null);
+      }
     }
 
     // Detección de Handoff automática en mensajes del cliente
