@@ -347,19 +347,26 @@ export default function App() {
                 }}
                 className={`bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none appearance-none pr-6 pl-1 truncate max-w-[42vw] md:max-w-none ${currentUser?.channel_phone ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
               >
+                {channels.map(chan => {
+                  const isMain = String(chan.phone).includes('59658803');
+                  const isReach = String(chan.phone).includes('35154362');
+                  return (
+                    <option key={chan.id} value={chan.phone}>
+                      {isMain ? '🌟 OneControl (+502 5965-8803) · Principal [IA]' :
+                       isReach ? '📱 Reach Portones (+502 3515-4362) · Manual' :
+                       `🟢 ${chan.name || 'Canal'} (${chan.phone})`}
+                    </option>
+                  );
+                })}
                 {!currentUser?.channel_phone && (
                   <>
-                    <option value="all">🌐 Todos los Canales</option>
-                    <option value="instagram">📸 Instagram Direct</option>
-                    <option value="facebook">📘 Facebook Messenger</option>
+                    <option value="instagram">📸 Instagram Direct (@0ne_control)</option>
+                    <option value="facebook">📘 Facebook Messenger (Onecontrolshop)</option>
+                    <option value="webchat">💻 Web Chat (onecontrol.shop)</option>
                     <option value="whatsapp">🟢 Todos los WhatsApp</option>
+                    <option value="all">🌐 Ver Todos los Canales (Global)</option>
                   </>
                 )}
-                {channels.map(chan => (
-                  <option key={chan.id} value={chan.phone}>
-                    🟢 {chan.name || 'Canal'} ({chan.phone})
-                  </option>
-                ))}
                 {currentUser?.channel_phone && !channels.some(c => c.phone === currentUser.channel_phone) && (
                   <option value={currentUser.channel_phone}>
                     🟢 Canal Asignado ({currentUser.channel_phone})

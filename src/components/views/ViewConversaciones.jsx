@@ -29,11 +29,24 @@ function ChannelBadge({ origen, size = 'sm' }) {
   );
 }
 
-const getChannelIcon = (origen) => {
+const getChannelBadge = (lead) => {
+  const orig = String(lead?.origen || '').toLowerCase();
+  const cPhone = String(lead?.channel_phone || '');
+  if (orig.includes('instagram')) return { icon: '📸', label: 'Instagram Direct', color: 'bg-pink-100 text-pink-700 border-pink-200' };
+  if (orig.includes('facebook')) return { icon: '📘', label: 'Facebook Messenger', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+  if (orig.includes('web')) return { icon: '💻', label: 'Web onecontrol.shop', color: 'bg-purple-100 text-purple-700 border-purple-200' };
+  if (cPhone.includes('35154362')) return { icon: '📱', label: 'Reach (35154362)', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+  return { icon: '🌟', label: 'OneControl (59658803)', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+};
+
+const getChannelIcon = (origen, channelPhone) => {
   const orig = String(origen || '').toLowerCase();
+  const cPhone = String(channelPhone || '');
   if (orig.includes('instagram')) return '📸';
   if (orig.includes('facebook')) return '📘';
-  return '🟢';
+  if (orig.includes('web')) return '💻';
+  if (cPhone.includes('35154362')) return '📱';
+  return '🌟';
 };
 
 export default function ViewConversaciones({
@@ -136,12 +149,16 @@ export default function ViewConversaciones({
     let list = [...leads];
     
     // Filtrar por pestaña de canal
-    if (channelTab === 'whatsapp') {
-      list = list.filter(l => !l.origen || String(l.origen).toLowerCase().includes('whatsapp') || l.origen === 'Manual');
+    if (channelTab === 'onecontrol') {
+      list = list.filter(l => String(l.channel_phone || '').includes('59658803') || (!l.channel_phone && !String(l.origen).toLowerCase().includes('instagram') && !String(l.origen).toLowerCase().includes('facebook') && !String(l.origen).toLowerCase().includes('web')));
+    } else if (channelTab === 'reach') {
+      list = list.filter(l => String(l.channel_phone || '').includes('35154362'));
     } else if (channelTab === 'instagram') {
       list = list.filter(l => l.origen && String(l.origen).toLowerCase().includes('instagram'));
     } else if (channelTab === 'facebook') {
       list = list.filter(l => l.origen && String(l.origen).toLowerCase().includes('facebook'));
+    } else if (channelTab === 'webchat') {
+      list = list.filter(l => l.origen && String(l.origen).toLowerCase().includes('web'));
     }
 
     if (chatSearch.trim()) {
@@ -182,21 +199,8 @@ export default function ViewConversaciones({
   }, [products, catalogSearch]);
 
   // Acción rápida: Enviar producto del catálogo al cliente por WhatsApp
-  const handleSendProduct = async (product, specificImgUrl) => {
-    if (!selectedChatId) return;
-    
-    let msg = `📦 *${product.nombre}*\n`;
-    if (product.categoria) msg += `📂 Categoría: ${product.categoria}\n`;
-    if (product.precio) msg += `💰 Precio: ${product.precio}\n`;
-    if (product.precio_oferta) msg += `🔥 OFERTA: ${product.precio_oferta}\n`;
-    if (product.descripcion) msg += `\n📝 ${product.descripcion}\n`;
-    if (product.catalog_link) msg += `\n🔗 Ver más: ${product.catalog_link}\n`;
-
-    const productImg = specificImgUrl || (Array.isArray(product.imagenes) && product.imagenes[0] ? product.imagenes[0] : product.imagen);
-    if (productImg) {
-      msg += `\nENVIAR_IMAGEN: ${productImg}`;
-    }
-
+  const handleSendProduct = async (product) => {
+    const msg = `✨ *${product.nombre}*\n💰 Precio: Q${product.precio}\n${product.descripcion ? `📝 ${product.descripcion}\n` : ''}🚚 Entrega armada y lista para usar.`;
     await onSendMessage(selectedChatId, msg);
     setShowCatalogModal(false);
   };
@@ -228,17 +232,19 @@ export default function ViewConversaciones({
           </div>
 
           {/* Filtro rápido de canales */}
-          <div className="flex gap-1 bg-slate-100/80 p-1 rounded-xl">
+          <div className="flex gap-1 bg-slate-100/80 p-1 rounded-xl overflow-x-auto no-scrollbar">
             {[
               { id: 'todos', label: 'Todos' },
-              { id: 'whatsapp', label: '🟢 WA' },
+              { id: 'onecontrol', label: '🌟 OneControl' },
+              { id: 'reach', label: '📱 Reach' },
               { id: 'instagram', label: '📸 IG' },
               { id: 'facebook', label: '📘 FB' },
+              { id: 'webchat', label: '💻 Web' },
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setChannelTab(tab.id)}
-                className={`flex-1 py-1 text-[9px] font-black uppercase rounded-lg transition-all ${
+                className={`px-2 py-1 text-[9px] font-black uppercase rounded-lg shrink-0 transition-all cursor-pointer ${
                   channelTab === tab.id
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-400 hover:text-slate-700'
@@ -253,71 +259,74 @@ export default function ViewConversaciones({
         <div className="flex-1 overflow-y-auto no-scrollbar divide-y divide-slate-50">
           {filteredLeads.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs px-4">
-              No hay conversaciones {channelTab !== 'todos' ? `en ${channelTab}` : ''}.
+              No hay conversaciones en este filtro.
             </div>
-          ) : filteredLeads.map(lead => (
-            <button
-              key={lead.id}
-              onClick={() => { onSelectChat(lead.id); setMobileShowChat(true); }}
-              className={`w-full p-4 md:p-5 text-left hover:bg-slate-50 transition-all relative ${
-                selectedChatId === lead.id ? 'bg-orange-50/40 border-l-4 border-[#FF6B00]' : ''
-              } ${lead.priority === 'urgent' ? 'bg-red-50/60' : ''}`}
-            >
-              <div className="flex items-center space-x-3 mb-2">
-                <div className="relative shrink-0">
-                  <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shadow-sm ${
-                    lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
-                    lead.estado === 'Venta' ? 'bg-emerald-100 text-emerald-600' :
-                    lead.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-900 text-[#FF6B00]'
-                  }`}>
-                    {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : lead.estado === 'Venta' ? '🏆' : lead.botActive ? <Bot size={14} /> : (lead.nombre?.[0] || '?')}
-                  </div>
-                  {/* Badge con el ícono del canal de origen */}
-                  <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none" title={lead.origen || 'WhatsApp'}>
-                    {getChannelIcon(lead.origen)}
-                  </span>
-                  {lead.priority === 'urgent' && (
-                    <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-ping" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-baseline">
-                    <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
-                    {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums shrink-0 ml-1">{lead.lastMessageTime}</span>}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold tabular-nums truncate">{lead.phone || 'Sin número'}</p>
-                    {lead.origen && !lead.origen.toLowerCase().includes('whatsapp') && (
-                      <ChannelBadge origen={lead.origen} size="xs" />
+          ) : filteredLeads.map(lead => {
+            const badgeInfo = getChannelBadge(lead);
+            return (
+              <button
+                key={lead.id}
+                onClick={() => { onSelectChat(lead.id); setMobileShowChat(true); }}
+                className={`w-full p-4 md:p-5 text-left hover:bg-slate-50 transition-all relative ${
+                  selectedChatId === lead.id ? 'bg-orange-50/40 border-l-4 border-[#FF6B00]' : ''
+                } ${lead.priority === 'urgent' ? 'bg-red-50/60' : ''}`}
+              >
+                <div className="flex items-center space-x-3 mb-2">
+                  <div className="relative shrink-0">
+                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shadow-sm ${
+                      lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
+                      lead.estado === 'Venta' ? 'bg-emerald-100 text-emerald-600' :
+                      lead.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-900 text-[#FF6B00]'
+                    }`}>
+                      {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : lead.estado === 'Venta' ? '🏆' : lead.botActive ? <Bot size={14} /> : (lead.nombre?.[0] || '?')}
+                    </div>
+                    {/* Badge con el ícono del canal de origen */}
+                    <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none" title={badgeInfo.label}>
+                      {getChannelIcon(lead.origen, lead.channel_phone)}
+                    </span>
+                    {lead.priority === 'urgent' && (
+                      <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-ping" />
                     )}
                   </div>
-                  <div className="flex justify-between items-center mt-0.5">
-                    <p className={`text-[9px] font-black uppercase tracking-tighter ${
-                      lead.priority === 'urgent' ? 'text-red-500' :
-                      lead.estado === 'Venta' ? 'text-emerald-600' :
-                      lead.botActive ? 'text-emerald-500' : 'text-slate-400'
-                    }`}>
-                      {lead.priority === 'urgent' ? '⚠️ INTERVENCIÓN' : lead.estado === 'Venta' ? '🏆 VENTA' : lead.botActive ? `Score: ${lead.score || 0}%` : 'Modo Manual'}
-                    </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline">
+                      <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
+                      {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums shrink-0 ml-1">{lead.lastMessageTime}</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <p className="text-[10px] text-slate-400 font-bold tabular-nums truncate">{lead.phone || 'Sin número'}</p>
+                      <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded-md border ${badgeInfo.color}`}>
+                        {badgeInfo.label}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center mt-0.5">
+                      <p className={`text-[9px] font-black uppercase tracking-tighter ${
+                        lead.priority === 'urgent' ? 'text-red-500' :
+                        lead.estado === 'Venta' ? 'text-emerald-600' :
+                        lead.botActive ? 'text-emerald-500' : 'text-slate-400'
+                      }`}>
+                        {lead.priority === 'urgent' ? '⚠️ INTERVENCIÓN' : lead.estado === 'Venta' ? '🏆 VENTA' : lead.botActive ? `Score: ${lead.score || 0}%` : 'Modo Manual'}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              {lead.motor && lead.motor !== 'N/A' && (
-                <div className="mb-1 inline-flex items-center gap-1 text-[9px] font-black text-orange-800 bg-orange-100/70 px-2 py-0.5 rounded-md">
-                  <Tag size={9} className="text-[#FF6B00]" />
-                  <span className="truncate">{lead.motor}</span>
-                </div>
-              )}
-              {lead.handoff_reason && (
-                <p className="text-[9px] text-red-500 font-bold italic truncate mt-1 leading-none">⚠️ {lead.handoff_reason}</p>
-              )}
-              {!lead.handoff_reason && (
-                <p className="text-[11px] text-slate-500 truncate mt-1 font-medium italic leading-none">
-                  {lead.lastMessage ? `"${lead.lastMessage}"` : "Sin mensajes recientes"}
-                </p>
-              )}
-            </button>
-          ))}
+                {lead.motor && lead.motor !== 'N/A' && (
+                  <div className="mb-1 inline-flex items-center gap-1 text-[9px] font-black text-orange-800 bg-orange-100/70 px-2 py-0.5 rounded-md">
+                    <Tag size={9} className="text-[#FF6B00]" />
+                    <span className="truncate">{lead.motor}</span>
+                  </div>
+                )}
+                {lead.handoff_reason && (
+                  <p className="text-[9px] text-red-500 font-bold italic truncate mt-1 leading-none">⚠️ {lead.handoff_reason}</p>
+                )}
+                {!lead.handoff_reason && (
+                  <p className="text-[11px] text-slate-500 truncate mt-1 font-medium italic leading-none">
+                    {lead.lastMessage ? `"${lead.lastMessage}"` : "Sin mensajes recientes"}
+                  </p>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 

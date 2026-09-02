@@ -110,12 +110,17 @@ export function useAppData(apiBase, authToken) {
   const fetchChannels = useCallback(async () => {
     try {
       const res = await apiFetch(`${apiBase}/api/channels`);
-      const data = await res.json();
-      setChannels(data);
+      const rawData = await res.json();
+      const sorted = Array.isArray(rawData) ? [...rawData].sort((a, b) => {
+        const aIsMain = String(a.phone || '').includes('59658803') ? 1 : 0;
+        const bIsMain = String(b.phone || '').includes('59658803') ? 1 : 0;
+        return bIsMain - aIsMain;
+      }) : [];
+      setChannels(sorted);
       setSelectedChannelState(prev => {
-        if (!prev && data.length > 0) {
-          const main = data.find(c => String(c.phone).includes('59658803')) || data[0];
-          return main.phone;
+        if (!prev || prev === 'all' || prev.includes('35154362')) {
+          const main = sorted.find(c => String(c.phone).includes('59658803')) || sorted[0];
+          return main ? main.phone : '+50259658803';
         }
         return prev;
       });
