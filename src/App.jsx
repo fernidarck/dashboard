@@ -31,14 +31,14 @@ export default function App() {
     currentUser, users,
     leads, messages, agenda, pedidos, documents, products,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
-    trainingRules, trainingStats,
+    trainingRules, trainingStats, metaInsights,
     agentConfig, setAgentConfig, prompts, setPrompts,
     mensajesBot, setMensajesBot, captureFields, setCaptureFields,
     loading, notification, setNotification,
     channels, selectedChannel, setSelectedChannel,
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
-    fetchChannels, fetchUsers, fetchTrainingRules,
+    fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, sendDocument, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
@@ -117,6 +117,7 @@ export default function App() {
     fetchHandoff();
     fetchLearning();
     fetchTrainingRules();
+    fetchMetaInsights();
     fetchStats();
     fetchCaptureStats();
   }, [selectedChannel]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -402,6 +403,8 @@ export default function App() {
                 pedidos={pedidos}
                 agenda={agenda}
                 stats={stats}
+                metaInsights={metaInsights}
+                onFetchMetaInsights={fetchMetaInsights}
                 onOpenConversation={openConversation}
                 onOpenLeads={() => setActiveTab('crm')}
                 onConfigureAgent={() => setActiveTab('cerebro')}

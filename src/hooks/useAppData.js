@@ -40,6 +40,7 @@ export function useAppData(apiBase, authToken) {
   const [aiKnowledge, setAiKnowledge] = useState([]);
   const [trainingRules, setTrainingRules] = useState([]);
   const [trainingStats, setTrainingStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0, prohibidas: 0, permitidas: 0 });
+  const [metaInsights, setMetaInsights] = useState(null);
   const [handoffTriggers, setHandoffTriggers] = useState([]);
   const [agentConfig, setAgentConfig] = useState({
     nombre: 'OneControl Bot', rol: 'Asistente de Ventas',
@@ -877,12 +878,25 @@ export function useAppData(apiBase, authToken) {
     }
   }, [apiFetch, apiBase]);
 
+  const fetchMetaInsights = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/meta/insights`);
+      if (res.ok) {
+        const data = await res.json();
+        setMetaInsights(data);
+        return data;
+      }
+    } catch (err) {
+      console.error('Error fetching meta insights:', err);
+    }
+  }, [apiFetch, apiBase]);
+
   return {
     // State
     currentUser, users, setCurrentUser,
     leads, messages, agenda, pedidos, documents, products,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
-    trainingRules, trainingStats,
+    trainingRules, trainingStats, metaInsights,
     agentConfig, setAgentConfig, prompts, setPrompts,
     mensajesBot, setMensajesBot, captureFields, setCaptureFields,
     loading, notification, setNotification,
@@ -890,7 +904,7 @@ export function useAppData(apiBase, authToken) {
     // Fetch
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
-    fetchChannels, fetchUsers, fetchTrainingRules,
+    fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, sendDocument, updatePedidoEstado, savePedido, deletePedido,

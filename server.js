@@ -3431,6 +3431,93 @@ async function replyToComment(commentId, message, platform = 'instagram') {
   return data;
 }
 
+// Endpoint para obtener métricas e insights de Meta (Likes, Seguidores, Posts populares de IG & FB)
+app.get('/api/meta/insights', async (req, res) => {
+  try {
+    const { token, igUserId, fbPageId } = await getMetaConfig();
+    if (!token) {
+      return res.json({
+        configured: false,
+        instagram: null,
+        facebook: null,
+        posts: [],
+        stats: { totalFollowers: 0, totalLikes: 0, totalComments: 0 }
+      });
+    }
+
+    let instagram = null;
+    let igPosts = [];
+    let facebook = null;
+
+    // 1. Fetch Instagram Profile & Media
+    try {
+      const igRes = await fetch(`${META_GRAPH}/${igUserId}?fields=id,username,name,followers_count,follows_count,media_count,profile_picture_url&access_token=${token}`);
+      const igData = await igRes.json();
+      if (igData && !igData.error) {
+        instagram = igData;
+      }
+
+      const igMediaRes = await fetch(`${META_GRAPH}/${igUserId}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count&limit=12&access_token=${token}`);
+      const igMediaData = await igMediaRes.json();
+      if (igMediaData && Array.isArray(igMediaData.data)) {
+        igPosts = igMediaData.data.map(p => ({
+          id: p.id,
+          platform: 'instagram',
+          caption: p.caption || '',
+          media_type: p.media_type,
+          thumbnail: p.thumbnail_url || p.media_url,
+          permalink: p.permalink,
+          timestamp: p.timestamp,
+          like_count: p.like_count || 0,
+          comments_count: p.comments_count || 0
+        }));
+      }
+    } catch (e) {
+      console.warn("Error fetching IG insights:", e.message);
+    }
+
+    // 2. Fetch Facebook Page
+    try {
+      const fbRes = await fetch(`${META_GRAPH}/${fbPageId}?fields=id,name,fan_count,followers_count,link,picture&access_token=${token}`);
+      const fbData = await fbRes.json();
+      if (fbData && !fbData.error) {
+        facebook = {
+          id: fbData.id,
+          name: fbData.name,
+          fan_count: fbData.fan_count || 0,
+          followers_count: fbData.followers_count || 0,
+          link: fbData.link || `https://facebook.com/${fbPageId}`,
+          picture: fbData.picture?.data?.url || ''
+        };
+      }
+    } catch (e) {
+      console.warn("Error fetching FB insights:", e.message);
+    }
+
+    // 3. Comments count from CRM database
+    const dbCommentsCount = await db.get("SELECT COUNT(*) as c FROM redes_comments");
+    const totalLikes = igPosts.reduce((acc, p) => acc + (p.like_count || 0), 0);
+    const totalComments = igPosts.reduce((acc, p) => acc + (p.comments_count || 0), 0) + (dbCommentsCount?.c || 0);
+    const totalFollowers = (instagram?.followers_count || 0) + (facebook?.followers_count || facebook?.fan_count || 0);
+
+    res.json({
+      configured: true,
+      instagram,
+      facebook,
+      posts: igPosts,
+      stats: {
+        totalFollowers,
+        totalLikes,
+        totalComments,
+        igMediaCount: instagram?.media_count || igPosts.length,
+        fbFans: facebook?.fan_count || 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Procesador universal de Webhooks de Meta (Facebook Messenger, Instagram Direct & Comentarios)
 async function processIncomingMetaWebhook(body) {
   const { token, igUserId, fbPageId } = await getMetaConfig();

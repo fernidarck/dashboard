@@ -1,5 +1,8 @@
-import { useMemo } from 'react';
-import { ArrowRight, ArrowUpRight } from 'lucide-react';
+import { useMemo, useEffect, useState } from 'react';
+import {
+  ArrowRight, ArrowUpRight, Heart, MessageCircle, ExternalLink,
+  RefreshCw, Users, Video, Image as ImageIcon, Sparkles, ThumbsUp
+} from 'lucide-react';
 
 function getCleanWhatsAppUrl(phone) {
   if (!phone) return null;
@@ -68,7 +71,7 @@ function ConvRow({ lead, onOpenConversation }) {
   const isUrgent = lead.priority === 'urgent' || !!lead.handoff_reason;
   return (
     <button onClick={() => onOpenConversation(lead.id)}
-      className="w-full flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0 text-left hover:bg-slate-50/70 -mx-2 px-2 rounded-lg transition-colors">
+      className="w-full flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0 text-left hover:bg-slate-50/70 -mx-2 px-2 rounded-lg transition-colors cursor-pointer">
       <div className="relative shrink-0">
         <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-[11px] ${
           isUrgent ? 'bg-red-50 text-red-500' : lead.botActive ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
@@ -90,14 +93,40 @@ function ConvRow({ lead, onOpenConversation }) {
   );
 }
 
-export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, onOpenConversation, onOpenLeads, onConfigureAgent }) {
+export default function ViewDashboard({
+  leads = [],
+  pedidos = [],
+  stats = {},
+  metaInsights = null,
+  onFetchMetaInsights,
+  onOpenConversation,
+  onOpenLeads,
+  onConfigureAgent
+}) {
+  const [loadingMeta, setLoadingMeta] = useState(false);
+
+  useEffect(() => {
+    if (!metaInsights && onFetchMetaInsights) {
+      onFetchMetaInsights();
+    }
+  }, [metaInsights, onFetchMetaInsights]);
+
+  const handleRefreshMeta = async () => {
+    setLoadingMeta(true);
+    try {
+      await onFetchMetaInsights?.();
+    } finally {
+      setLoadingMeta(false);
+    }
+  };
+
   const cleanPh = (p) => String(p || '').replace(/\D/g, '');
   const pedidoPhones = useMemo(() => new Set((pedidos || []).map(p => cleanPh(p.phone)).filter(Boolean)), [pedidos]);
   const hizoPedido = (l) => pedidoPhones.has(cleanPh(l.phone));
   const esProspecto = (l) => [l.zona, l.direccion, l.nit].some(v => v && v !== 'N/A' && v !== 'null' && String(v).trim());
   const isEnSeguimiento = (l) => l.estado === 'En Seguimiento' || l.estado === 'Cita Agendada';
   const isFollowedUp = (l) => isEnSeguimiento(l) || l.estado === 'Venta' || l.estado === 'Perdido' || l.estado === 'Post-Venta';
-  // Solo intención real de compra: pedido, datos de compra (ubicación/factura), o pidió un humano.
+
   const isPorHablar = (l) => {
     if (l.archived || isFollowedUp(l)) return false;
     if (hizoPedido(l)) return true;
@@ -130,34 +159,238 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
     { label: 'Ventas',         value: ventas.length,        color: 'text-emerald-500',dot: 'bg-emerald-500' },
   ];
 
+  const ig = metaInsights?.instagram;
+  const fb = metaInsights?.facebook;
+  const posts = metaInsights?.posts || [];
+
   return (
-    <div className="max-w-6xl mx-auto space-y-9 animate-in fade-in duration-500">
+    <div className="max-w-6xl mx-auto space-y-9 animate-in fade-in duration-500 pb-10">
 
       {/* HEADER */}
       <div className="flex items-baseline justify-between flex-wrap gap-2 pt-1">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Panel</h2>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Panel Principal</h2>
           <p className="text-xs text-slate-400 mt-0.5">OneControl · Guatemala</p>
         </div>
         {porHablar.length > 0 && (
-          <button onClick={onOpenLeads} className="text-xs font-semibold text-[#FF6B00] hover:text-[#c95400] flex items-center gap-1.5 transition-colors">
+          <button onClick={onOpenLeads} className="text-xs font-bold text-[#FF6B00] hover:text-[#c95400] flex items-center gap-1.5 transition-colors cursor-pointer">
             {porHablar.length} por contactar <ArrowRight size={13} />
           </button>
         )}
       </div>
 
-      {/* KPIs — minimal con acento de color */}
+      {/* KPIs — Negocio */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {kpis.map((k, i) => (
           <button key={i} onClick={k.onClick}
             className={`bg-white border border-slate-200 rounded-2xl p-5 text-left transition-all ${k.onClick ? 'hover:border-slate-300 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}>
             <div className="flex items-center gap-1.5 mb-2">
               <span className={`h-1.5 w-1.5 rounded-full ${k.dot}`} />
-              <p className="text-[11px] text-slate-400 uppercase tracking-wide">{k.label}</p>
+              <p className="text-[11px] text-slate-400 uppercase tracking-widest font-black">{k.label}</p>
             </div>
-            <p className={`text-3xl font-semibold ${k.color} tabular-nums leading-none`}>{k.value}</p>
+            <p className={`text-3xl font-black ${k.color} tabular-nums leading-none`}>{k.value}</p>
           </button>
         ))}
+      </div>
+
+      {/* REDES SOCIALES & META INSIGHTS (Instagram & Facebook) */}
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-gradient-to-tr from-purple-500 via-pink-500 to-orange-500 text-white rounded-2xl shadow-md shadow-pink-500/20">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
+                Redes Sociales & Meta Engagement
+                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+                  Instagram & Facebook
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">Likes, seguidores y publicaciones destacadas en tiempo real.</p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleRefreshMeta}
+            disabled={loadingMeta}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-xs border border-slate-200 transition-colors self-start sm:self-auto cursor-pointer"
+          >
+            <RefreshCw size={13} className={loadingMeta ? "animate-spin text-[#FF6B00]" : "text-slate-500"} />
+            <span>{loadingMeta ? 'Actualizando...' : 'Actualizar'}</span>
+          </button>
+        </div>
+
+        {/* Resumen Canales Meta */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Instagram Card */}
+          <div className="p-4.5 rounded-2xl border border-pink-100 bg-gradient-to-br from-pink-50/40 via-white to-orange-50/30 flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                {ig?.profile_picture_url ? (
+                  <img src={ig.profile_picture_url} alt="IG" className="h-10 w-10 rounded-full object-cover border border-pink-200 shadow-xs" />
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 text-white flex items-center justify-center font-bold text-sm">IG</div>
+                )}
+                <div>
+                  <h4 className="text-xs font-black text-slate-900">{ig?.name || '@onecontrol.shop'}</h4>
+                  <p className="text-[10px] text-pink-600 font-bold">@{ig?.username || '0ne_control'}</p>
+                </div>
+              </div>
+              <a
+                href={`https://instagram.com/${ig?.username || '0ne_control'}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-pink-600 hover:bg-pink-50 transition-colors"
+              >
+                <ExternalLink size={14} />
+              </a>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-pink-100/60 text-center">
+              <div>
+                <p className="text-base font-black text-slate-900 leading-tight">{ig?.followers_count ?? '—'}</p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Seguidores</p>
+              </div>
+              <div>
+                <p className="text-base font-black text-slate-900 leading-tight">{ig?.media_count ?? posts.length}</p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Posts</p>
+              </div>
+              <div>
+                <p className="text-base font-black text-pink-600 leading-tight flex items-center justify-center gap-1">
+                  <Heart size={12} className="fill-pink-500 text-pink-500" />
+                  <span>{metaInsights?.stats?.totalLikes || 0}</span>
+                </p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Likes</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Facebook Card */}
+          <div className="p-4.5 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/40 via-white to-slate-50 flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                {fb?.picture ? (
+                  <img src={fb.picture} alt="FB" className="h-10 w-10 rounded-full object-cover border border-blue-200 shadow-xs" />
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">FB</div>
+                )}
+                <div>
+                  <h4 className="text-xs font-black text-slate-900">{fb?.name || 'Onecontrolshop'}</h4>
+                  <p className="text-[10px] text-blue-600 font-bold">Página Oficial</p>
+                </div>
+              </div>
+              <a
+                href={fb?.link || 'https://facebook.com/1059922890527747'}
+                target="_blank"
+                rel="noreferrer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              >
+                <ExternalLink size={14} />
+              </a>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-blue-100/60 text-center">
+              <div>
+                <p className="text-base font-black text-slate-900 leading-tight">{fb?.fan_count ?? '—'}</p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Me Gusta</p>
+              </div>
+              <div>
+                <p className="text-base font-black text-blue-600 leading-tight">{fb?.followers_count ?? fb?.fan_count ?? '—'}</p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Seguidores</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Interacciones Totales */}
+          <div className="p-4.5 rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50/40 via-white to-pink-50/30 flex flex-col justify-between space-y-3 sm:col-span-2 lg:col-span-1">
+            <span className="text-[10px] font-black uppercase tracking-widest text-purple-700">Alcance & Interacción</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-medium flex items-center gap-1.5"><Heart size={14} className="text-pink-500 fill-pink-500" /> Total Likes en posts:</span>
+                <span className="font-black text-slate-900">{metaInsights?.stats?.totalLikes || 0}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-medium flex items-center gap-1.5"><MessageCircle size={14} className="text-blue-500" /> Comentarios registrados:</span>
+                <span className="font-black text-slate-900">{metaInsights?.stats?.totalComments || 0}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-medium flex items-center gap-1.5"><Users size={14} className="text-emerald-500" /> Audiencia total:</span>
+                <span className="font-black text-slate-900">{metaInsights?.stats?.totalFollowers || 0}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Publicaciones & Reels Recientes */}
+        {posts.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Publicaciones y Reels Destacados</span>
+              <span className="text-[10px] font-bold text-slate-400">Conteo de Likes y Comentarios</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+              {posts.slice(0, 8).map((post) => (
+                <div key={post.id} className="bg-slate-50/80 border border-slate-200/80 rounded-2xl overflow-hidden hover:border-pink-300 hover:shadow-md transition-all flex flex-col group">
+                  {/* Thumbnail */}
+                  <div className="relative aspect-square bg-slate-900 overflow-hidden">
+                    {post.thumbnail ? (
+                      <img
+                        src={post.thumbnail}
+                        alt="Post"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">Sin imagen</div>
+                    )}
+                    <span className="absolute top-2 left-2 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white flex items-center gap-1">
+                      {post.media_type === 'VIDEO' ? <Video size={10} /> : <ImageIcon size={10} />}
+                      <span>{post.media_type === 'VIDEO' ? 'Reel' : 'Post'}</span>
+                    </span>
+                    <a
+                      href={post.permalink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 hover:bg-[#FF6B00] text-white opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <ExternalLink size={12} />
+                    </a>
+                  </div>
+
+                  {/* Caption & Metrics */}
+                  <div className="p-3.5 flex-1 flex flex-col justify-between space-y-2.5 bg-white">
+                    <p className="text-[11px] text-slate-700 font-medium line-clamp-2 leading-snug">
+                      {post.caption || 'Publicación en Instagram'}
+                    </p>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-3">
+                        <span className="flex items-center gap-1 font-bold text-pink-600">
+                          <Heart size={13} className="fill-pink-500 text-pink-500" />
+                          <span>{post.like_count}</span>
+                        </span>
+                        <span className="flex items-center gap-1 font-bold text-slate-500">
+                          <MessageCircle size={13} />
+                          <span>{post.comments_count}</span>
+                        </span>
+                      </div>
+                      <a
+                        href={post.permalink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-[#FF6B00] hover:underline"
+                      >
+                        Ver post →
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MAIN */}
@@ -166,12 +399,12 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
         {/* A quién hablarle */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
               A quién hablarle
-              <span className="text-[10px] font-bold text-[#FF6B00] bg-orange-50 rounded-full px-2 py-0.5">{porHablar.length}</span>
+              <span className="text-[10px] font-black text-[#FF6B00] bg-orange-50 rounded-full px-2 py-0.5">{porHablar.length}</span>
             </h3>
             {porHablar.length > 0 && (
-              <button onClick={onOpenLeads} className="text-[11px] text-slate-400 hover:text-[#FF6B00] flex items-center gap-1 transition-colors">
+              <button onClick={onOpenLeads} className="text-[11px] font-bold text-slate-400 hover:text-[#FF6B00] flex items-center gap-1 transition-colors cursor-pointer">
                 Ver todos <ArrowRight size={11} />
               </button>
             )}
@@ -194,7 +427,7 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
         {/* Conversaciones + IA */}
         <div className="space-y-7">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+            <h3 className="text-sm font-black text-slate-900 mb-3 flex items-center gap-2">
               Conversaciones <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse" />
             </h3>
             <div className="bg-white border border-slate-200 rounded-2xl px-4 py-1">
@@ -206,20 +439,20 @@ export default function ViewDashboard({ leads = [], pedidos = [], stats = {}, on
             </div>
           </div>
 
-          <div className="bg-slate-900 rounded-2xl p-5">
-            <p className="text-[11px] font-semibold text-[#FF6B00] uppercase tracking-wide mb-3">Impacto de la IA</p>
+          <div className="bg-slate-900 rounded-2xl p-5 shadow-lg">
+            <p className="text-[11px] font-black text-[#FF6B00] uppercase tracking-widest mb-3">Impacto de la IA</p>
             <div className="flex items-end gap-8">
               <div>
-                <p className="text-2xl font-semibold text-white tabular-nums leading-none">{botMessages}</p>
-                <p className="text-[10px] text-slate-400 mt-1.5">mensajes automáticos</p>
+                <p className="text-2xl font-black text-white tabular-nums leading-none">{botMessages}</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1.5">mensajes automáticos</p>
               </div>
               <div>
-                <p className="text-2xl font-semibold text-white tabular-nums leading-none">{Math.max(1, Math.round((botMessages * 5) / 60))}h</p>
-                <p className="text-[10px] text-slate-400 mt-1.5">tiempo ahorrado</p>
+                <p className="text-2xl font-black text-white tabular-nums leading-none">{Math.max(1, Math.round((botMessages * 5) / 60))}h</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1.5">tiempo ahorrado</p>
               </div>
             </div>
             {onConfigureAgent && (
-              <button onClick={onConfigureAgent} className="mt-4 text-xs font-semibold text-[#FF6B00] hover:text-orange-300 flex items-center gap-1.5 transition-colors">
+              <button onClick={onConfigureAgent} className="mt-4 text-xs font-bold text-[#FF6B00] hover:text-orange-300 flex items-center gap-1.5 transition-colors cursor-pointer">
                 Configurar agente <ArrowRight size={12} />
               </button>
             )}
