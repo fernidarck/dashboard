@@ -473,7 +473,8 @@ async function getChannelConfig(channelPhone) {
     let cleanChan = channelPhone ? String(channelPhone).replace(/\D/g, '') : null;
     let channel = null;
     if (cleanChan) {
-      channel = await db.get("SELECT * FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND active = 1", cleanChan);
+      const last8 = cleanChan.slice(-8);
+      channel = await db.get("SELECT * FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') LIKE ? AND active = 1", `%${last8}`);
     }
     if (!channel) {
       channel = await db.get("SELECT * FROM whatsapp_channels WHERE active = 1 LIMIT 1");
@@ -1129,7 +1130,9 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
     } else {
       // Crear nuevo lead
       const initialEstado = parsed.isEcho ? 'En Seguimiento' : (data.etiqueta || 'Nuevo');
-      const initialBotActive = parsed.isEcho ? 0 : 1;
+      const chanConf = await getChannelConfig(cleanChannelPhone);
+      const isChanBotActive = (chanConf && Number(chanConf.bot_active) === 0) ? 0 : 1;
+      const initialBotActive = parsed.isEcho ? 0 : isChanBotActive;
       // Atribución de anuncio (click-to-WhatsApp): guardar de qué anuncio vino el lead.
       const ref = data.referral || data.whatsappMessage?.referral || data.whatsappInboundMessage?.referral || {};
       const ctwaClid   = data.ctwa_clid    || ref.ctwa_clid  || null;
