@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
   Brain, Database, Zap, Search, Bell, X, MoreVertical,
-  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown, AtSign, AlertTriangle, Paperclip
+  Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown, AtSign, AlertTriangle, Paperclip,
+  GraduationCap
 } from 'lucide-react';
 import Login from './components/Login.jsx';
 import LogoMark from './components/LogoMark.jsx';
@@ -16,6 +17,7 @@ import ViewCerebro from './components/views/ViewCerebro.jsx';
 import ViewRAG from './components/views/ViewRAG.jsx';
 import ViewComentarios from './components/views/ViewComentarios.jsx';
 import ViewArchivos from './components/views/ViewArchivos.jsx';
+import ViewEntrenamiento from './components/views/ViewEntrenamiento.jsx';
 
 const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 const CURRENT_USER_ID = 'fer';
@@ -29,19 +31,22 @@ export default function App() {
     currentUser, users,
     leads, messages, agenda, pedidos, documents, products,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
+    trainingRules, trainingStats,
     agentConfig, setAgentConfig, prompts, setPrompts,
     mensajesBot, setMensajesBot, captureFields, setCaptureFields,
     loading, notification, setNotification,
     channels, selectedChannel, setSelectedChannel,
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
-    fetchChannels, fetchUsers,
+    fetchChannels, fetchUsers, fetchTrainingRules,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, sendDocument, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
+    saveTrainingRule, updateTrainingRule, deleteTrainingRule, approveTrainingRule, rejectTrainingRule,
+    analyzeTrainingWithAI, testTrainingPrompt,
     uploadProductImage, uploadDocument, uploadImageFile, uploadMediaFile, runTestSearch, syncBrainConfig,
     saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     playMessageAlert,
@@ -94,37 +99,38 @@ export default function App() {
   const messagesContainerRef = useRef(null);
   const prevChatIdRef        = useRef(null);
 
-  // Redirect non-admins to dashboard if they try to access cerebro or rag
+  // Redirect non-admins to dashboard if they try to access cerebro, rag or entrenamiento
   useEffect(() => {
-    if (currentUser && currentUser.role !== 'admin' && (activeTab === 'cerebro' || activeTab === 'rag')) {
+    if (currentUser && currentUser.role !== 'admin' && (activeTab === 'cerebro' || activeTab === 'rag' || activeTab === 'entrenamiento')) {
       setActiveTab('dashboard');
     }
   }, [currentUser, activeTab]);
 
   // Initial data load
   useEffect(() => {
-    fetchLeads();
+    fetchChannels();
+    fetchLeads(selectedChannel);
     fetchSettings();
     fetchRAG();
     fetchAgenda();
     fetchPedidos();
     fetchHandoff();
     fetchLearning();
+    fetchTrainingRules();
     fetchStats();
     fetchCaptureStats();
-    fetchChannels();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedChannel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 5-second polling
   useEffect(() => {
     const id = setInterval(() => {
-      fetchLeads();
+      fetchLeads(selectedChannel);
       fetchStats();
       fetchPedidos();
       if (activeTab === 'conversaciones') fetchMessages(selectedChatId);
     }, 5000);
     return () => clearInterval(id);
-  }, [activeTab, selectedChatId, fetchLeads, fetchStats, fetchPedidos, fetchMessages]);
+  }, [activeTab, selectedChatId, selectedChannel, fetchLeads, fetchStats, fetchPedidos, fetchMessages]);
 
   // Auto-select first lead
   useEffect(() => {
@@ -268,6 +274,14 @@ export default function App() {
                 <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inteligencia</p>
                 <SidebarItem icon={Brain}    label="Agente IA"  id="cerebro" />
                 <SidebarItem icon={Database} label="Base RAG"   id="rag" />
+                <div className="relative">
+                  <SidebarItem icon={GraduationCap} label="Entrenamiento" id="entrenamiento" />
+                  {trainingStats.pending > 0 && (
+                    <span className="absolute top-2.5 right-4 h-4.5 min-w-4.5 px-1 bg-amber-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-md shadow-amber-500/30">
+                      {trainingStats.pending}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </nav>
@@ -330,7 +344,14 @@ export default function App() {
                 }}
                 className={`bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none appearance-none pr-6 pl-1 truncate max-w-[42vw] md:max-w-none ${currentUser?.channel_phone ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
               >
-                {!currentUser?.channel_phone && <option value="all">📞 Todos los Canales</option>}
+                {!currentUser?.channel_phone && (
+                  <>
+                    <option value="all">🌐 Todos los Canales</option>
+                    <option value="instagram">📸 Instagram Direct</option>
+                    <option value="facebook">📘 Facebook Messenger</option>
+                    <option value="whatsapp">🟢 Todos los WhatsApp</option>
+                  </>
+                )}
                 {channels.map(chan => (
                   <option key={chan.id} value={chan.phone}>
                     🟢 {chan.name || 'Canal'} ({chan.phone})
@@ -479,6 +500,20 @@ export default function App() {
                 onUploadImageFile={uploadImageFile}
                 onUploadMediaFile={uploadMediaFile}
                 onRunTestSearch={runTestSearch}
+              />
+            )}
+            {activeTab === 'entrenamiento' && (
+              <ViewEntrenamiento
+                trainingRules={trainingRules}
+                trainingStats={trainingStats}
+                onFetchRules={fetchTrainingRules}
+                onSaveRule={saveTrainingRule}
+                onUpdateRule={updateTrainingRule}
+                onDeleteRule={deleteTrainingRule}
+                onApproveRule={approveTrainingRule}
+                onRejectRule={rejectTrainingRule}
+                onAnalyzeAI={analyzeTrainingWithAI}
+                onTestPrompt={testTrainingPrompt}
               />
             )}
           </div>

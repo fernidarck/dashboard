@@ -324,6 +324,20 @@ async function setup() {
         FOREIGN KEY(user_id) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS training_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL DEFAULT 'permitido',
+        title TEXT NOT NULL,
+        rule TEXT NOT NULL,
+        example_question TEXT,
+        example_response TEXT,
+        source_lead_id INTEGER,
+        source_context TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS media_files (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
@@ -1616,14 +1630,43 @@ app.delete('/api/pedidos/:id', async (req, res) => {
 });
 // ──────────────────────────────────────────────────────────────────────────────
 
-app.get('/api/settings', async (_req, res) => {
+app.get('/api/settings', async (req, res) => {
   try {
     const rows = await db.all("SELECT * FROM settings");
     const settings = {};
     rows.forEach(row => settings[row.key] = row.value);
 
-    // El dashboard debe recibir los prompts limpios. 
-    // n8n usa /api/agent/prompt que ya tiene su propia inyección lógica.
+    // Inyectar dinámicamente las reglas de entrenamiento aprobadas (a menos que se pida raw=true para el editor)
+    if (req.query.raw !== 'true') {
+      try {
+        const approvedRules = await db.all("SELECT * FROM training_rules WHERE status = 'approved' ORDER BY id ASC");
+        if (approvedRules.length > 0) {
+          const prohibidas = approvedRules.filter(r => r.type === 'prohibido');
+          const permitidas = approvedRules.filter(r => r.type !== 'prohibido');
+
+          let trainingSection = "\n\n🧠 REGLAS DE ENTRENAMIENTO APRENDIDAS (MÁXIMA PRIORIDAD):\n";
+          if (prohibidas.length > 0) {
+            trainingSection += "⛔ LO QUE ESTÁ PROHIBIDO (NO HACER / NO DECIR):\n";
+            prohibidas.forEach(r => {
+              trainingSection += `- 🚫 ${r.title}: ${r.rule}${r.example_question ? ` (Si el cliente dice: "${r.example_question}")` : ''}\n`;
+            });
+          }
+          if (permitidas.length > 0) {
+            trainingSection += "\n✅ GUÍAS Y RESPUESTAS APROBADAS:\n";
+            permitidas.forEach(r => {
+              trainingSection += `- ✨ ${r.title}: ${r.rule}${r.example_question ? ` (Pregunta: "${r.example_question}" → Respuesta: "${r.example_response || r.rule}")` : ''}\n`;
+            });
+          }
+
+          if (settings.prompt_recepcionista) {
+            settings.prompt_recepcionista += trainingSection;
+          }
+        }
+      } catch (e) {
+        console.warn("No se pudieron inyectar training_rules en settings:", e.message);
+      }
+    }
+
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2901,6 +2944,293 @@ app.post('/api/ai/analyze', async (req, res) => {
       }
     }
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── MÓDULO DE ENTRENAMIENTO IA SUPERVISADO ───────────────────────────────────
+
+// 1. Listar reglas de entrenamiento
+app.get('/api/training/rules', async (req, res) => {
+  try {
+    const { status, type } = req.query;
+    let query = "SELECT * FROM training_rules WHERE 1=1";
+    const params = [];
+
+    if (status && status !== 'all') {
+      query += " AND status = ?";
+      params.push(status);
+    }
+    if (type && type !== 'all') {
+      query += " AND type = ?";
+      params.push(type);
+    }
+
+    query += " ORDER BY (CASE WHEN status = 'pending' THEN 0 ELSE 1 END) ASC, id DESC";
+    const rows = await db.all(query, ...params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Métricas de entrenamiento
+app.get('/api/training/stats', async (_req, res) => {
+  try {
+    const total = await db.get("SELECT COUNT(*) as c FROM training_rules");
+    const pending = await db.get("SELECT COUNT(*) as c FROM training_rules WHERE status = 'pending'");
+    const approved = await db.get("SELECT COUNT(*) as c FROM training_rules WHERE status = 'approved'");
+    const rejected = await db.get("SELECT COUNT(*) as c FROM training_rules WHERE status = 'rejected'");
+    const prohibidas = await db.get("SELECT COUNT(*) as c FROM training_rules WHERE type = 'prohibido' AND status = 'approved'");
+    const permitidas = await db.get("SELECT COUNT(*) as c FROM training_rules WHERE type != 'prohibido' AND status = 'approved'");
+
+    res.json({
+      total: total.c,
+      pending: pending.c,
+      approved: approved.c,
+      rejected: rejected.c,
+      prohibidas: prohibidas.c,
+      permitidas: permitidas.c
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Crear regla de entrenamiento manual
+app.post('/api/training/rules', async (req, res) => {
+  try {
+    const { type, title, rule, example_question, example_response, source_lead_id, source_context, status } = req.body;
+    if (!title || !rule) return res.status(400).json({ error: "Título y regla son requeridos" });
+
+    const finalStatus = status || 'approved';
+    const finalType = type || 'permitido';
+
+    const result = await db.run(
+      `INSERT INTO training_rules (type, title, rule, example_question, example_response, source_lead_id, source_context, status, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      finalType, title, rule, example_question || null, example_response || null,
+      source_lead_id || null, source_context || 'Creado manualmente', finalStatus
+    );
+
+    res.json({ success: true, id: result.lastID });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Actualizar o aprobar/rechazar regla
+app.put('/api/training/rules/:id', async (req, res) => {
+  try {
+    const { type, title, rule, example_question, example_response, status } = req.body;
+    const existing = await db.get("SELECT * FROM training_rules WHERE id = ?", req.params.id);
+    if (!existing) return res.status(404).json({ error: "Regla no encontrada" });
+
+    const newType = type || existing.type;
+    const newTitle = title || existing.title;
+    const newRule = rule || existing.rule;
+    const newQ = example_question !== undefined ? example_question : existing.example_question;
+    const newR = example_response !== undefined ? example_response : existing.example_response;
+    const newStatus = status || existing.status;
+
+    await db.run(
+      `UPDATE training_rules SET type=?, title=?, rule=?, example_question=?, example_response=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+      newType, newTitle, newRule, newQ, newR, newStatus, req.params.id
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Eliminar regla
+app.delete('/api/training/rules/:id', async (req, res) => {
+  try {
+    await db.run("DELETE FROM training_rules WHERE id = ?", req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. Analizador de Conversaciones con IA (Auto-aprendizaje)
+app.post('/api/training/analyze', async (_req, res) => {
+  try {
+    // Traer los últimos 200 mensajes agrupados por lead
+    const msgs = await db.all(
+      `SELECT m.id, m.lead_id, m.sender, m.text, m.timestamp, l.nombre, l.phone, l.estado, l.handoff_reason
+       FROM messages m
+       INNER JOIN leads l ON m.lead_id = l.id
+       ORDER BY m.id DESC LIMIT 200`
+    );
+
+    // Agrupar por lead_id
+    const leadsMap = {};
+    for (const m of msgs.reverse()) {
+      if (!leadsMap[m.lead_id]) leadsMap[m.lead_id] = { lead: { id: m.lead_id, nombre: m.nombre, phone: m.phone, estado: m.estado, handoff_reason: m.handoff_reason }, messages: [] };
+      leadsMap[m.lead_id].messages.push(m);
+    }
+
+    const suggestions = [];
+
+    for (const [leadId, group] of Object.entries(leadsMap)) {
+      const messages = group.messages;
+      const clientMsgs = messages.filter(m => m.sender === 'client');
+      const agentMsgs = messages.filter(m => m.sender === 'agent');
+      const botMsgs = messages.filter(m => m.sender === 'bot');
+
+      // Patrón 1: El agente humano intervino para dar una aclaración o cerrar venta
+      if (agentMsgs.length > 0 && clientMsgs.length > 0) {
+        const lastClient = clientMsgs[clientMsgs.length - 1];
+        const lastAgent = agentMsgs[agentMsgs.length - 1];
+        const tClient = (lastClient.text || '').toLowerCase();
+        const tAgent = lastAgent.text || '';
+
+        if (tAgent.length > 15 && !tAgent.toLowerCase().includes('hola') && tAgent.length < 400) {
+          let tema = 'Respuesta de asesor';
+          let tipo = 'permitido';
+          if (tClient.includes('precio') || tClient.includes('cuanto') || tClient.includes('costo')) tema = 'Cotización / Precios';
+          else if (tClient.includes('envio') || tClient.includes('zona') || tClient.includes('departamento')) tema = 'Política de Envíos';
+          else if (tClient.includes('medida') || tClient.includes('mide') || tClient.includes('alto') || tClient.includes('ancho')) tema = 'Medidas y Especificaciones';
+          else if (tClient.includes('armad') || tClient.includes('caja')) tema = 'Entrega y Armado';
+
+          suggestions.push({
+            type: tipo,
+            title: `Respuesta recomendada en: ${tema}`,
+            rule: `Cuando el cliente pregunte sobre ${tema.toLowerCase()}, responder con la siguiente estructura: "${tAgent.slice(0, 200)}"`,
+            example_question: lastClient.text?.slice(0, 150) || '',
+            example_response: tAgent.slice(0, 250),
+            source_lead_id: Number(leadId),
+            source_context: `Aprendido de la respuesta enviada por un asesor humano al cliente ${group.lead.nombre || group.lead.phone}.`
+          });
+        }
+      }
+
+      // Patrón 2: Detección de Confusiones / Objeciones del Cliente (Reglas Prohibidas)
+      for (const cm of clientMsgs) {
+        const txt = (cm.text || '').toLowerCase();
+        if (txt.includes('el par') || txt.includes('las dos') || txt.includes('los dos') || txt.includes('vienen dos')) {
+          suggestions.push({
+            type: 'prohibido',
+            title: 'No asumir que el precio es por el par de mesas',
+            rule: 'PROHIBIDO decir o dar a entender que Q550 es el precio por el par. Aclarar SIEMPRE que Q550 es por unidad (1 mesita) y el par sale en Q1,100.',
+            example_question: cm.text.slice(0, 150),
+            example_response: 'El precio es Q550 por unidad; el par le queda en Q1,100.',
+            source_lead_id: Number(leadId),
+            source_context: 'Cliente consultó si el precio publicado correspondía al par o por unidad.'
+          });
+        }
+        if (txt.includes('desarmad') || txt.includes('para armar') || txt.includes('vienen armadas')) {
+          suggestions.push({
+            type: 'prohibido',
+            title: 'No decir que los muebles vienen desarmados',
+            rule: 'PROHIBIDO decir que los muebles o mesas vienen desarmados en caja. Todos los muebles de OneControl se entregan completamente armados y listos para usar.',
+            example_question: cm.text.slice(0, 150),
+            example_response: 'Vienen completamente armadas y listas para usar.',
+            source_lead_id: Number(leadId),
+            source_context: 'Duda frecuente de clientes sobre el armado de muebles.'
+          });
+        }
+        if (txt.includes('descuento') || txt.includes('menos') || txt.includes('rebaja') || txt.includes('ultimo precio') || txt.includes('lo menos')) {
+          suggestions.push({
+            type: 'objecion',
+            title: 'Manejo de solicitud de descuento',
+            rule: 'No prometer descuentos directos sin autorización. Explicar que el precio es fijo con excelente calidad, o tomar datos para que el asesor evalúe promociones por volumen.',
+            example_question: cm.text.slice(0, 150),
+            example_response: 'Nuestros precios ya incluyen la mejor calidad de melamina. Si llevás más de una unidad, con gusto le pido al asesor que te revise una opción especial.',
+            source_lead_id: Number(leadId),
+            source_context: 'Solicitud de descuento detectada en conversación.'
+          });
+        }
+        if (txt.includes('señor') || txt.includes('señora') || txt.includes('doña') || txt.includes('don')) {
+          suggestions.push({
+            type: 'prohibido',
+            title: 'Trato respetuoso neutro (Evitar señor/señora)',
+            rule: 'PROHIBIDO usar "señor" o "señora" si no se conoce con certeza. Tratar siempre de "usted" neutro utilizando el nombre del cliente.',
+            example_question: cm.text.slice(0, 150),
+            example_response: '¡Con mucho gusto! ¿En qué modelo le puedo apoyar?',
+            source_lead_id: Number(leadId),
+            source_context: 'Regla de tono de comunicación con clientes.'
+          });
+        }
+      }
+    }
+
+    // Insertar sugerencias detectadas sin duplicar
+    let nuevas = 0;
+    for (const s of suggestions) {
+      const existing = await db.get(
+        "SELECT id FROM training_rules WHERE title = ? OR rule = ?",
+        s.title, s.rule
+      );
+      if (!existing) {
+        await db.run(
+          `INSERT INTO training_rules (type, title, rule, example_question, example_response, source_lead_id, source_context, status, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)`,
+          s.type, s.title, s.rule, s.example_question, s.example_response, s.source_lead_id, s.source_context
+        );
+        nuevas++;
+      }
+    }
+
+    const totalPending = await db.get("SELECT COUNT(*) as c FROM training_rules WHERE status = 'pending'");
+    res.json({
+      success: true,
+      nuevas,
+      totalPending: totalPending.c,
+      analizados: msgs.length
+    });
+  } catch (err) {
+    console.error('Error en /api/training/analyze:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. Probador / Simulador en Vivo de Respuestas
+app.post('/api/training/test', async (req, res) => {
+  try {
+    const { question } = req.body;
+    if (!question || !question.trim()) return res.status(400).json({ error: "Falta la pregunta" });
+
+    const approvedRules = await db.all("SELECT * FROM training_rules WHERE status = 'approved'");
+    const qClean = question.toLowerCase();
+
+    // Encontrar reglas aplicables a esta pregunta
+    const matchingRules = approvedRules.filter(r => {
+      const matchQ = r.example_question && qClean.includes(r.example_question.toLowerCase().slice(0, 15));
+      const matchTitle = r.title && qClean.includes(r.title.toLowerCase().slice(0, 10));
+      return matchQ || matchTitle;
+    });
+
+    // Simular respuesta usando RAG y Reglas
+    const products = await db.all("SELECT * FROM products WHERE activo = 1");
+    const matchingProducts = products.filter(p => {
+      const np = (p.nombre || '').toLowerCase();
+      const cp = (p.categoria || '').toLowerCase();
+      return qClean.includes(np) || np.includes(qClean) || (cp && qClean.includes(cp));
+    });
+
+    let simulatedReply = "¡Hola! Con gusto te brindo información.";
+    if (matchingProducts.length > 0) {
+      const p = matchingProducts[0];
+      simulatedReply = `¡Claro que sí! Contamos con **${p.nombre}**.\n\n💰 Precio: **Q${p.precio}** (por unidad).\n📦 Estado: ${p.stock || 'Disponible'}.\n${p.descripcion ? `✨ ${p.descripcion.slice(0, 150)}...` : ''}\n\n¿Te gustaría que tomemos tus datos para coordinar el envío?`;
+    } else if (qClean.includes('mesa') || qClean.includes('mueble') || qClean.includes('noche')) {
+      simulatedReply = "¡Con gusto! Nuestras mesitas de noche tienen un precio de **Q550 cada una** (el par sale en Q1,100) y se entregan **completamente armadas**. ¿Te gustaría ver las fotos de los modelos disponibles?";
+    } else if (qClean.includes('envio') || qClean.includes('costo') || qClean.includes('zona')) {
+      simulatedReply = "El costo de envío varía según tu ubicación (en varias zonas está incluido y en otras tiene un costo de Q50). ¿En qué zona o municipio te encuentras para confirmarte?";
+    } else if (qClean.includes('pago') || qClean.includes('tarjeta') || qClean.includes('visacuotas')) {
+      simulatedReply = "Aceptamos pago contra entrega, transferencia bancaria y Visacuotas. ¿Cuál forma de pago te resulta más cómoda?";
+    }
+
+    res.json({
+      success: true,
+      question,
+      reply: simulatedReply,
+      appliedRules: matchingRules.map(r => ({ id: r.id, title: r.title, type: r.type, rule: r.rule })),
+      productsFound: matchingProducts.map(p => p.nombre)
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

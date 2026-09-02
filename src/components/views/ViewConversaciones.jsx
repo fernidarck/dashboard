@@ -6,6 +6,36 @@ import {
   UserPlus, Phone, Download
 } from 'lucide-react';
 
+function ChannelBadge({ origen, size = 'sm' }) {
+  const orig = String(origen || '').toLowerCase();
+  if (orig.includes('instagram')) {
+    return (
+      <span className={`inline-flex items-center gap-1 font-black uppercase tracking-wider rounded-md bg-gradient-to-r from-purple-500/15 via-pink-500/15 to-orange-500/15 text-pink-700 border border-pink-200/80 ${size === 'xs' ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5'}`}>
+        <span>📸</span> Instagram Direct
+      </span>
+    );
+  }
+  if (orig.includes('facebook')) {
+    return (
+      <span className={`inline-flex items-center gap-1 font-black uppercase tracking-wider rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 ${size === 'xs' ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5'}`}>
+        <span>📘</span> Facebook Messenger
+      </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 font-black uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80 ${size === 'xs' ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5'}`}>
+      <span>🟢</span> WhatsApp
+    </span>
+  );
+}
+
+const getChannelIcon = (origen) => {
+  const orig = String(origen || '').toLowerCase();
+  if (orig.includes('instagram')) return '📸';
+  if (orig.includes('facebook')) return '📘';
+  return '🟢';
+};
+
 export default function ViewConversaciones({
   leads = [],
   messages = [],
@@ -27,6 +57,7 @@ export default function ViewConversaciones({
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [chatSearch, setChatSearch] = useState('');
+  const [channelTab, setChannelTab] = useState('todos');
   const fileInputRef = useRef(null);
 
   // Al navegar desde Leads/Dashboard/notificación (cambia openChatNonce), abrir el chat
@@ -103,6 +134,16 @@ export default function ViewConversaciones({
   // Filtrado y ordenamiento en tiempo real de leads en la bandeja
   const filteredLeads = useMemo(() => {
     let list = [...leads];
+    
+    // Filtrar por pestaña de canal
+    if (channelTab === 'whatsapp') {
+      list = list.filter(l => !l.origen || String(l.origen).toLowerCase().includes('whatsapp') || l.origen === 'Manual');
+    } else if (channelTab === 'instagram') {
+      list = list.filter(l => l.origen && String(l.origen).toLowerCase().includes('instagram'));
+    } else if (channelTab === 'facebook') {
+      list = list.filter(l => l.origen && String(l.origen).toLowerCase().includes('facebook'));
+    }
+
     if (chatSearch.trim()) {
       const rawQ = chatSearch.toLowerCase().trim();
       const numQ = rawQ.replace(/\D/g, '');
@@ -112,7 +153,8 @@ export default function ViewConversaciones({
         const motorMatch = (l.motor || '').toLowerCase().includes(rawQ);
         const msgMatch = (l.lastMessage || '').toLowerCase().includes(rawQ);
         const estadoMatch = (l.estado || '').toLowerCase().includes(rawQ);
-        return nameMatch || phoneMatch || motorMatch || msgMatch || estadoMatch;
+        const origenMatch = (l.origen || '').toLowerCase().includes(rawQ);
+        return nameMatch || phoneMatch || motorMatch || msgMatch || estadoMatch || origenMatch;
       });
     }
     // Ordenar: urgentes primero, luego la conversación con mensaje más reciente en primera fila
@@ -125,7 +167,7 @@ export default function ViewConversaciones({
       if (aMsg !== bMsg) return bMsg - aMsg;
       return (b.id || 0) - (a.id || 0);
     });
-  }, [leads, chatSearch]);
+  }, [leads, chatSearch, channelTab]);
 
   // Filtrado de productos para enviar desde el catálogo
   const filteredProducts = useMemo(() => {
@@ -163,15 +205,19 @@ export default function ViewConversaciones({
     <div className="flex h-full animate-in fade-in duration-500 bg-white border-t border-slate-100 relative">
       {/* Lead list */}
       <div className={`w-full md:w-80 border-r border-slate-100 flex-col shrink-0 ${mobileShowChat ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-6 border-b border-slate-50">
-          <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 italic">Bandeja de entrada</h3>
+        <div className="p-4 md:p-5 border-b border-slate-50 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Bandeja de entrada</h3>
+            <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{filteredLeads.length}</span>
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             <input
               type="text"
               value={chatSearch}
               onChange={e => setChatSearch(e.target.value)}
-              placeholder="Buscar por nombre, teléfono, motor..."
+              placeholder="Buscar nombre, ID, motor..."
               className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-[#FF6B00] transition-all"
             />
             {chatSearch && (
@@ -180,18 +226,45 @@ export default function ViewConversaciones({
               </button>
             )}
           </div>
+
+          {/* Filtro rápido de canales */}
+          <div className="flex gap-1 bg-slate-100/80 p-1 rounded-xl">
+            {[
+              { id: 'todos', label: 'Todos' },
+              { id: 'whatsapp', label: '🟢 WA' },
+              { id: 'instagram', label: '📸 IG' },
+              { id: 'facebook', label: '📘 FB' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setChannelTab(tab.id)}
+                className={`flex-1 py-1 text-[9px] font-black uppercase rounded-lg transition-all ${
+                  channelTab === tab.id
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
+
         <div className="flex-1 overflow-y-auto no-scrollbar divide-y divide-slate-50">
-          {filteredLeads.map(lead => (
+          {filteredLeads.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs px-4">
+              No hay conversaciones {channelTab !== 'todos' ? `en ${channelTab}` : ''}.
+            </div>
+          ) : filteredLeads.map(lead => (
             <button
               key={lead.id}
               onClick={() => { onSelectChat(lead.id); setMobileShowChat(true); }}
-              className={`w-full p-5 text-left hover:bg-slate-50 transition-all relative ${
+              className={`w-full p-4 md:p-5 text-left hover:bg-slate-50 transition-all relative ${
                 selectedChatId === lead.id ? 'bg-orange-50/40 border-l-4 border-[#FF6B00]' : ''
               } ${lead.priority === 'urgent' ? 'bg-red-50/60' : ''}`}
             >
               <div className="flex items-center space-x-3 mb-2">
-                <div className="relative">
+                <div className="relative shrink-0">
                   <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shadow-sm ${
                     lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
                     lead.estado === 'Venta' ? 'bg-emerald-100 text-emerald-600' :
@@ -199,6 +272,10 @@ export default function ViewConversaciones({
                   }`}>
                     {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : lead.estado === 'Venta' ? '🏆' : lead.botActive ? <Bot size={14} /> : (lead.nombre?.[0] || '?')}
                   </div>
+                  {/* Badge con el ícono del canal de origen */}
+                  <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none" title={lead.origen || 'WhatsApp'}>
+                    {getChannelIcon(lead.origen)}
+                  </span>
                   {lead.priority === 'urgent' && (
                     <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-ping" />
                   )}
@@ -208,7 +285,12 @@ export default function ViewConversaciones({
                     <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
                     {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums shrink-0 ml-1">{lead.lastMessageTime}</span>}
                   </div>
-                  <p className="text-[10px] text-slate-400 font-bold tabular-nums truncate">{lead.phone || 'Sin número'}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <p className="text-[10px] text-slate-400 font-bold tabular-nums truncate">{lead.phone || 'Sin número'}</p>
+                    {lead.origen && !lead.origen.toLowerCase().includes('whatsapp') && (
+                      <ChannelBadge origen={lead.origen} size="xs" />
+                    )}
+                  </div>
                   <div className="flex justify-between items-center mt-0.5">
                     <p className={`text-[9px] font-black uppercase tracking-tighter ${
                       lead.priority === 'urgent' ? 'text-red-500' :
@@ -244,10 +326,16 @@ export default function ViewConversaciones({
         <div className="h-20 border-b border-slate-100 px-4 md:px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
           <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
             <button onClick={() => setMobileShowChat(false)} className="md:hidden p-2 -ml-1 text-slate-500 hover:text-slate-800 shrink-0"><ArrowLeft size={20} /></button>
-            <div className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00] shrink-0">OC</div>
+            <div className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00] shrink-0 relative">
+              {selectedLead.nombre?.[0] || 'OC'}
+              <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-200 leading-none">
+                {getChannelIcon(selectedLead.origen)}
+              </span>
+            </div>
             <div>
               <p className="text-sm font-black text-slate-800">{selectedLead.nombre || 'Selecciona un chat'}</p>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                <ChannelBadge origen={selectedLead.origen} size="xs" />
                 <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedLead.botActive ? 'text-emerald-500' : 'text-amber-500'}`}>
                   {selectedLead.botActive ? 'IA Gestionando' : 'Modo Manual / Humano'}
                 </p>
@@ -265,7 +353,7 @@ export default function ViewConversaciones({
             </div>
           </div>
           <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
-            {selectedLead.phone && (
+            {selectedLead.phone && (!selectedLead.origen || selectedLead.origen.toLowerCase().includes('whatsapp')) && (
               <button
                 onClick={() => downloadVCard(selectedLead)}
                 className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-50 hover:bg-orange-50 text-slate-700 hover:text-[#FF6B00] transition-all border border-slate-200 shadow-xs"
@@ -305,6 +393,15 @@ export default function ViewConversaciones({
               const isClient = m.sender === 'client';
               const isAgent = m.sender === 'agent' || m.sender === 'user' || m.sender === 'human';
               const isBot = m.sender === 'bot';
+              const origLower = String(selectedLead.origen || '').toLowerCase();
+              const isInstagram = origLower.includes('instagram');
+              const isFacebook = origLower.includes('facebook');
+
+              const senderLabel = isClient
+                ? (isInstagram ? `👤 ${selectedLead.nombre || 'Cliente'} (Instagram)` : isFacebook ? `👤 ${selectedLead.nombre || 'Cliente'} (Facebook)` : `👤 ${selectedLead.nombre || 'Cliente'}`)
+                : isAgent
+                ? (isInstagram ? '📸 Tú (Instagram Direct)' : isFacebook ? '📘 Tú (Messenger)' : '📱 Tú (WhatsApp / Panel)')
+                : '🤖 IA OneControl';
 
               return (
                 <div key={i} className={`flex ${isClient ? 'justify-start' : 'justify-end'}`}>
@@ -320,7 +417,7 @@ export default function ViewConversaciones({
                       isClient ? 'text-[#FF6B00]' : isAgent ? 'text-emerald-400' : 'text-blue-300'
                     }`}>
                       <span>
-                        {isClient ? '👤 ' + (selectedLead.nombre || 'Cliente') : isAgent ? '📱 Tú (WhatsApp / Panel)' : '🤖 IA OneControl'}
+                        {senderLabel}
                       </span>
                     </div>
 

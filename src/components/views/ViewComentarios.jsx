@@ -9,6 +9,7 @@ export default function ViewComentarios({ apiBase, authToken }) {
   const [replyText, setReplyText] = useState({});
   const [sending, setSending] = useState({});
   const [filter, setFilter] = useState('todos');
+  const [platformFilter, setPlatformFilter] = useState('todos');
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
 
@@ -65,6 +66,7 @@ export default function ViewComentarios({ apiBase, authToken }) {
   };
 
   const filtered = comments.filter((c) => {
+    if (platformFilter !== 'todos' && c.platform !== platformFilter) return false;
     if (filter === 'delicados') return c.is_delicate;
     if (filter === 'nuevos') return c.status === 'nuevo';
     if (filter === 'respondidos') return ['respondido', 'manual'].includes(c.status);
@@ -73,6 +75,21 @@ export default function ViewComentarios({ apiBase, authToken }) {
 
   const nuevos = comments.filter((c) => c.status === 'nuevo').length;
   const delicados = comments.filter((c) => c.is_delicate && c.status === 'nuevo').length;
+
+  const platformBadge = (platform) => {
+    if (platform === 'facebook') {
+      return (
+        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+          📘 Facebook
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+        📸 Instagram
+      </span>
+    );
+  };
 
   const badge = (c) => {
     if (c.status === 'manual') return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Respondido (vos)</span>;
@@ -87,7 +104,7 @@ export default function ViewComentarios({ apiBase, authToken }) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-            <AtSign className="text-pink-600" size={26} /> Comentarios
+            <AtSign className="text-pink-600" size={26} /> Comentarios de Redes
           </h1>
           <p className="text-sm text-slate-500 mt-1">
             {nuevos} sin responder{delicados > 0 && <span className="text-red-600 font-bold"> · {delicados} delicado(s) ⚠️</span>}
@@ -96,8 +113,8 @@ export default function ViewComentarios({ apiBase, authToken }) {
         <div className="flex items-center gap-2">
           {syncMsg && <span className="text-xs font-bold text-slate-500">{syncMsg}</span>}
           <button onClick={sincronizar} disabled={syncing}
-            className="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5">
-            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> Sincronizar
+            className="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5 shadow-sm">
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> Sincronizar Feed & Media
           </button>
           <button onClick={load} className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500" title="Actualizar">
             <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
@@ -105,31 +122,59 @@ export default function ViewComentarios({ apiBase, authToken }) {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-5 flex-wrap">
-        {[['todos', 'Todos'], ['nuevos', 'Nuevos'], ['delicados', 'Delicados'], ['respondidos', 'Respondidos']].map(([id, label]) => (
-          <button key={id} onClick={() => setFilter(id)}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold transition ${filter === id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-            {label}
-          </button>
-        ))}
+      {/* Filtros de Plataforma y Estado */}
+      <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+        <div className="flex gap-1.5 bg-slate-100/80 p-1 rounded-xl">
+          {[
+            { id: 'todos', label: 'Todas las Redes' },
+            { id: 'instagram', label: '📸 Instagram' },
+            { id: 'facebook', label: '📘 Facebook' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setPlatformFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+                platformFilter === tab.id
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-1.5 flex-wrap">
+          {[['todos', 'Todos'], ['nuevos', 'Nuevos'], ['delicados', 'Delicados'], ['respondidos', 'Respondidos']].map(([id, label]) => (
+            <button key={id} onClick={() => setFilter(id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${filter === id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && comments.length === 0 && <p className="text-slate-400 text-center py-10">Cargando…</p>}
       {!loading && filtered.length === 0 && (
-        <div className="text-center py-16 text-slate-400">
-          <MessageCircle size={40} className="mx-auto mb-3 opacity-40" />
-          <p>No hay comentarios {filter !== 'todos' ? 'en este filtro' : 'todavía'}.</p>
+        <div className="text-center py-16 text-slate-400 bg-white border border-slate-200 rounded-3xl">
+          <MessageCircle size={40} className="mx-auto mb-3 opacity-40 text-slate-300" />
+          <p className="font-bold text-sm text-slate-600">No hay comentarios {filter !== 'todos' || platformFilter !== 'todos' ? 'en este filtro' : 'todavía'}.</p>
         </div>
       )}
 
       <div className="space-y-4">
         {filtered.map((c) => (
-          <div key={c.id} className={`rounded-2xl border p-4 bg-white ${c.is_delicate && c.status === 'nuevo' ? 'border-red-200 bg-red-50/40' : 'border-slate-200'}`}>
+          <div key={c.id} className={`rounded-2xl border p-4 bg-white shadow-xs ${c.is_delicate && c.status === 'nuevo' ? 'border-red-200 bg-red-50/40' : 'border-slate-200'}`}>
             <div className="flex items-center justify-between mb-2">
-              <span className="font-bold text-slate-700 text-sm">@{c.from_name || 'usuario'}</span>
+              <div className="flex items-center gap-2">
+                {platformBadge(c.platform)}
+                <span className="font-bold text-slate-800 text-sm">
+                  {c.platform === 'instagram' ? `@${c.from_name || 'usuario'}` : (c.from_name || 'Usuario Facebook')}
+                </span>
+              </div>
               <div className="flex items-center gap-2">
                 {badge(c)}
-                <span className="text-[10px] text-slate-400">{c.timestamp || ''}</span>
+                <span className="text-[10px] text-slate-400 font-medium">{c.timestamp || ''}</span>
               </div>
             </div>
             <p className="text-slate-800 text-sm mb-3">{c.text || <em className="text-slate-400">(sin texto)</em>}</p>

@@ -14,6 +14,36 @@ function getCleanWhatsAppUrl(phone) {
   return `https://wa.me/${clean}`;
 }
 
+function ChannelBadge({ origen, size = 'sm' }) {
+  const orig = String(origen || '').toLowerCase();
+  if (orig.includes('instagram')) {
+    return (
+      <span className={`inline-flex items-center gap-1 font-black uppercase tracking-wider rounded-md bg-gradient-to-r from-purple-500/15 via-pink-500/15 to-orange-500/15 text-pink-700 border border-pink-200/80 ${size === 'xs' ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5'}`}>
+        <span>📸</span> Instagram
+      </span>
+    );
+  }
+  if (orig.includes('facebook')) {
+    return (
+      <span className={`inline-flex items-center gap-1 font-black uppercase tracking-wider rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 ${size === 'xs' ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5'}`}>
+        <span>📘</span> Facebook
+      </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 font-black uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80 ${size === 'xs' ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5'}`}>
+      <span>🟢</span> WhatsApp
+    </span>
+  );
+}
+
+const getChannelIcon = (origen) => {
+  const orig = String(origen || '').toLowerCase();
+  if (orig.includes('instagram')) return '📸';
+  if (orig.includes('facebook')) return '📘';
+  return '🟢';
+};
+
 function ClientSidebarPanel({
   lead,
   onClose,
@@ -61,6 +91,9 @@ function ClientSidebarPanel({
             }`}>
               {lead.estado === 'Venta' ? '🏆' : lead.estado === 'Perdido' ? '✕' : lead.priority === 'urgent' && !isFollowedUp ? '!' : (lead.nombre?.[0] || '?')}
             </div>
+            <span className="absolute -bottom-1 -right-1 text-[12px] bg-white rounded-full px-1 shadow-md border border-slate-200 leading-none">
+              {getChannelIcon(lead.origen)}
+            </span>
             {needsAttention && (
               <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
                 !
@@ -73,6 +106,9 @@ function ClientSidebarPanel({
             )}
           </div>
           <h4 className="text-lg font-black text-slate-800 leading-tight mb-1">{lead.nombre}</h4>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <ChannelBadge origen={lead.origen} size="xs" />
+          </div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-2">
             <span className={`h-2 w-2 rounded-full ${lead.botActive ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
             <span>{lead.botActive ? 'IA Gestionando' : 'Control Humano / Manual'}</span>
@@ -89,7 +125,7 @@ function ClientSidebarPanel({
               <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
             </button>
 
-            {waUrl && (
+            {waUrl && (!lead.origen || lead.origen.toLowerCase().includes('whatsapp')) && (
               <a
                 href={waUrl}
                 target="_blank"
@@ -352,6 +388,7 @@ export default function ViewCRM({
 
   // Tab activo: por defecto empieza en 'por_hablar'
   const [filterTab, setFilterTab] = useState(() => (leads.some(l => !l.archived && isPorHablar(l)) ? 'por_hablar' : 'all'));
+  const [originFilter, setOriginFilter] = useState('all');
 
   // Si cambian los leads y hay pendientes
   useEffect(() => {
@@ -398,6 +435,11 @@ export default function ViewCRM({
     const filtered = leads.filter(lead => {
       if (lead.archived) return false;
 
+      // Filtro por canal / origen
+      if (originFilter === 'whatsapp' && (lead.origen && !lead.origen.toLowerCase().includes('whatsapp') && lead.origen !== 'Manual')) return false;
+      if (originFilter === 'instagram' && (!lead.origen || !lead.origen.toLowerCase().includes('instagram'))) return false;
+      if (originFilter === 'facebook' && (!lead.origen || !lead.origen.toLowerCase().includes('facebook'))) return false;
+
       // Filtro por tab unificado
       if (filterTab === 'por_hablar' && !isPorHablar(lead)) return false;
       if (filterTab === 'follow_up' && !isEnSeguimiento(lead)) return false;
@@ -415,7 +457,8 @@ export default function ViewCRM({
         const matchZona = (lead.zona || '').toLowerCase().includes(q);
         const matchTags = (lead.etiquetas || '').toLowerCase().includes(q);
         const matchEstado = (lead.estado || '').toLowerCase().includes(q);
-        if (!matchName && !matchPhone && !matchMsg && !matchMotor && !matchZona && !matchTags && !matchEstado) {
+        const matchOrigen = (lead.origen || '').toLowerCase().includes(q);
+        if (!matchName && !matchPhone && !matchMsg && !matchMotor && !matchZona && !matchTags && !matchEstado && !matchOrigen) {
           return false;
         }
       }
@@ -430,7 +473,7 @@ export default function ViewCRM({
       if (wA !== wB) return wB - wA;
       return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
-  }, [leads, filterTab, searchQuery]);
+  }, [leads, filterTab, originFilter, searchQuery]);
 
   const handleSave = () => {
     onUpdateLead(editingLead);
@@ -729,12 +772,34 @@ export default function ViewCRM({
             </button>
           ))}
 
-          {filterTab !== 'all' && (
+          {/* Filtro por Canal / Origen */}
+          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl ml-2">
+            {[
+              { id: 'all', label: 'Todos Canales' },
+              { id: 'whatsapp', label: '🟢 WA' },
+              { id: 'instagram', label: '📸 IG' },
+              { id: 'facebook', label: '📘 FB' },
+            ].map(o => (
+              <button
+                key={o.id}
+                onClick={() => setOriginFilter(o.id)}
+                className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
+                  originFilter === o.id
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+
+          {(filterTab !== 'all' || originFilter !== 'all') && (
             <button
-              onClick={() => setFilterTab('all')}
+              onClick={() => { setFilterTab('all'); setOriginFilter('all'); }}
               className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline ml-2"
             >
-              Ver todos
+              Restablecer filtros
             </button>
           )}
 
@@ -778,9 +843,9 @@ export default function ViewCRM({
                       <p className="text-xs text-slate-400">
                         Prueba cambiando la etapa o buscando por nombre/teléfono.
                       </p>
-                      {filterTab !== 'all' && (
+                      {(filterTab !== 'all' || originFilter !== 'all') && (
                         <button
-                          onClick={() => { setFilterTab('all'); setSearchQuery(''); }}
+                          onClick={() => { setFilterTab('all'); setOriginFilter('all'); setSearchQuery(''); }}
                           className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-black transition-all"
                         >
                           Ver todos los leads
@@ -832,6 +897,9 @@ export default function ViewCRM({
                             }`}>
                               {lead.estado === 'Venta' ? '🏆' : lead.estado === 'Perdido' ? '✕' : lead.priority === 'urgent' && leadIsPorHablar ? '!' : (lead.nombre?.[0] || '?')}
                             </div>
+                            <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none">
+                              {getChannelIcon(lead.origen)}
+                            </span>
                             {leadIsPorHablar && (
                               <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white animate-ping" />
                             )}
@@ -857,9 +925,14 @@ export default function ViewCRM({
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center space-x-1.5 text-[10px] font-bold text-slate-400 mt-1">
-                              <Phone size={10} className="text-slate-300 shrink-0" />
-                              <span className="truncate">{lead.phone || lead.whatsapp_id || 'Sin teléfono'}</span>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <div className="flex items-center space-x-1 text-[10px] font-bold text-slate-400">
+                                <Phone size={10} className="text-slate-300 shrink-0" />
+                                <span className="truncate">{lead.phone || lead.whatsapp_id || 'Sin teléfono'}</span>
+                              </div>
+                              {lead.origen && !lead.origen.toLowerCase().includes('whatsapp') && (
+                                <ChannelBadge origen={lead.origen} size="xs" />
+                              )}
                             </div>
 
                             {/* Motivo de Handoff o Último Mensaje */}

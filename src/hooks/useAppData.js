@@ -14,7 +14,21 @@ export function useAppData(apiBase, authToken) {
   const [users, setUsers] = useState([]);
   const [leads, setLeads] = useState([]);
   const [channels, setChannels] = useState([]);
-  const [selectedChannel, setSelectedChannel] = useState(null);
+  const [selectedChannel, setSelectedChannelState] = useState(() => {
+    try {
+      return localStorage.getItem('oc_selected_channel') || '+50259658803';
+    } catch {
+      return '+50259658803';
+    }
+  });
+
+  const setSelectedChannel = useCallback((channel) => {
+    setSelectedChannelState(channel);
+    try {
+      if (channel) localStorage.setItem('oc_selected_channel', channel);
+      else localStorage.removeItem('oc_selected_channel');
+    } catch {}
+  }, []);
   const [messages, setMessages] = useState([]);
   const [agenda, setAgenda] = useState([]);
   const [pedidos, setPedidos] = useState([]);
@@ -24,6 +38,8 @@ export function useAppData(apiBase, authToken) {
   const [captureStats, setCaptureStats] = useState([]);
   const [aiInsights, setAiInsights] = useState({ topics: [], stats: {} });
   const [aiKnowledge, setAiKnowledge] = useState([]);
+  const [trainingRules, setTrainingRules] = useState([]);
+  const [trainingStats, setTrainingStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0, prohibidas: 0, permitidas: 0 });
   const [handoffTriggers, setHandoffTriggers] = useState([]);
   const [agentConfig, setAgentConfig] = useState({
     nombre: 'OneControl Bot', rol: 'Asistente de Ventas',
@@ -31,7 +47,9 @@ export function useAppData(apiBase, authToken) {
     personalidad: 'Servicial y Profesional', idioma: 'Español',
     tono: 'Amigable', productos: '',
     ycloud_api_key: '', ycloud_from: '',
-    owner_phone: '', n8n_outbound_webhook: ''
+    owner_phone: '', n8n_outbound_webhook: '',
+    meta_page_token: '', meta_verify_token: 'onecontrol_ig_verify_2026',
+    fb_page_id: '1059922890527747', ig_user_id: '17841477412607895'
   });
   const [prompts, setPrompts] = useState({ Recepcionista: '', Vendedor: '', Soporte: '' });
   const [mensajesBot, setMensajesBot] = useState({
@@ -93,10 +111,11 @@ export function useAppData(apiBase, authToken) {
       const res = await apiFetch(`${apiBase}/api/channels`);
       const data = await res.json();
       setChannels(data);
-      // Auto-select the first channel on initial load (when nothing is selected yet)
-      // so the main channel appears by default instead of "all channels"
-      setSelectedChannel(prev => {
-        if (prev === null && data.length > 0) return data[0].phone;
+      setSelectedChannelState(prev => {
+        if (!prev && data.length > 0) {
+          const main = data.find(c => String(c.phone).includes('59658803')) || data[0];
+          return main.phone;
+        }
         return prev;
       });
     } catch (err) { console.error(err); }
@@ -285,6 +304,10 @@ export function useAppData(apiBase, authToken) {
         if (s.key === 'ycloud_from')        config.ycloud_from   = s.value;
         if (s.key === 'owner_phone')        config.owner_phone   = s.value;
         if (s.key === 'n8n_outbound_webhook') config.n8n_outbound_webhook = s.value;
+        if (s.key === 'meta_page_token')    config.meta_page_token = s.value;
+        if (s.key === 'meta_verify_token')  config.meta_verify_token = s.value;
+        if (s.key === 'fb_page_id')         config.fb_page_id    = s.value;
+        if (s.key === 'ig_user_id')         config.ig_user_id    = s.value;
         if (s.key === 'capture_fields')     { try { setCaptureFields(JSON.parse(s.value)); } catch(e) {} }
         if (s.key === 'msg_bienvenida')     loadedMensajes.bienvenida     = s.value;
         if (s.key === 'msg_fallback')       loadedMensajes.fallback       = s.value;
@@ -713,11 +736,153 @@ export function useAppData(apiBase, authToken) {
     finally { setLoading(false); }
   }, [apiFetch, apiBase, notify]);
 
+  const fetchTrainingRules = useCallback(async (status = 'all', type = 'all') => {
+    try {
+      let url = `${apiBase}/api/training/rules?status=${status}&type=${type}`;
+      const [rulesRes, statsRes] = await Promise.all([
+        apiFetch(url),
+        apiFetch(`${apiBase}/api/training/stats`)
+      ]);
+      if (rulesRes.ok) setTrainingRules(await rulesRes.json());
+      if (statsRes.ok) setTrainingStats(await statsRes.json());
+    } catch (err) { console.error('Error fetching training rules:', err); }
+  }, [apiFetch, apiBase]);
+
+  const saveTrainingRule = useCallback(async (ruleData) => {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/rules`, {
+        method: 'POST',
+        body: JSON.stringify(ruleData)
+      });
+      if (res.ok) {
+        notify('✅ Regla de entrenamiento guardada');
+        fetchTrainingRules();
+        return true;
+      } else {
+        const d = await res.json();
+        notify(`❌ Error: ${d.error || 'No se pudo guardar'}`);
+        return false;
+      }
+    } catch {
+      notify('❌ Error de conexión');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, apiBase, fetchTrainingRules, notify]);
+
+  const updateTrainingRule = useCallback(async (id, ruleData) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/rules/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(ruleData)
+      });
+      if (res.ok) {
+        notify('✅ Regla actualizada');
+        fetchTrainingRules();
+        return true;
+      }
+      return false;
+    } catch {
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, fetchTrainingRules, notify]);
+
+  const approveTrainingRule = useCallback(async (id) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/rules/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'approved' })
+      });
+      if (res.ok) {
+        notify('✅ Regla aprobada e integrada al Bot en vivo');
+        fetchTrainingRules();
+        return true;
+      }
+      return false;
+    } catch {
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, fetchTrainingRules, notify]);
+
+  const rejectTrainingRule = useCallback(async (id) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/rules/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'rejected' })
+      });
+      if (res.ok) {
+        notify('🚫 Sugerencia descartada');
+        fetchTrainingRules();
+        return true;
+      }
+      return false;
+    } catch {
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, fetchTrainingRules, notify]);
+
+  const deleteTrainingRule = useCallback(async (id) => {
+    if (!window.confirm('¿Eliminar esta regla de entrenamiento?')) return;
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/rules/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        notify('🗑️ Regla eliminada');
+        fetchTrainingRules();
+        return true;
+      }
+      return false;
+    } catch {
+      notify('❌ Error de conexión');
+      return false;
+    }
+  }, [apiFetch, apiBase, fetchTrainingRules, notify]);
+
+  const analyzeTrainingWithAI = useCallback(async () => {
+    setLoading(true);
+    notify('🔍 Analizando conversaciones recientes con IA...');
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/analyze`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        notify(`✨ Análisis completo: ${data.nuevas} nuevas sugerencias detectadas (${data.totalPending} pendientes en total)`, 4500);
+        fetchTrainingRules();
+        return data;
+      } else {
+        notify('❌ Error al analizar conversaciones');
+        return null;
+      }
+    } catch {
+      notify('❌ Error de conexión');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, apiBase, fetchTrainingRules, notify]);
+
+  const testTrainingPrompt = useCallback(async (question) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/test`, {
+        method: 'POST',
+        body: JSON.stringify({ question })
+      });
+      if (res.ok) return await res.json();
+      return { error: 'Error en la respuesta' };
+    } catch (e) {
+      return { error: e.message };
+    }
+  }, [apiFetch, apiBase]);
+
   return {
     // State
     currentUser, users, setCurrentUser,
     leads, messages, agenda, pedidos, documents, products,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
+    trainingRules, trainingStats,
     agentConfig, setAgentConfig, prompts, setPrompts,
     mensajesBot, setMensajesBot, captureFields, setCaptureFields,
     loading, notification, setNotification,
@@ -725,7 +890,7 @@ export function useAppData(apiBase, authToken) {
     // Fetch
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
-    fetchChannels, fetchUsers,
+    fetchChannels, fetchUsers, fetchTrainingRules,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, sendDocument, updatePedidoEstado, savePedido, deletePedido,
@@ -733,6 +898,8 @@ export function useAppData(apiBase, authToken) {
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
     approveKnowledge, ignoreKnowledge,
+    saveTrainingRule, updateTrainingRule, deleteTrainingRule, approveTrainingRule, rejectTrainingRule,
+    analyzeTrainingWithAI, testTrainingPrompt,
     uploadProductImage, uploadDocument, uploadImageFile, uploadMediaFile, runTestSearch, syncBrainConfig,
     saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     // Alerts

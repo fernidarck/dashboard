@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
   Save, MessageSquare, Database, AlertTriangle, Plus, Trash2,
-  RefreshCw, Sparkles, LineChart, Brain, Pencil, Phone, ShieldCheck, Power
+  RefreshCw, Sparkles, LineChart, Brain, Pencil, Phone, ShieldCheck, Power,
+  Share2, Key, Globe, Check, Copy
 } from 'lucide-react';
 
 export default function ViewCerebro({
@@ -558,6 +559,85 @@ export default function ViewCerebro({
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Configuración de Meta (Facebook Page e Instagram Direct) */}
+          <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest italic flex items-center space-x-3">
+                  <Share2 size={18} className="text-pink-600" />
+                  <span>Meta (Facebook Page & Instagram Direct)</span>
+                </h3>
+                <p className="text-[10px] text-slate-400 italic mt-1">Conecta tu Fanpage de Facebook y tu cuenta de Instagram Business para recibir y responder mensajes y comentarios</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Meta Page Access Token</label>
+                <input
+                  type="password"
+                  value={agentConfig.meta_page_token || ''}
+                  onChange={e => setAgentConfig({ ...agentConfig, meta_page_token: e.target.value })}
+                  placeholder="Token de acceso de página con permisos messages, feed..."
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Webhook Verify Token</label>
+                <input
+                  type="text"
+                  value={agentConfig.meta_verify_token || 'onecontrol_ig_verify_2026'}
+                  onChange={e => setAgentConfig({ ...agentConfig, meta_verify_token: e.target.value })}
+                  placeholder="onecontrol_ig_verify_2026"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Facebook Page ID</label>
+                <input
+                  type="text"
+                  value={agentConfig.fb_page_id || ''}
+                  onChange={e => setAgentConfig({ ...agentConfig, fb_page_id: e.target.value })}
+                  placeholder="Ej: 1059922890527747"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Instagram Business Account ID</label>
+                <input
+                  type="text"
+                  value={agentConfig.ig_user_id || ''}
+                  onChange={e => setAgentConfig({ ...agentConfig, ig_user_id: e.target.value })}
+                  placeholder="Ej: 17841477412607895"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+              <p className="text-[10px] font-black text-slate-700 uppercase tracking-wider">URL de Webhook para configurar en Meta App / Developer Portal:</p>
+              <div className="flex items-center gap-2 font-mono text-xs text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200">
+                <span className="truncate flex-1">https://{typeof window !== 'undefined' ? window.location.host : 'onecontrol-dashboard.lat'}/webhooks/meta</span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase">Campos: messages, messaging_postbacks, feed, comments</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                onSaveSetting('meta_page_token', agentConfig.meta_page_token || '');
+                onSaveSetting('meta_verify_token', agentConfig.meta_verify_token || '');
+                onSaveSetting('fb_page_id', agentConfig.fb_page_id || '');
+                onSaveSetting('ig_user_id', agentConfig.ig_user_id || '');
+              }}
+              className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-pink-600 transition-colors shadow-sm"
+            >
+              Guardar Configuración Meta
+            </button>
           </div>
 
           {/* Gestión de Canales */}

@@ -8,9 +8,17 @@ function getCleanWhatsAppUrl(phone) {
   return `https://wa.me/${clean}`;
 }
 
+function ChannelIcon({ origen }) {
+  const orig = String(origen || '').toLowerCase();
+  if (orig.includes('instagram')) return <span title="Instagram Direct">📸</span>;
+  if (orig.includes('facebook')) return <span title="Facebook Messenger">📘</span>;
+  return <span title="WhatsApp">🟢</span>;
+}
+
 function LeadRow({ lead, onOpenConversation }) {
   const isUrgent = lead.priority === 'urgent' || !!lead.handoff_reason || lead.estado === 'Intervención Requerida';
-  const waUrl = getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id);
+  const isWhatsApp = !lead.origen || String(lead.origen).toLowerCase().includes('whatsapp');
+  const waUrl = isWhatsApp ? getCleanWhatsAppUrl(lead.phone || lead.whatsapp_id) : null;
   const necesidad = (lead.motor && lead.motor !== 'N/A') ? lead.motor
     : (lead.falla && lead.falla !== 'N/A') ? lead.falla : null;
   const zona = (lead.zona && lead.zona !== 'N/A') ? lead.zona : null;
@@ -18,14 +26,24 @@ function LeadRow({ lead, onOpenConversation }) {
 
   return (
     <div className="group flex items-center gap-3.5 py-3 border-b border-slate-100 last:border-0">
-      <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-        isUrgent ? 'bg-orange-50 text-[#FF6B00]' : 'bg-slate-100 text-slate-500'
-      }`}>
-        {lead.nombre?.[0]?.toUpperCase() || '?'}
+      <div className="relative shrink-0">
+        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs ${
+          isUrgent ? 'bg-orange-50 text-[#FF6B00]' : 'bg-slate-100 text-slate-500'
+        }`}>
+          {lead.nombre?.[0]?.toUpperCase() || '?'}
+        </div>
+        <span className="absolute -bottom-1 -right-1 text-[9px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none">
+          <ChannelIcon origen={lead.origen} />
+        </span>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-slate-900 truncate">{lead.nombre || 'Cliente'}</p>
+          {lead.origen && !isWhatsApp && (
+            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+              {lead.origen.includes('Instagram') ? 'Instagram' : 'Facebook'}
+            </span>
+          )}
           {isUrgent && <span className="text-[9px] font-bold uppercase tracking-wide text-[#FF6B00] bg-orange-50 rounded px-1.5 py-0.5">Urgente</span>}
         </div>
         <p className="text-[12px] text-slate-400 truncate">{detalle || lead.phone || '—'}</p>
@@ -51,13 +69,20 @@ function ConvRow({ lead, onOpenConversation }) {
   return (
     <button onClick={() => onOpenConversation(lead.id)}
       className="w-full flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0 text-left hover:bg-slate-50/70 -mx-2 px-2 rounded-lg transition-colors">
-      <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 ${
-        isUrgent ? 'bg-red-50 text-red-500' : lead.botActive ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-      }`}>
-        {lead.nombre?.[0]?.toUpperCase() || '?'}
+      <div className="relative shrink-0">
+        <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-[11px] ${
+          isUrgent ? 'bg-red-50 text-red-500' : lead.botActive ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+        }`}>
+          {lead.nombre?.[0]?.toUpperCase() || '?'}
+        </div>
+        <span className="absolute -bottom-1 -right-1 text-[8px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none">
+          <ChannelIcon origen={lead.origen} />
+        </span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-slate-800 truncate">{lead.nombre || 'Cliente'}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[13px] font-semibold text-slate-800 truncate">{lead.nombre || 'Cliente'}</p>
+        </div>
         <p className="text-[11px] text-slate-400 truncate">{lead.lastMessage || 'Sin mensajes'}</p>
       </div>
       <span className="text-[10px] text-slate-300 shrink-0">{lead.time || ''}</span>
