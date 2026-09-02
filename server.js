@@ -3249,10 +3249,66 @@ app.post('/api/training/test', async (req, res) => {
       }
     }
 
+    // 3. Detectar si enviará imágenes o videos (Media auto-attachment)
+    const mediaInfo = {
+      willSendImage: false,
+      willSendVideo: false,
+      images: [],
+      videos: [],
+      summary: "📝 Solo mensaje de texto (no enviará fotos ni videos)"
+    };
+
+    const VIDEO_EXT = /\.(mp4|mov|webm|avi|m4v)(\?|$)/i;
+
+    if (scoredProducts.length > 0) {
+      const topProd = scoredProducts[0];
+      const prodImages = normalizeProductImages(topProd);
+      
+      // Extraer imágenes y videos del producto
+      for (const im of prodImages) {
+        if (VIDEO_EXT.test(im.url)) {
+          mediaInfo.videos.push({ url: im.url, desc: im.desc || 'Video demostrativo' });
+          mediaInfo.willSendVideo = true;
+        } else if (im.url) {
+          mediaInfo.images.push({ url: im.url, desc: im.desc || topProd.nombre });
+          mediaInfo.willSendImage = true;
+        }
+      }
+    }
+
+    // Escanear también si alguna tarjeta de conocimiento (documents) tiene media
+    try {
+      for (const d of docs) {
+        const dImages = normalizeDocImages(d);
+        for (const im of dImages) {
+          const desc = String(im.desc || '').toLowerCase();
+          if (desc && keywords.some(kw => desc.includes(kw))) {
+            if (VIDEO_EXT.test(im.url)) {
+              mediaInfo.videos.push({ url: im.url, desc: im.desc || d.name });
+              mediaInfo.willSendVideo = true;
+            } else if (im.url) {
+              mediaInfo.images.push({ url: im.url, desc: im.desc || d.name });
+              mediaInfo.willSendImage = true;
+            }
+          }
+        }
+      }
+    } catch (e) {}
+
+    // Resumen legible
+    if (mediaInfo.willSendImage && mediaInfo.willSendVideo) {
+      mediaInfo.summary = `📸 Enviará ${mediaInfo.images.length} imagen(es) + 🎬 ${mediaInfo.videos.length} video(s) demostrativo(s)`;
+    } else if (mediaInfo.willSendImage) {
+      mediaInfo.summary = `📸 Enviará ${mediaInfo.images.length} imagen(es) del producto adjunta(s)`;
+    } else if (mediaInfo.willSendVideo) {
+      mediaInfo.summary = `🎬 Enviará ${mediaInfo.videos.length} video(s) demostrativo(s) adjunto(s)`;
+    }
+
     res.json({
       success: true,
       question,
       reply: simulatedReply,
+      mediaInfo,
       appliedRules: matchingRules.map(r => ({ id: r.id, title: r.title, type: r.type, rule: r.rule })),
       productsFound: scoredProducts.slice(0, 3).map(p => `${p.nombre} (Q${p.precio})`)
     });

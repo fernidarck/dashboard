@@ -3,7 +3,8 @@ import {
   GraduationCap, Sparkles, Check, X, Edit3, Trash2, AlertCircle,
   Plus, ShieldAlert, CheckCircle2, MessageSquare, HelpCircle,
   Search, RefreshCw, Send, ArrowRight, Zap, BookOpen, Layers,
-  Sliders, ExternalLink, ThumbsUp, ThumbsDown
+  Sliders, ExternalLink, ThumbsUp, ThumbsDown,
+  Image as ImageIcon, Video
 } from 'lucide-react';
 
 export default function ViewEntrenamiento({
@@ -419,6 +420,60 @@ export default function ViewEntrenamiento({
                     {simResult.reply}
                   </p>
                 </div>
+
+                {/* Media Attachment Indicator (Fotos y Videos) */}
+                {simResult.mediaInfo && (
+                  <div className={`p-4 rounded-2xl border transition-all text-xs space-y-2.5 ${
+                    simResult.mediaInfo.willSendVideo
+                      ? 'bg-purple-50/70 border-purple-200 ring-1 ring-purple-400/20'
+                      : simResult.mediaInfo.willSendImage
+                      ? 'bg-emerald-50/70 border-emerald-200 ring-1 ring-emerald-400/20'
+                      : 'bg-slate-50 border-slate-200/80'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        {simResult.mediaInfo.willSendVideo ? (
+                          <div className="px-2.5 py-1 rounded-lg bg-purple-100 text-purple-800 font-bold flex items-center gap-1.5">
+                            <Video size={14} />
+                            <span className="text-[10px] font-black uppercase tracking-wider">🎬 Enviará Video Demostrativo</span>
+                          </div>
+                        ) : simResult.mediaInfo.willSendImage ? (
+                          <div className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1.5">
+                            <ImageIcon size={14} />
+                            <span className="text-[10px] font-black uppercase tracking-wider">📸 Enviará Foto(s) Adjunta(s)</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded-md">
+                            <span>📝</span> Solo Mensaje de Texto (Sin fotos/videos)
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {simResult.mediaInfo.willSendVideo ? 'Video listo en WhatsApp' : simResult.mediaInfo.willSendImage ? 'Foto lista en WhatsApp' : 'Respuesta directa'}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-700 font-medium">
+                      {simResult.mediaInfo.summary}
+                    </p>
+
+                    {/* Previews de fotos si están disponibles */}
+                    {simResult.mediaInfo.images && simResult.mediaInfo.images.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {simResult.mediaInfo.images.slice(0, 4).map((img, idx) => (
+                          <div key={idx} className="relative group">
+                            <img
+                              src={img.url}
+                              alt={img.desc || 'Foto'}
+                              className="h-12 w-12 object-cover rounded-xl border border-slate-200 bg-white shadow-xs"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Applied Rules Summary */}
                 {simResult.appliedRules && simResult.appliedRules.length > 0 && (
