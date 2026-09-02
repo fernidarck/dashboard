@@ -267,7 +267,7 @@ export default function App() {
               <SidebarItem icon={Users}         label="Leads"            id="crm" />
               <SidebarItem icon={Calendar}      label="Agenda IA"        id="agenda" />
               <SidebarItem icon={ShoppingBag}   label="Pedidos IA"       id="pedidos" />
-              <SidebarItem icon={AtSign}        label="Comentarios"      id="comentarios" />
+              <SidebarItem icon={Globe}         label="Redes Sociales"  id="comentarios" />
               <SidebarItem icon={Paperclip}     label="Archivos"         id="archivos" />
             </div>
             {currentUser?.role === 'admin' && (

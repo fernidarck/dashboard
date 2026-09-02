@@ -3644,11 +3644,26 @@ async function processIncomingMetaWebhook(body) {
       const parentId = v.parent_id || null;
 
       try {
-        await db.run(
+        const r = await db.run(
           "INSERT OR IGNORE INTO redes_comments (platform, comment_id, media_id, parent_id, from_id, from_name, text, status, is_delicate, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, 'nuevo', ?, ?)",
           commentPlatform, commentId, mediaId, parentId, fromId, fromName, text, delicado, time
         );
         console.log(`💬 Comentario ${commentPlatform.toUpperCase()} de ${fromName}: "${text.slice(0, 60)}" (delicado: ${delicado})`);
+
+        // Si la auto-respuesta del bot está habilitada y NO es un comentario delicado:
+        if (r.changes) {
+          const sRow = await db.get("SELECT value FROM settings WHERE key = 'bot_comments_enabled'");
+          if (sRow?.value === '1' && !delicado) {
+            try {
+              const autoReply = await generateCommentReply(text, fromName, commentPlatform);
+              await replyToComment(commentId, autoReply, commentPlatform);
+              await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'respondido' WHERE comment_id = ?", autoReply, commentId);
+              console.log(`🤖 [Auto-Respuesta Bot Comentarios] Respondido a ${fromName}: "${autoReply.slice(0, 60)}"`);
+            } catch (replyErr) {
+              console.error('Error enviando auto-respuesta a comentario:', replyErr.message);
+            }
+          }
+        }
       } catch(e) {
         console.error('Error guardando comentario:', e.message);
       }
@@ -3691,6 +3706,71 @@ app.post('/api/webhook/facebook', handleMetaWebhookPost);
 app.get('/api/webhook/meta', handleMetaWebhookGet);
 app.post('/api/webhook/meta', handleMetaWebhookPost);
 
+// Helper para generar respuesta inteligente a comentarios con RAG y Reglas
+async function generateCommentReply(commentText, fromName = '', platform = 'instagram') {
+  const qClean = (commentText || '').toLowerCase();
+  const nameTag = fromName ? `@${fromName.replace(/^@/, '')}` : '';
+
+  // 1. Obtener número de WhatsApp y configuraciones
+  const sRows = await db.all("SELECT key, value FROM settings WHERE key IN ('owner_phone', 'comments_wa_phone', 'bot_comments_prompt')");
+  const sMap = {};
+  sRows.forEach(r => sMap[r.key] = r.value);
+  const waPhone = sMap.comments_wa_phone || sMap.owner_phone || '35154362';
+
+  // 2. Búsqueda en catálogo de productos con scoring inteligente
+  const products = await db.all("SELECT * FROM products WHERE activo = 1");
+  const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
+  const keywords = qClean.replace(/[¿?¡!.,;:()"'*\n]/g, ' ').split(/\s+/).filter(k => k.length > 2).map(normalizeKw);
+
+  const scoredProducts = products.map(p => {
+    const fullText = `${p.nombre} ${p.categoria || ''} ${p.descripcion || ''}`.toLowerCase();
+    let score = 0;
+    keywords.forEach(kw => {
+      if (fullText.includes(kw)) {
+        score += 2;
+        if ((p.nombre || '').toLowerCase().includes(kw)) score += 6;
+      }
+    });
+    return { ...p, score };
+  }).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
+
+  let reply = '';
+  if (scoredProducts.length > 0) {
+    const topProd = scoredProducts[0];
+    reply = `¡Hola ${nameTag}! 👋 Con gusto, ${topProd.nombre} tiene un precio de Q${topProd.precio} (por unidad). Se entrega completamente armado y listo para usar 🚚. Escribinos a nuestro WhatsApp al ${waPhone} para enviarte fotos y coordinar tu envío con pago contra entrega 😊`;
+  } else if (qClean.includes('precio') || qClean.includes('costo') || qClean.includes('cuanto') || qClean.includes('cuánto')) {
+    reply = `¡Hola ${nameTag}! 👋 Nuestras mesitas de noche estándar tienen un precio de Q550 cada una (el par sale en Q1,100) y modelos especiales como One Night en Q1,000. Se entregan armadas 🚚. ¿Te gustaría ver fotos por WhatsApp? Escribinos al ${waPhone} 🙌`;
+  } else if (qClean.includes('envio') || qClean.includes('envío') || qClean.includes('entrega') || qClean.includes('zona') || qClean.includes('departamento')) {
+    reply = `¡Hola ${nameTag}! 👋 Contamos con envíos a toda Guatemala y opción de pago contra entrega 🚚. Escribinos a nuestro WhatsApp al ${waPhone} indicándonos tu zona o municipio para confirmarte disponibilidad y detalles 😊`;
+  } else if (qClean.includes('medida') || qClean.includes('tama') || qClean.includes('dimension')) {
+    reply = `¡Hola ${nameTag}! 👋 Con gusto te compartimos las medidas exactas y fotos detalladas. Escribinos a nuestro WhatsApp al ${waPhone} para enviarte la ficha técnica completa 🙌`;
+  } else {
+    reply = `¡Hola ${nameTag}! 👋 Con mucho gusto te apoyamos con información, precios y fotos. Escribinos a nuestro WhatsApp al ${waPhone} para atenderte de inmediato 🙌`;
+  }
+
+  return reply.trim();
+}
+
+// Configuración de Auto-Respuesta a comentarios
+app.get('/api/comments/settings', async (req, res) => {
+  try {
+    const rows = await db.all("SELECT key, value FROM settings WHERE key IN ('bot_comments_enabled', 'comments_wa_phone', 'bot_comments_prompt')");
+    const s = { bot_comments_enabled: '0', comments_wa_phone: '35154362', bot_comments_prompt: '' };
+    rows.forEach(r => s[r.key] = r.value);
+    res.json(s);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/comments/settings', async (req, res) => {
+  try {
+    const { bot_comments_enabled, comments_wa_phone, bot_comments_prompt } = req.body;
+    if (bot_comments_enabled !== undefined) await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('bot_comments_enabled', ?)", String(bot_comments_enabled));
+    if (comments_wa_phone !== undefined) await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('comments_wa_phone', ?)", String(comments_wa_phone));
+    if (bot_comments_prompt !== undefined) await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('bot_comments_prompt', ?)", String(bot_comments_prompt));
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Listar comentarios (para el dashboard)
 app.get('/api/comments', async (req, res) => {
   try {
@@ -3717,6 +3797,23 @@ app.post('/api/comments/:id/reply', async (req, res) => {
     await replyToComment(c.comment_id, message, c.platform || 'instagram');
     await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'manual' WHERE id = ?", message, req.params.id);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Generar / Enviar respuesta con IA para un comentario
+app.post('/api/comments/:id/ai-reply', async (req, res) => {
+  try {
+    const c = await db.get("SELECT * FROM redes_comments WHERE id = ?", req.params.id);
+    if (!c) return res.status(404).json({ error: 'Comentario no encontrado' });
+    const generatedReply = await generateCommentReply(c.text, c.from_name, c.platform || 'instagram');
+
+    if (req.body.preview) {
+      return res.json({ success: true, reply: generatedReply });
+    }
+
+    await replyToComment(c.comment_id, generatedReply, c.platform || 'instagram');
+    await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'respondido' WHERE id = ?", generatedReply, req.params.id);
+    res.json({ success: true, reply: generatedReply });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
