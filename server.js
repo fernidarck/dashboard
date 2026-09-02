@@ -977,6 +977,67 @@ function parseWebhookPayload(data) {
   };
 }
 
+// Helper para detectar y registrar pedidos automáticamente por IA
+async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName, clientMsg, botMsg, channelPhone) {
+  try {
+    const text = ((clientMsg || '') + ' ' + (botMsg || '')).toLowerCase();
+    
+    // Indicadores de intención de pedido o compra
+    const PEDIDO_KEYWORDS = /#pedido_listo|quiero\s+(pedir|ordenar|comprar|que\s+me\s+lo\s+env[ií]en|el\s+env[ií]o\s+a)|hacer\s+el\s+pedido|mi\s+direcci[oó]n\s+es|envi[aá]rmel[oa]|datos\s+para\s+el\s+env[ií]o|pago\s+contra\s+entrega|tomar\s+mis\s+datos/i;
+    
+    if (!PEDIDO_KEYWORDS.test(text)) return null;
+
+    const cleanPh = String(clientPhone || '').replace(/\D/g, '');
+    if (!cleanPh) return null;
+
+    // Evitar crear pedidos duplicados para el mismo teléfono en las últimas 6 horas
+    const existingRecent = await db.get(
+      "SELECT id FROM pedidos WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND estado = 'Nuevo' ORDER BY id DESC LIMIT 1",
+      cleanPh
+    );
+    if (existingRecent) return null;
+
+    // Buscar producto coincidente del catálogo
+    const prods = await db.all("SELECT * FROM products WHERE activo = 1");
+    let matchedProduct = null;
+    for (const p of prods) {
+      const pName = String(p.nombre || '').toLowerCase();
+      if (text.includes(pName) || (pName.includes('one night') && text.includes('one night')) || (pName.includes('modelo') && text.includes((pName.match(/modelo\s*\d+/i) || [])[0]))) {
+        matchedProduct = p;
+        break;
+      }
+    }
+
+    const productName = matchedProduct ? matchedProduct.nombre : 'Mesa de Noche OneControl';
+    const productPrice = matchedProduct ? `Q${matchedProduct.precio}` : 'Q550';
+    const notas = clientMsg ? `Detectado por IA: "${clientMsg.slice(0, 150)}"` : 'Pedido automático';
+
+    const now = new Date();
+    const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+    const timestamp = guateTime.getUTCFullYear() + '-' +
+      String(guateTime.getUTCMonth()+1).padStart(2,'0') + '-' + 
+      String(guateTime.getUTCDate()).padStart(2,'0') + ' ' + 
+      String(guateTime.getUTCHours()).padStart(2,'0') + ':' + 
+      String(guateTime.getUTCMinutes()).padStart(2,'0');
+
+    const result = await db.run(
+      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, timestamp) VALUES (?,?,?,?,?,'Nuevo',?)`,
+      clientName || 'Cliente WhatsApp', clientPhone || '', productName, '1', productPrice, notas, timestamp
+    );
+
+    console.log(`🛒 [IA Pedido Auto-Detectado] Creado Pedido #${result.lastID} para ${clientName} (${clientPhone}) - ${productName}`);
+
+    // Notificar al dueño
+    const alerta = `🛒 *NUEVO PEDIDO DETECTADO POR IA #${result.lastID}*\n\n👤 Cliente: ${clientName || 'Cliente'}\n📱 Tel: ${clientPhone}\n📦 Producto: ${productName}\n💰 Precio: ${productPrice}\n📝 Notas: ${notas}\n\n✅ Revisalo en el Dashboard (sección Pedidos IA).`;
+    await notificarDueno(alerta, channelPhone);
+
+    return result.lastID;
+  } catch (err) {
+    console.error("Error detectando pedido:", err.message);
+    return null;
+  }
+}
+
 // Endpoint unificado para procesar webhooks de mensajes
 async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') {
   try {
@@ -1115,6 +1176,11 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
         await notificarDueno(alerta, l?.channel_phone || cleanChannelPhone);
       } catch (e) { console.error('⚠️ Error notificando handoff:', e.message); }
       console.log(`🚨 [${sourceName}] Handoff activado para lead ${leadId}`);
+    }
+
+    // Detección y creación automática de Pedidos por IA
+    if (!parsed.isEcho) {
+      await detectAndCreatePedidoFromMessage(leadId, cleanPhone, parsed.nombre || existingLead?.nombre, parsed.mensajePrincipal, parsed.mensajeSecundario, cleanChannelPhone);
     }
 
     res.json({ success: true, leadId, action: existingLead ? "updated" : "created", sender: parsed.sender });

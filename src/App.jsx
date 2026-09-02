@@ -447,9 +447,12 @@ export default function App() {
             {activeTab === 'pedidos' && (
               <ViewPedidos
                 pedidos={pedidos}
+                products={products}
+                leads={leads}
                 onUpdateEstado={updatePedidoEstado}
                 onSavePedido={savePedido}
                 onDeletePedido={deletePedido}
+                onOpenConversation={openConversation}
               />
             )}
             {activeTab === 'comentarios' && (

@@ -493,14 +493,25 @@ export function useAppData(apiBase, authToken) {
 
   const savePedido = useCallback(async (pedido) => {
     try {
-      await apiFetch(`${apiBase}/api/pedidos/${pedido.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(pedido)
-      });
+      if (pedido.id) {
+        await apiFetch(`${apiBase}/api/pedidos/${pedido.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(pedido)
+        });
+        notify('✅ Pedido actualizado', 2500);
+      } else {
+        await apiFetch(`${apiBase}/api/pedidos`, {
+          method: 'POST',
+          body: JSON.stringify(pedido)
+        });
+        notify('✅ Nuevo pedido creado', 2500);
+      }
       fetchPedidos();
-      notify('✅ Pedido actualizado', 2500);
       return true;
-    } catch { return false; }
+    } catch {
+      notify('❌ Error al guardar pedido');
+      return false;
+    }
   }, [apiFetch, apiBase, fetchPedidos, notify]);
 
   const deletePedido = useCallback(async (id) => {
