@@ -2238,6 +2238,24 @@ app.post('/api/photos/auto-attach', async (req, res) => {
         if ((medidas && !isVideo) || overlap) (isVideo ? videos : urls).push(img.url);
       }
     }
+
+    // También escanear TARJETAS (documents) con media etiquetada (foto o video).
+    // Se dispara por coincidencia de la etiqueta con el mensaje (videos solo con el cliente).
+    try {
+      const docs = await db.all("SELECT * FROM documents");
+      for (const d of docs) {
+        for (const img of normalizeDocImages(d)) {
+          const desc = String(img.desc || '').toLowerCase();
+          if (!desc) continue;
+          const trig = (desc.match(/cuando\s+(?:te\s+|les\s+)?(?:pidan|pida|pregunten(?:\s+por)?|quieran\s+ver|mostrala|mostrar)\s+(.+)/) || [, ''])[1] || desc;
+          const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w));
+          const isVideo = VIDEO_EXT.test(img.url);
+          const scope = isVideo ? clientMsg : text;
+          if (trigWords.some(w => scope.includes(w))) (isVideo ? videos : urls).push(img.url);
+        }
+      }
+    } catch (e) {}
+
     res.json({ urls: [...new Set(urls)].slice(0, 4), videos: [...new Set(videos)].slice(0, 2) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2573,7 +2591,13 @@ app.get('/api/products/context', async (_req, res) => {
     if (docs.length > 0) {
       context += "\nBASE DE CONOCIMIENTO (Usa esta información para responder a las dudas del cliente):\n";
       docs.forEach(d => {
-        context += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}\n\n`;
+        let extra = '';
+        // Avisar a la IA si la tarjeta tiene VIDEO, para que ofrezca mandarlo y NO diga "no tengo video".
+        try {
+          const vid = normalizeDocImages(d).find(im => /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(im.url || ''));
+          if (vid) extra = `\n[TIENE VIDEO (${vid.desc || 'de cómo funciona'}): si el cliente pregunta por eso, decí que SÍ y que ya se lo mandás (el sistema lo envía solo). NUNCA digas que no tenés video.]`;
+        } catch (e) {}
+        context += `--- ${d.name} (${d.category || 'General'}) ---\n${d.content}${extra}\n\n`;
       });
     }
 
