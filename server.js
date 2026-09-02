@@ -3584,6 +3584,51 @@ app.get('/api/meta/insights', async (req, res) => {
   }
 });
 
+// Helper para generar respuesta directa a mensajes de Messenger / Instagram con RAG
+async function generateDirectMessageReply(customerMsg, leadId, platform = 'Facebook Messenger') {
+  const qClean = (customerMsg || '').toLowerCase();
+  
+  // 1. Catálogo RAG de productos
+  const products = await db.all("SELECT * FROM products WHERE activo = 1");
+  const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
+  const keywords = qClean.replace(/[¿?¡!.,;:()"'*\n]/g, ' ').split(/\s+/).filter(k => k.length > 2).map(normalizeKw);
+
+  const scoredProducts = products.map(p => {
+    const fullText = `${p.nombre} ${p.categoria || ''} ${p.descripcion || ''}`.toLowerCase();
+    let score = 0;
+    keywords.forEach(kw => {
+      if (fullText.includes(kw)) {
+        score += 2;
+        if ((p.nombre || '').toLowerCase().includes(kw)) score += 6;
+      }
+    });
+    return { ...p, score };
+  }).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
+
+  let replyText = "";
+  let mediaUrl = null;
+
+  if (scoredProducts.length > 0) {
+    const topProd = scoredProducts[0];
+    replyText = `¡Hola! 👋 Sí, contamos con **${topProd.nombre}**.\n\n💰 Precio: **Q${topProd.precio}** (por unidad).\n📦 Estado: ${topProd.stock || 'En stock'}.\n${topProd.descripcion ? `✨ ${topProd.descripcion}\n\n` : '\n'}Se entrega **completamente armado y listo para usar** con pago contra entrega 🚚. ¿Te gustaría que coordinemos tu envío o que te compartamos más fotos?`;
+    
+    const prodImages = normalizeProductImages(topProd);
+    if (prodImages.length > 0 && prodImages[0].url) {
+      mediaUrl = prodImages[0].url;
+    }
+  } else if (qClean.includes('mesa') || qClean.includes('mueble') || qClean.includes('noche')) {
+    replyText = "¡Hola! 👋 Nuestras mesitas de noche estándar tienen un precio de **Q550 cada una** (el par sale en Q1,100) y modelos especiales como One Night en **Q1,000**. Se entregan armadas con opción de pago contra entrega 🚚. ¿Qué modelo te gustaría conocer?";
+  } else if (qClean.includes('envio') || qClean.includes('costo') || qClean.includes('zona') || qClean.includes('departamento')) {
+    replyText = "Contamos con envíos a toda Guatemala 🚚. ¿En qué zona o municipio te encuentras para confirmarte cobertura y tiempo de entrega?";
+  } else if (qClean.includes('pago') || qClean.includes('tarjeta') || qClean.includes('visacuotas')) {
+    replyText = "Aceptamos pago contra entrega en efectivo, transferencia bancaria y Visacuotas 💳. ¿Cuál forma de pago te resulta más cómoda?";
+  } else {
+    replyText = "¡Hola! Con mucho gusto te apoyo con información, precios y detalles de nuestros productos de OneControl. ¿En qué te podemos asesorar hoy? 😊";
+  }
+
+  return { text: replyText, mediaUrl, mediaType: 'image' };
+}
+
 // Procesador universal de Webhooks de Meta (Facebook Messenger, Instagram Direct & Comentarios)
 async function processIncomingMetaWebhook(body) {
   const { token, igUserId, fbPageId } = await getMetaConfig();
@@ -3687,6 +3732,21 @@ async function processIncomingMetaWebhook(body) {
           const alerta = `🙋 *SOLICITUD DE AYUDA (${platform})*\n\nUn cliente necesita atención humana.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ID: ${customerId}\n📝 ${handoffReason}${text ? `\n💬 "${text.slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
           await notificarDueno(alerta);
         } catch(e) {}
+      } else if (!isEcho && text) {
+        // Auto-respuesta inteligente del bot para Facebook Messenger / Instagram Direct
+        const leadCheck = await db.get("SELECT botActive, priority FROM leads WHERE id = ?", leadId);
+        if (leadCheck?.botActive === 1 && leadCheck?.priority !== 'urgent') {
+          try {
+            const reply = await generateDirectMessageReply(text, leadId, platform);
+            if (reply.text) {
+              await sendMetaMessage(customerId, reply.text, reply.mediaUrl, reply.mediaType || 'image');
+              await saveSmartMessage(leadId, 'bot', reply.text, horaGuate(), reply.mediaUrl, reply.mediaType || 'image');
+              console.log(`🤖 [Bot Meta Auto-Reply] Respondido a lead ${leadId} por ${platform}: "${reply.text.slice(0, 60)}"`);
+            }
+          } catch (botErr) {
+            console.error(`Error en auto-respuesta bot Meta (${platform}):`, botErr.message);
+          }
+        }
       }
     }
 
