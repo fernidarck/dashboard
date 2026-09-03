@@ -1000,14 +1000,15 @@ function parseWebhookPayload(data) {
 }
 
 // Helper para detectar y registrar pedidos automáticamente por IA
-async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName, clientMsg, botMsg, channelPhone) {
+async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName, clientMsg, botMsg, channelPhone, forced = false) {
   try {
     const text = ((clientMsg || '') + ' ' + (botMsg || '')).toLowerCase();
-    
+
     // Indicadores de intención de pedido o compra
     const PEDIDO_KEYWORDS = /#pedido_listo|quiero\s+(pedir|ordenar|comprar|que\s+me\s+lo\s+env[ií]en|el\s+env[ií]o\s+a)|hacer\s+el\s+pedido|mi\s+direcci[oó]n\s+es|envi[aá]rmel[oa]|datos\s+para\s+el\s+env[ií]o|pago\s+contra\s+entrega|tomar\s+mis\s+datos/i;
-    
-    if (!PEDIDO_KEYWORDS.test(text)) return null;
+
+    // forced = n8n ya confirmó el pedido (etiqueta PEDIDO_LISTO). Si no viene forzado, exige keyword.
+    if (!forced && !PEDIDO_KEYWORDS.test(text)) return null;
 
     const cleanPh = String(clientPhone || '').replace(/\D/g, '');
     if (!cleanPh) return null;
@@ -1208,9 +1209,12 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       console.log(`🚨 [${sourceName}] Handoff activado para lead ${leadId}`);
     }
 
-    // Detección y creación automática de Pedidos por IA
+    // Detección y creación automática de Pedidos por IA.
+    // forced = n8n marcó PEDIDO_LISTO (etiqueta/estado): así el pedido y el aviso al
+    // dueño se crean SIEMPRE al cerrar, aunque el hashtag #PEDIDO_LISTO ya se haya limpiado.
     if (!parsed.isEcho) {
-      await detectAndCreatePedidoFromMessage(leadId, cleanPhone, parsed.nombre || existingLead?.nombre, parsed.mensajePrincipal, parsed.mensajeSecundario, cleanChannelPhone);
+      const forcedPedido = /pedido_listo/i.test(String(data.etiqueta || '') + ' ' + String(data.estado || ''));
+      await detectAndCreatePedidoFromMessage(leadId, cleanPhone, parsed.nombre || existingLead?.nombre, parsed.mensajePrincipal, parsed.mensajeSecundario, cleanChannelPhone, forcedPedido);
     }
 
     res.json({ success: true, leadId, action: existingLead ? "updated" : "created", sender: parsed.sender });
