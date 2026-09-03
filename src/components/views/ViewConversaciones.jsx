@@ -3,7 +3,7 @@ import {
   Search, X, AlertTriangle, Bot, Power, Database,
   MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft, Paperclip, FileText,
   ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon,
-  UserPlus, Phone, Download
+  UserPlus, Phone, Download, RefreshCw, UploadCloud
 } from 'lucide-react';
 
 function ChannelBadge({ origen, size = 'sm' }) {
@@ -67,6 +67,8 @@ export default function ViewConversaciones({
   const [showSidebar, setShowSidebar] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const [sendingDoc, setSendingDoc] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [chatSearch, setChatSearch] = useState('');
@@ -90,14 +92,80 @@ export default function ViewConversaciones({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !selectedChatId) return;
-    if (file.size > 15 * 1024 * 1024) { alert('El archivo es muy grande (máximo 15 MB).'); return; }
+    if (file.size > 25 * 1024 * 1024) { alert('El archivo supera el límite de 25 MB.'); return; }
     setSendingDoc(true);
     try { await onSendDocument?.(selectedChatId, file); }
     finally { setSendingDoc(false); }
   };
 
-  // Pegar imagen desde el portapapeles (Ctrl/Cmd+V) y enviarla como foto (tipo WhatsApp)
+  // Drag and Drop tipo WhatsApp Web
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0 || !selectedChatId) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > 25 * 1024 * 1024) {
+        alert(`El archivo "${file.name}" supera el límite de 25 MB.`);
+        continue;
+      }
+      setSendingDoc(true);
+      try {
+        await onSendDocument?.(selectedChatId, file);
+      } catch (err) {
+        console.error('Error enviando archivo arrastrado:', err);
+      } finally {
+        setSendingDoc(false);
+      }
+    }
+  };
+
+  // Pegar imagen o archivos desde el portapapeles (Ctrl/Cmd+V) y enviarlos como WhatsApp Web
   const handlePaste = async (e) => {
+    // Si se pegan archivos copiados del sistema
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0 && selectedChatId) {
+      e.preventDefault();
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 25 * 1024 * 1024) { alert(`El archivo "${file.name}" supera el límite de 25 MB.`); continue; }
+        setSendingDoc(true);
+        try { await onSendDocument?.(selectedChatId, file); }
+        finally { setSendingDoc(false); }
+      }
+      return;
+    }
+
     const items = e.clipboardData?.items;
     if (!items || !selectedChatId) return;
     for (const it of items) {
@@ -105,9 +173,9 @@ export default function ViewConversaciones({
         const blob = it.getAsFile();
         if (!blob) continue;
         e.preventDefault();
-        if (blob.size > 15 * 1024 * 1024) { alert('La imagen es muy grande (máximo 15 MB).'); return; }
+        if (blob.size > 25 * 1024 * 1024) { alert('La imagen es muy grande (máximo 25 MB).'); return; }
         const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
-        const file = new File([blob], `pegada-${Date.now()}.${ext}`, { type: blob.type });
+        const file = new File([blob], `captura-${Date.now()}.${ext}`, { type: blob.type });
         setSendingDoc(true);
         try { await onSendDocument?.(selectedChatId, file); }
         finally { setSendingDoc(false); }
@@ -330,8 +398,48 @@ export default function ViewConversaciones({
         </div>
       </div>
 
-      {/* Chat area */}
-      <div className={`flex-1 flex-col bg-[#FDFDFD] min-w-0 ${mobileShowChat ? 'flex' : 'hidden md:flex'}`}>
+      {/* Chat area con soporte Drag and Drop tipo WhatsApp Web */}
+      <div
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={`flex-1 flex-col bg-[#FDFDFD] min-w-0 relative ${mobileShowChat ? 'flex' : 'hidden md:flex'}`}
+      >
+        {/* Overlay visual cuando se arrastra un archivo encima */}
+        {isDragging && (
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-[250] flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+            <div className="w-full max-w-sm bg-white rounded-3xl p-8 shadow-2xl border-2 border-dashed border-[#FF6B00] flex flex-col items-center text-center space-y-4">
+              <div className="h-20 w-20 rounded-3xl bg-orange-100 text-[#FF6B00] flex items-center justify-center animate-bounce shadow-md">
+                <FileText size={40} className="stroke-[2.5]" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                  Soltá tu PDF o Archivo aquí
+                </h3>
+                <p className="text-xs font-semibold text-slate-500 mt-1">
+                  Se enviará automáticamente por WhatsApp a <span className="text-[#FF6B00] font-bold">{selectedLead.nombre || 'este cliente'}</span>
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full">
+                <span>📄 PDF</span>
+                <span>•</span>
+                <span>🖼️ Imagen</span>
+                <span>•</span>
+                <span>📊 Documento</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Indicador flotante cuando se está subiendo el archivo */}
+        {sendingDoc && (
+          <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-slate-900/95 text-white px-5 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3 z-50 text-xs font-black border border-slate-700 animate-in slide-in-from-top duration-200">
+            <RefreshCw size={15} className="animate-spin text-[#FF6B00]" />
+            <span>Enviando documento por WhatsApp...</span>
+          </div>
+        )}
+
         <div className="h-20 border-b border-slate-100 px-4 md:px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
           <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
             <button onClick={() => setMobileShowChat(false)} className="md:hidden p-2 -ml-1 text-slate-500 hover:text-slate-800 shrink-0"><ArrowLeft size={20} /></button>

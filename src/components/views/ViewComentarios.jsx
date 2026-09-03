@@ -3,7 +3,7 @@ import {
   Send, AlertTriangle, RefreshCw, MessageCircle, Heart, Users,
   ExternalLink, Sparkles, Bot, Settings, ShieldCheck, CheckCircle2,
   Video, Image as ImageIcon, Eye, Check, Globe, Calendar, Clock,
-  Plus, Trash2, ArrowRight, Share2, UploadCloud
+  Plus, Trash2, ArrowRight, Share2, UploadCloud, TrendingUp, UserPlus
 } from 'lucide-react';
 
 export default function ViewComentarios({ apiBase, authToken, products = [] }) {
@@ -339,6 +339,93 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
             <RefreshCw size={13} className={syncing ? 'animate-spin text-[#FF6B00]' : ''} />
             <span>{syncing ? 'Sincronizando...' : 'Sincronizar Feed & Comentarios'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* 📈 SEGUIDORES & CRECIMIENTO EN VIVO (META TRACKER) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Total Audiencia Combinada */}
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-white rounded-3xl p-5 shadow-sm relative overflow-hidden border border-slate-800">
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Audiencia Meta</span>
+            <span className="p-2 rounded-xl bg-white/10 text-white"><Users size={16} /></span>
+          </div>
+          <p className="text-3xl font-black mt-2 tabular-nums">
+            {(metaInsights?.stats?.totalFollowers || 0).toLocaleString()}
+          </p>
+          <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+              <TrendingUp size={11} />
+              +{(metaInsights?.stats?.totalGainedToday || 0)} nuevos hoy
+            </span>
+            <span className="text-[10px] text-slate-400 font-bold">
+              +{metaInsights?.stats?.totalGainedAllTime || 0} acumulados
+            </span>
+          </div>
+        </div>
+
+        {/* Instagram Followers */}
+        <div className="bg-gradient-to-br from-pink-500/10 via-purple-500/10 to-orange-500/10 border border-pink-200/80 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-pink-700 flex items-center gap-1">
+                <span>📸</span> Instagram (@0ne_control)
+              </span>
+              <p className="text-3xl font-black text-slate-900 mt-2 tabular-nums">
+                {(metaInsights?.instagram?.followers_count || 0).toLocaleString()}
+              </p>
+            </div>
+            <span className="p-2 rounded-xl bg-pink-100 text-pink-600 font-black text-xs">IG</span>
+          </div>
+          <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
+              <TrendingUp size={11} />
+              +{(metaInsights?.instagram?.gained_today || 0)} nuevos hoy
+            </span>
+            <span className="text-[10px] text-pink-600 font-bold">
+              {metaInsights?.instagram?.media_count || 0} publicaciones
+            </span>
+          </div>
+        </div>
+
+        {/* Facebook Followers */}
+        <div className="bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-cyan-500/10 border border-blue-200/80 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 flex items-center gap-1">
+                <span>📘</span> Facebook (Onecontrolshop)
+              </span>
+              <p className="text-3xl font-black text-slate-900 mt-2 tabular-nums">
+                {(metaInsights?.facebook?.followers_count || metaInsights?.facebook?.fan_count || 0).toLocaleString()}
+              </p>
+            </div>
+            <span className="p-2 rounded-xl bg-blue-100 text-blue-600 font-black text-xs">FB</span>
+          </div>
+          <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
+              <TrendingUp size={11} />
+              +{(metaInsights?.facebook?.gained_today || 0)} nuevos hoy
+            </span>
+            <span className="text-[10px] text-blue-600 font-bold">
+              Fans / Seguidores
+            </span>
+          </div>
+        </div>
+
+        {/* Engagement & Likes */}
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Likes & Reacciones</span>
+            <span className="p-2 rounded-xl bg-pink-50 text-pink-500"><Heart size={16} className="fill-pink-500" /></span>
+          </div>
+          <p className="text-3xl font-black text-slate-900 mt-2 tabular-nums">
+            {(metaInsights?.stats?.totalLikes || 0).toLocaleString()}
+          </p>
+          <div className="mt-2.5 flex items-center gap-2">
+            <span className="text-[10px] text-slate-500 font-bold">
+              💬 {comments.length} comentarios en CRM
+            </span>
+          </div>
         </div>
       </div>
 

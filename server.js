@@ -379,6 +379,15 @@ async function setup() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS social_followers_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT NOT NULL,
+        followers_count INTEGER NOT NULL,
+        date_str TEXT NOT NULL,
+        timestamp TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE INDEX IF NOT EXISTS idx_messages_lead_id_id ON messages(lead_id, id DESC);
       CREATE INDEX IF NOT EXISTS idx_messages_lead_client ON messages(lead_id, sender, id DESC);
       CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
@@ -3587,19 +3596,67 @@ app.get('/api/meta/insights', async (req, res) => {
       console.warn("Error fetching FB insights:", e.message);
     }
 
-    // 3. Comments count from CRM database
+    // 3. Seguidores ganados (Tracking historico y diario)
+    const now = new Date();
+    const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+    const todayStr = guateTime.toISOString().slice(0, 10);
+    const timeStr = horaGuate();
+
+    let igFollowers = Number(instagram?.followers_count || 0);
+    let igGainedToday = 0;
+    let igGainedTotal = 0;
+
+    if (igFollowers > 0) {
+      const igFirstToday = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'instagram' AND date_str = ? ORDER BY id ASC LIMIT 1", todayStr);
+      const igEarliest = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'instagram' ORDER BY id ASC LIMIT 1");
+      const igLastPrev = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'instagram' AND date_str < ? ORDER BY id DESC LIMIT 1", todayStr);
+      
+      const baselineToday = igLastPrev?.followers_count || igFirstToday?.followers_count || igFollowers;
+      igGainedToday = Math.max(0, igFollowers - baselineToday);
+      igGainedTotal = Math.max(0, igFollowers - (igEarliest?.followers_count || igFollowers));
+
+      const igLatest = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'instagram' ORDER BY id DESC LIMIT 1");
+      if (!igLatest || igLatest.followers_count !== igFollowers) {
+        await db.run("INSERT INTO social_followers_log (platform, followers_count, date_str, timestamp) VALUES ('instagram', ?, ?, ?)", igFollowers, todayStr, timeStr);
+      }
+    }
+
+    let fbFollowers = Number(facebook?.followers_count || facebook?.fan_count || 0);
+    let fbGainedToday = 0;
+    let fbGainedTotal = 0;
+
+    if (fbFollowers > 0) {
+      const fbFirstToday = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'facebook' AND date_str = ? ORDER BY id ASC LIMIT 1", todayStr);
+      const fbEarliest = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'facebook' ORDER BY id ASC LIMIT 1");
+      const fbLastPrev = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'facebook' AND date_str < ? ORDER BY id DESC LIMIT 1", todayStr);
+
+      const baselineToday = fbLastPrev?.followers_count || fbFirstToday?.followers_count || fbFollowers;
+      fbGainedToday = Math.max(0, fbFollowers - baselineToday);
+      fbGainedTotal = Math.max(0, fbFollowers - (fbEarliest?.followers_count || fbFollowers));
+
+      const fbLatest = await db.get("SELECT followers_count FROM social_followers_log WHERE platform = 'facebook' ORDER BY id DESC LIMIT 1");
+      if (!fbLatest || fbLatest.followers_count !== fbFollowers) {
+        await db.run("INSERT INTO social_followers_log (platform, followers_count, date_str, timestamp) VALUES ('facebook', ?, ?, ?)", fbFollowers, todayStr, timeStr);
+      }
+    }
+
+    // 4. Comments count from CRM database
     const dbCommentsCount = await db.get("SELECT COUNT(*) as c FROM redes_comments");
     const totalLikes = igPosts.reduce((acc, p) => acc + (p.like_count || 0), 0);
     const totalComments = igPosts.reduce((acc, p) => acc + (p.comments_count || 0), 0) + (dbCommentsCount?.c || 0);
-    const totalFollowers = (instagram?.followers_count || 0) + (facebook?.followers_count || facebook?.fan_count || 0);
+    const totalFollowers = igFollowers + fbFollowers;
+    const totalGainedToday = igGainedToday + fbGainedToday;
+    const totalGainedAllTime = igGainedTotal + fbGainedTotal;
 
     res.json({
       configured: true,
-      instagram,
-      facebook,
+      instagram: instagram ? { ...instagram, gained_today: igGainedToday, gained_total: igGainedTotal } : null,
+      facebook: facebook ? { ...facebook, gained_today: fbGainedToday, gained_total: fbGainedTotal } : null,
       posts: igPosts,
       stats: {
         totalFollowers,
+        totalGainedToday,
+        totalGainedAllTime,
         totalLikes,
         totalComments,
         igMediaCount: instagram?.media_count || igPosts.length,
