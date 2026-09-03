@@ -1093,20 +1093,13 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       mediaUrl: parsed.mediaUrl
     });
 
-    // Buscar lead existente
-    let existingLead;
-    if (cleanChannelPhone) {
-      existingLead = await db.get(
-        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1",
-        cleanPhone, cleanChannelPhone
-      );
-    }
-    if (!existingLead) {
-      existingLead = await db.get(
-        "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1",
-        cleanPhone
-      );
-    }
+    // Buscar lead existente SOLO por teléfono (ignorar el canal). Así un mismo cliente
+    // NO se duplica aunque escriba/se le escriba por otro canal, y el estado (bot on/off,
+    // "modo manual") queda SIEMPRE en el mismo lead que ves en el dashboard.
+    let existingLead = await db.get(
+      "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1",
+      cleanPhone
+    );
 
     let leadId;
     if (existingLead) {
