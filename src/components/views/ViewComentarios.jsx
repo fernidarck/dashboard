@@ -46,6 +46,7 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [postForm, setPostForm] = useState({
     platform: 'both',
     mediaType: 'image',
+    postType: 'post', // 'post' | 'historia' | 'reel'
     mediaUrl: '',
     caption: '',
     scheduledTime: '',
@@ -439,6 +440,32 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Selector de Tipo: Post / Historia / Reel */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Tipo de publicación:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'post', label: '🖼️ Post', hint: 'foto o video en el feed' },
+                    { id: 'historia', label: '⭕ Historia', hint: 'dura 24h (solo IG)' },
+                    { id: 'reel', label: '🎬 Reel', hint: 'video' }
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      title={t.hint}
+                      onClick={() => setPostForm({ ...postForm, postType: t.id })}
+                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
+                        postForm.postType === t.id ? 'border-[#FF6B00] bg-orange-50/50 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                {(postForm.postType === 'reel') && <p className="text-[9px] text-slate-400 italic">El reel necesita un video (.mp4).</p>}
+                {(postForm.postType === 'historia') && <p className="text-[9px] text-slate-400 italic">Las historias no llevan descripción y solo van a Instagram.</p>}
               </div>
 
               {/* Agregar producto del catálogo (con miniaturas) */}

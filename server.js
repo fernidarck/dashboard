@@ -4050,15 +4050,25 @@ app.post('/api/comments/sync', async (_req, res) => {
 });
 
 // ─── META PUBLISHER & CONTENT CALENDAR (Instagram & Facebook) ────────────────
-async function publishToInstagram({ mediaUrl, caption, isVideo = false }) {
+async function publishToInstagram({ mediaUrl, caption, isVideo = false, postType = 'post' }) {
   const { token, igUserId } = await getMetaConfig();
   if (!token || !igUserId) throw new Error('Falta META_PAGE_TOKEN o IG_USER_ID');
   if (!mediaUrl) throw new Error('Instagram requiere una URL de imagen o video');
+  if (postType === 'reel' && !isVideo) throw new Error('Un reel necesita un video (.mp4)');
 
-  // 1. Crear contenedor de media
-  const containerUrl = isVideo
-    ? `${META_GRAPH}/${igUserId}/media?media_type=REELS&video_url=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(caption || '')}&access_token=${token}`
-    : `${META_GRAPH}/${igUserId}/media?image_url=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(caption || '')}&access_token=${token}`;
+  const cap = `caption=${encodeURIComponent(caption || '')}`;
+  const media = isVideo ? `video_url=${encodeURIComponent(mediaUrl)}` : `image_url=${encodeURIComponent(mediaUrl)}`;
+  // 1. Crear contenedor de media según el tipo elegido
+  let containerUrl;
+  if (postType === 'historia') {
+    // Las historias NO llevan caption
+    containerUrl = `${META_GRAPH}/${igUserId}/media?media_type=STORIES&${media}&access_token=${token}`;
+  } else if (postType === 'reel' || (postType === 'post' && isVideo)) {
+    // Un video en el feed va como REEL
+    containerUrl = `${META_GRAPH}/${igUserId}/media?media_type=REELS&${media}&${cap}&access_token=${token}`;
+  } else {
+    containerUrl = `${META_GRAPH}/${igUserId}/media?${media}&${cap}&access_token=${token}`;
+  }
 
   const cRes = await fetch(containerUrl, { method: 'POST' });
   const cData = await cRes.json();
@@ -4077,9 +4087,10 @@ async function publishToInstagram({ mediaUrl, caption, isVideo = false }) {
   return { success: true, id: pData.id, platform: 'instagram' };
 }
 
-async function publishToFacebook({ mediaUrl, caption, isVideo = false }) {
+async function publishToFacebook({ mediaUrl, caption, isVideo = false, postType = 'post' }) {
   const { token, fbPageId } = await getMetaConfig();
   if (!token || !fbPageId) throw new Error('Falta META_PAGE_TOKEN o FB_PAGE_ID');
+  if (postType === 'historia') throw new Error('Las historias por ahora solo van a Instagram, no a Facebook.');
 
   let endpoint = '';
   if (isVideo && mediaUrl) {
@@ -4097,13 +4108,13 @@ async function publishToFacebook({ mediaUrl, caption, isVideo = false }) {
   return { success: true, id: data.id || data.post_id, platform: 'facebook' };
 }
 
-async function publishPostDirectly({ platform, mediaUrl, mediaType, caption }) {
+async function publishPostDirectly({ platform, mediaUrl, mediaType, caption, postType = 'post' }) {
   const isVideo = mediaType === 'video' || /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(mediaUrl || '');
   const results = { instagram: null, facebook: null, errors: [] };
 
   if (platform === 'instagram' || platform === 'both') {
     try {
-      results.instagram = await publishToInstagram({ mediaUrl, caption, isVideo });
+      results.instagram = await publishToInstagram({ mediaUrl, caption, isVideo, postType });
     } catch (e) {
       results.errors.push(`Instagram: ${e.message}`);
     }
@@ -4111,7 +4122,7 @@ async function publishPostDirectly({ platform, mediaUrl, mediaType, caption }) {
 
   if (platform === 'facebook' || platform === 'both') {
     try {
-      results.facebook = await publishToFacebook({ mediaUrl, caption, isVideo });
+      results.facebook = await publishToFacebook({ mediaUrl, caption, isVideo, postType });
     } catch (e) {
       results.errors.push(`Facebook: ${e.message}`);
     }
@@ -4123,10 +4134,10 @@ async function publishPostDirectly({ platform, mediaUrl, mediaType, caption }) {
 // Endpoint para publicar al instante en Instagram y/o Facebook
 app.post('/api/meta/publish', async (req, res) => {
   try {
-    const { platform = 'both', mediaUrl, mediaType = 'image', caption } = req.body;
+    const { platform = 'both', mediaUrl, mediaType = 'image', caption, postType = 'post' } = req.body;
     if (!caption && !mediaUrl) return res.status(400).json({ error: 'Se requiere al menos texto o imagen' });
 
-    const results = await publishPostDirectly({ platform, mediaUrl, mediaType, caption });
+    const results = await publishPostDirectly({ platform, mediaUrl, mediaType, caption, postType });
     
     // Guardar registro en historial
     const time = horaGuate();
