@@ -441,29 +441,39 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                 </div>
               </div>
 
-              {/* Selector de Producto Rápido */}
+              {/* Agregar producto del catálogo (con miniaturas) */}
               {products.length > 0 && (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Seleccionar Foto de Producto:</label>
-                  <div className="flex gap-1.5 overflow-x-auto pb-1">
-                    {products.slice(0, 5).map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          const imgUrl = p.imagenes ? JSON.parse(p.imagenes)[0] : p.imagen_url;
-                          setPostForm(prev => ({
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">🛍️ Agregar producto del catálogo:</label>
+                  <div className="flex gap-2 overflow-x-auto pb-2">
+                    {products.map(p => {
+                      let imgUrl = p.imagen || '';
+                      try { if (p.imagenes) imgUrl = (typeof p.imagenes === 'string' ? JSON.parse(p.imagenes) : p.imagenes)[0] || imgUrl; } catch { /* */ }
+                      const selected = postForm.mediaUrl && postForm.mediaUrl === imgUrl;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setPostForm(prev => ({
                             ...prev,
                             mediaUrl: imgUrl || prev.mediaUrl,
-                            caption: prev.caption || `✨ ${p.nombre} ✨\n\n💰 Precio: Q${p.precio}\n🚚 Envío a toda Guatemala con pago contra entrega.\n\n📲 Escribinos hoy por WhatsApp al 35154362 para pedir el tuyo.`
-                          }));
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-orange-100 text-slate-700 text-[10px] font-bold shrink-0 transition-colors cursor-pointer"
-                      >
-                        {p.nombre}
-                      </button>
-                    ))}
+                            mediaType: 'image',
+                            caption: `✨ ${p.nombre} ✨\n\n💰 Precio: Q${p.precio}\n🚚 Envío a toda Guatemala, pago contra entrega.\n\n📲 Escribinos por WhatsApp para pedir el tuyo.`
+                          }))}
+                          className={`shrink-0 w-24 rounded-xl border overflow-hidden text-left transition-all cursor-pointer ${selected ? 'border-[#FF6B00] ring-2 ring-orange-200' : 'border-slate-200 hover:border-orange-300'}`}
+                        >
+                          {imgUrl
+                            ? <img src={imgUrl} alt={p.nombre} className="h-20 w-full object-cover" />
+                            : <div className="h-20 w-full bg-slate-100 flex items-center justify-center text-slate-300 text-[9px]">sin foto</div>}
+                          <div className="p-1.5">
+                            <p className="text-[9px] font-bold text-slate-700 truncate">{p.nombre}</p>
+                            <p className="text-[9px] text-[#FF6B00] font-black">Q{p.precio}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
+                  <p className="text-[9px] text-slate-400 italic">Tocá un producto → carga su foto y descripción, listo para publicar.</p>
                 </div>
               )}
 
