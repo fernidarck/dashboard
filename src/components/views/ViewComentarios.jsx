@@ -4,7 +4,8 @@ import {
   ExternalLink, Sparkles, Bot, Settings, ShieldCheck, CheckCircle2,
   Video, Image as ImageIcon, Eye, Check, Globe, Calendar, Clock,
   Plus, Trash2, ArrowRight, Share2, UploadCloud, TrendingUp, UserPlus,
-  Wand2, Palette
+  Wand2, Palette, ChevronLeft, ChevronRight, CalendarDays, List,
+  Filter, Layers, CheckCircle, XCircle
 } from 'lucide-react';
 import StoryStudioModal from '../StoryStudioModal.jsx';
 
@@ -59,6 +60,72 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   // Creador de Historias 9:16 (Plantilla & Precio)
   const [storyStudioOpen, setStoryStudioOpen] = useState(false);
   const [storyStudioProduct, setStoryStudioProduct] = useState(null);
+
+  // Vista de Calendario Mensual & Filtros de Publicaciones
+  const [calendarViewMode, setCalendarViewMode] = useState('calendar'); // 'calendar' | 'list'
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(
+    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' })
+  );
+  const [scheduledStatusFilter, setScheduledStatusFilter] = useState('todos'); // 'todos' | 'published' | 'pending' | 'failed'
+
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' });
+
+  const formatMonthYearHeader = (date) => {
+    const str = date.toLocaleDateString('es-GT', { month: 'long', year: 'numeric' });
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  };
+
+  const getPostDateKey = (post) => {
+    const raw = post.scheduled_time || post.published_at || post.created_at || '';
+    const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    if (post.created_at) {
+      try {
+        const d = new Date(post.created_at);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString('en-CA');
+      } catch {}
+    }
+    return '';
+  };
+
+  const getCalendarMonthDays = () => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    // Lunes = 0, ..., Domingo = 6
+    let startDayIdx = firstDay.getDay() - 1;
+    if (startDayIdx === -1) startDayIdx = 6;
+
+    const days = [];
+    const prevMonthLastDate = new Date(year, month, 0).getDate();
+    // Días del mes anterior
+    for (let i = startDayIdx - 1; i >= 0; i--) {
+      const dayNum = prevMonthLastDate - i;
+      const d = new Date(year, month - 1, dayNum);
+      const dateStr = d.toLocaleDateString('en-CA');
+      days.push({ dayNum, dateStr, isCurrentMonth: false });
+    }
+
+    // Días del mes actual
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      const d = new Date(year, month, i);
+      const dateStr = d.toLocaleDateString('en-CA');
+      days.push({ dayNum: i, dateStr, isCurrentMonth: true });
+    }
+
+    // Días del mes siguiente
+    const remaining = (7 - (days.length % 7)) % 7;
+    for (let i = 1; i <= remaining; i++) {
+      const d = new Date(year, month + 1, i);
+      const dateStr = d.toLocaleDateString('en-CA');
+      days.push({ dayNum: i, dateStr, isCurrentMonth: false });
+    }
+
+    return days;
+  };
 
   const handleUseStoryInPublisher = (storyOutput) => {
     setPostForm(prev => ({
@@ -760,84 +827,392 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
             </form>
           </div>
 
-          {/* HISTORIAL Y COLA DEL CALENDARIO */}
+          {/* HISTORIAL Y CALENDARIO INTERACTIVO */}
           <div className="lg:col-span-7 space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Publicaciones Programadas e Historial</h3>
-              <button
-                onClick={loadScheduledPosts}
-                disabled={loadingScheduled}
-                className="text-[11px] font-bold text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
-              >
-                <RefreshCw size={11} className={loadingScheduled ? 'animate-spin' : ''} />
-                <span>Actualizar</span>
-              </button>
+            
+            {/* Barra Superior con Selector de Vista y Filtros */}
+            <div className="bg-white p-4 rounded-3xl border border-slate-200/90 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-orange-500/10 text-[#FF6B00] flex items-center justify-center font-bold shrink-0">
+                  <Calendar size={18} />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">Historial y Calendario</h3>
+                  <p className="text-[10px] text-slate-400">Revisa qué publicaciones se han hecho y cuáles están en cola.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Switch Vista Calendario vs Vista Lista */}
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setCalendarViewMode('calendar')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      calendarViewMode === 'calendar' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <CalendarDays size={13} className="text-[#FF6B00]" />
+                    <span>Calendario</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarViewMode('list')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      calendarViewMode === 'list' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <List size={13} />
+                    <span>Lista ({scheduledPosts.length})</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={loadScheduledPosts}
+                  disabled={loadingScheduled}
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                  title="Actualizar publicaciones"
+                >
+                  <RefreshCw size={13} className={loadingScheduled ? 'animate-spin' : ''} />
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-3 max-h-[75vh] overflow-y-auto pr-1">
-              {scheduledPosts.map(post => (
-                <div key={post.id} className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-3">
-                  <div className="flex justify-between items-start">
+            {/* VISTA 1: CALENDARIO MENSUAL INTERACTIVO */}
+            {calendarViewMode === 'calendar' && (
+              <div className="space-y-4">
+                
+                {/* Header del Mes y Controles de Navegación */}
+                <div className="bg-white p-4 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                        post.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
-                        post.status === 'failed' ? 'bg-rose-100 text-rose-700' :
-                        'bg-amber-100 text-amber-700 animate-pulse'
-                      }`}>
-                        {post.status === 'published' ? '✅ Publicado' : post.status === 'failed' ? '❌ Fallido' : '⏳ Programado'}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 uppercase">
-                        {post.platform}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+                        className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                        title="Mes anterior"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      
+                      <h4 className="text-sm font-black text-slate-900 min-w-[160px] text-center capitalize">
+                        {formatMonthYearHeader(calendarMonth)}
+                      </h4>
+
+                      <button
+                        type="button"
+                        onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+                        className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                        title="Mes siguiente"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCalendarMonth(new Date());
+                          setSelectedCalendarDate(todayStr);
+                        }}
+                        className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-orange-50 hover:bg-orange-100 text-[#FF6B00] border border-orange-200 transition-colors cursor-pointer"
+                      >
+                        Hoy
+                      </button>
                     </div>
 
-                    {post.status === 'pending' && (
-                      <button
-                        onClick={() => handleDeleteScheduled(post.id)}
-                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-600 hover:text-white text-slate-500 transition-colors cursor-pointer"
-                        title="Cancelar publicación"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                    {/* Filtros de Estado */}
+                    <div className="flex items-center gap-1 text-[10px] font-bold">
+                      {[
+                        { id: 'todos', label: 'Todos' },
+                        { id: 'published', label: '✅ Hechas' },
+                        { id: 'pending', label: '⏳ Programadas' }
+                      ].map(f => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setScheduledStatusFilter(f.id)}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            scheduledStatusFilter === f.id
+                              ? 'bg-slate-900 text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="flex gap-4 items-start">
-                    {post.media_url && (
-                      <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                        {post.media_type === 'video' ? (
-                          <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={20} /></div>
-                        ) : (
-                          <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
-                        )}
+                  {/* Cuadrícula de Días de la Semana */}
+                  <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 pb-1 border-b border-slate-100">
+                    {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
+                      <div key={d} className="py-1">{d}</div>
+                    ))}
+                  </div>
+
+                  {/* Cuadrícula de Días del Mes */}
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {getCalendarMonthDays().map((day, idx) => {
+                      const isToday = day.dateStr === todayStr;
+                      const isSelected = day.dateStr === selectedCalendarDate;
+                      
+                      // Filtrar publicaciones de este día
+                      const dayPosts = scheduledPosts.filter(p => {
+                        const dStr = getPostDateKey(p);
+                        if (dStr !== day.dateStr) return false;
+                        if (scheduledStatusFilter !== 'todos' && p.status !== scheduledStatusFilter) return false;
+                        return true;
+                      });
+
+                      const publishedCount = dayPosts.filter(p => p.status === 'published').length;
+                      const pendingCount = dayPosts.filter(p => p.status === 'pending').length;
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setSelectedCalendarDate(day.dateStr)}
+                          className={`min-h-[86px] p-1.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-[#FF6B00] ring-2 ring-orange-400/30 bg-orange-50/20'
+                              : isToday
+                              ? 'border-orange-300 bg-orange-50/10'
+                              : day.isCurrentMonth
+                              ? 'border-slate-100 bg-slate-50/50 hover:border-slate-300 hover:bg-white'
+                              : 'border-transparent bg-slate-50/20 opacity-35'
+                          }`}
+                        >
+                          {/* Cabecera del día */}
+                          <div className="flex items-center justify-between">
+                            {isToday ? (
+                              <span className="px-1 py-0.2 rounded-md bg-[#FF6B00] text-white text-[8px] font-black leading-none">
+                                Hoy
+                              </span>
+                            ) : <span />}
+                            <span className={`text-[11px] font-black ${
+                              isToday ? 'text-[#FF6B00]' : isSelected ? 'text-slate-900' : 'text-slate-600'
+                            }`}>
+                              {day.dayNum}
+                            </span>
+                          </div>
+
+                          {/* Miniaturas o badges de publicaciones en este día */}
+                          <div className="space-y-1 my-1">
+                            {dayPosts.slice(0, 2).map((p, pIdx) => (
+                              <div
+                                key={p.id || pIdx}
+                                className={`px-1 py-0.5 rounded-md text-[8px] font-bold truncate flex items-center gap-1 border ${
+                                  p.status === 'published'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : p.status === 'failed'
+                                    ? 'bg-rose-50 text-rose-800 border-rose-200'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                                title={`${p.status === 'published' ? '✅ Hecha' : '⏳ Programada'}: ${p.caption}`}
+                              >
+                                <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                                  p.status === 'published' ? 'bg-emerald-500' : p.status === 'failed' ? 'bg-rose-500' : 'bg-amber-500 animate-pulse'
+                                }`} />
+                                <span className="truncate">
+                                  {p.post_type === 'historia' ? '⭕' : p.platform === 'instagram' ? '📸' : p.platform === 'facebook' ? '📘' : '🌟'} {p.caption || 'Publicación'}
+                                </span>
+                              </div>
+                            ))}
+
+                            {dayPosts.length > 2 && (
+                              <span className="block text-[8px] font-bold text-slate-400 text-center">
+                                +{dayPosts.length - 2} más
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Resumen del día (puntitos) */}
+                          <div className="flex items-center justify-end gap-1 text-[8px]">
+                            {publishedCount > 0 && (
+                              <span className="text-emerald-600 font-bold">✅{publishedCount}</span>
+                            )}
+                            {pendingCount > 0 && (
+                              <span className="text-amber-600 font-bold">⏳{pendingCount}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* DETALLE DEL DÍA SELECCIONADO */}
+                <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Publicaciones del Día:</span>
+                      <h4 className="text-sm font-black text-slate-900 capitalize">
+                        {new Date(selectedCalendarDate + 'T12:00:00').toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                      </h4>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPostForm(prev => ({
+                          ...prev,
+                          mode: 'schedule',
+                          scheduledTime: `${selectedCalendarDate} 10:00`
+                        }));
+                      }}
+                      className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-[#FF6B00] border border-orange-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus size={12} />
+                      <span>Programar para esta fecha</span>
+                    </button>
+                  </div>
+
+                  {/* Lista de publicaciones del día seleccionado */}
+                  {(() => {
+                    const selectedDayPosts = scheduledPosts.filter(p => {
+                      const dStr = getPostDateKey(p);
+                      if (dStr !== selectedCalendarDate) return false;
+                      if (scheduledStatusFilter !== 'todos' && p.status !== scheduledStatusFilter) return false;
+                      return true;
+                    });
+
+                    if (selectedDayPosts.length === 0) {
+                      return (
+                        <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 space-y-2">
+                          <Calendar className="mx-auto text-slate-300" size={28} />
+                          <p className="text-xs font-bold text-slate-600">No hay publicaciones registradas en esta fecha</p>
+                          <p className="text-[11px] text-slate-400">Puedes crear una publicación y programarla para este día desde el formulario.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {selectedDayPosts.map(post => (
+                          <div key={post.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/40 space-y-2.5">
+                            <div className="flex justify-between items-start">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  post.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
+                                  post.status === 'failed' ? 'bg-rose-100 text-rose-700' :
+                                  'bg-amber-100 text-amber-700 animate-pulse'
+                                }`}>
+                                  {post.status === 'published' ? '✅ Hecha / Publicada' : post.status === 'failed' ? '❌ Fallida' : '⏳ Programada'}
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 uppercase">
+                                  {post.platform}
+                                </span>
+                              </div>
+
+                              {post.status === 'pending' && (
+                                <button
+                                  onClick={() => handleDeleteScheduled(post.id)}
+                                  className="p-1 rounded-lg bg-white hover:bg-rose-600 hover:text-white text-slate-400 transition-colors cursor-pointer border border-slate-200"
+                                  title="Cancelar publicación"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex gap-3 items-start">
+                              {post.media_url && (
+                                <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-200 shrink-0 border border-slate-300">
+                                  {post.media_type === 'video' ? (
+                                    <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={16} /></div>
+                                  ) : (
+                                    <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
+                                  )}
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed">
+                                  {post.caption}
+                                </p>
+                                <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium pt-1">
+                                  <span className="flex items-center gap-1">
+                                    <Clock size={11} />
+                                    {post.status === 'published' ? `Publicado: ${post.published_at || post.scheduled_time}` : `Programado: ${post.scheduled_time}`}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed line-clamp-3">
-                        {post.caption}
-                      </p>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium pt-1">
-                        <span className="flex items-center gap-1">
-                          <Clock size={11} />
-                          {post.status === 'published' ? `Publicado: ${post.published_at || post.scheduled_time}` : `Programado: ${post.scheduled_time}`}
+                    );
+                  })()}
+                </div>
+
+              </div>
+            )}
+
+            {/* VISTA 2: LISTA TRADICIONAL DE TARJETAS */}
+            {calendarViewMode === 'list' && (
+              <div className="space-y-3 max-h-[75vh] overflow-y-auto pr-1">
+                {scheduledPosts.map(post => (
+                  <div key={post.id} className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          post.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
+                          post.status === 'failed' ? 'bg-rose-100 text-rose-700' :
+                          'bg-amber-100 text-amber-700 animate-pulse'
+                        }`}>
+                          {post.status === 'published' ? '✅ Publicado' : post.status === 'failed' ? '❌ Fallido' : '⏳ Programado'}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 uppercase">
+                          {post.platform}
                         </span>
                       </div>
-                      {post.error_msg && (
-                        <p className="text-[10px] text-rose-600 font-bold">{post.error_msg}</p>
+
+                      {post.status === 'pending' && (
+                        <button
+                          onClick={() => handleDeleteScheduled(post.id)}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-600 hover:text-white text-slate-500 transition-colors cursor-pointer"
+                          title="Cancelar publicación"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       )}
                     </div>
-                  </div>
-                </div>
-              ))}
 
-              {scheduledPosts.length === 0 && (
-                <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-2">
-                  <Calendar className="mx-auto text-slate-300" size={36} />
-                  <p className="text-xs font-bold text-slate-500">No hay publicaciones programadas</p>
-                  <p className="text-[11px] text-slate-400">Crea tu primer post con foto y fecha programada desde el panel izquierdo.</p>
-                </div>
-              )}
-            </div>
+                    <div className="flex gap-4 items-start">
+                      {post.media_url && (
+                        <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                          {post.media_type === 'video' ? (
+                            <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={20} /></div>
+                          ) : (
+                            <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed line-clamp-3">
+                          {post.caption}
+                        </p>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium pt-1">
+                          <span className="flex items-center gap-1">
+                            <Clock size={11} />
+                            {post.status === 'published' ? `Publicado: ${post.published_at || post.scheduled_time}` : `Programado: ${post.scheduled_time}`}
+                          </span>
+                        </div>
+                        {post.error_msg && (
+                          <p className="text-[10px] text-rose-600 font-bold">{post.error_msg}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {scheduledPosts.length === 0 && (
+                  <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-2">
+                    <Calendar className="mx-auto text-slate-300" size={36} />
+                    <p className="text-xs font-bold text-slate-500">No hay publicaciones programadas</p>
+                    <p className="text-[11px] text-slate-400">Crea tu primer post con foto y fecha programada desde el panel izquierdo.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
         </div>
