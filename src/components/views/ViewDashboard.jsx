@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Heart, MessageCircle, ExternalLink,
-  RefreshCw, Users, Video, Image as ImageIcon, Sparkles, ThumbsUp
+  RefreshCw, Users, Video, Image as ImageIcon, Sparkles, ThumbsUp, TrendingUp, UserPlus
 } from 'lucide-react';
 
 function getCleanWhatsAppUrl(phone) {
@@ -193,6 +193,40 @@ export default function ViewDashboard({
         ))}
       </div>
 
+      {/* BANNER DESTACADO DE NUEVOS SEGUIDORES GANADOS HOY */}
+      {(metaInsights?.stats?.totalGainedToday > 0 || ig?.gained_today > 0 || fb?.gained_today > 0) && (
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 p-5 rounded-3xl text-white shadow-xl shadow-emerald-600/20 flex items-center justify-between flex-wrap gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+          <div className="flex items-center space-x-3.5">
+            <div className="h-12 w-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl shrink-0 shadow-inner">
+              🎉
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="bg-white/25 text-white text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full backdrop-blur-xs">
+                  Crecimiento Hoy
+                </span>
+                <span className="text-emerald-200 text-xs font-bold">Meta / Redes Sociales</span>
+              </div>
+              <h4 className="text-base font-black mt-1 tracking-tight">
+                ¡Ganaste +{(metaInsights?.stats?.totalGainedToday || ((ig?.gained_today || 0) + (fb?.gained_today || 0)))} nuevos seguidores hoy!
+              </h4>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {ig?.gained_today > 0 && (
+              <span className="text-xs font-black bg-white/20 backdrop-blur-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 border border-white/20">
+                <span>📸</span> Instagram: +{ig.gained_today}
+              </span>
+            )}
+            {fb?.gained_today > 0 && (
+              <span className="text-xs font-black bg-white/20 backdrop-blur-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 border border-white/20">
+                <span>📘</span> Facebook: +{fb.gained_today}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* REDES SOCIALES & META INSIGHTS (Instagram & Facebook) */}
       <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
@@ -249,7 +283,16 @@ export default function ViewDashboard({
 
             <div className="grid grid-cols-3 gap-2 pt-2 border-t border-pink-100/60 text-center">
               <div>
-                <p className="text-base font-black text-slate-900 leading-tight">{ig?.followers_count ?? '—'}</p>
+                <div className="flex items-center justify-center gap-1">
+                  <p className="text-base font-black text-slate-900 leading-tight">
+                    {(ig?.followers_count ?? '—').toLocaleString()}
+                  </p>
+                  {ig?.gained_today > 0 && (
+                    <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded-full">
+                      +{ig.gained_today}
+                    </span>
+                  )}
+                </div>
                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Seguidores</p>
               </div>
               <div>
@@ -259,7 +302,7 @@ export default function ViewDashboard({
               <div>
                 <p className="text-base font-black text-pink-600 leading-tight flex items-center justify-center gap-1">
                   <Heart size={12} className="fill-pink-500 text-pink-500" />
-                  <span>{metaInsights?.stats?.totalLikes || 0}</span>
+                  <span>{(metaInsights?.stats?.totalLikes || 0).toLocaleString()}</span>
                 </p>
                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Likes</p>
               </div>
@@ -296,7 +339,16 @@ export default function ViewDashboard({
                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Me Gusta</p>
               </div>
               <div>
-                <p className="text-base font-black text-blue-600 leading-tight">{fb?.followers_count ?? fb?.fan_count ?? '—'}</p>
+                <div className="flex items-center justify-center gap-1">
+                  <p className="text-base font-black text-blue-600 leading-tight">
+                    {(fb?.followers_count ?? fb?.fan_count ?? '—').toLocaleString()}
+                  </p>
+                  {fb?.gained_today > 0 && (
+                    <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded-full">
+                      +{fb.gained_today}
+                    </span>
+                  )}
+                </div>
                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Seguidores</p>
               </div>
             </div>
@@ -308,15 +360,22 @@ export default function ViewDashboard({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium flex items-center gap-1.5"><Heart size={14} className="text-pink-500 fill-pink-500" /> Total Likes en posts:</span>
-                <span className="font-black text-slate-900">{metaInsights?.stats?.totalLikes || 0}</span>
+                <span className="font-black text-slate-900">{(metaInsights?.stats?.totalLikes || 0).toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium flex items-center gap-1.5"><MessageCircle size={14} className="text-blue-500" /> Comentarios registrados:</span>
-                <span className="font-black text-slate-900">{metaInsights?.stats?.totalComments || 0}</span>
+                <span className="font-black text-slate-900">{(metaInsights?.stats?.totalComments || 0).toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium flex items-center gap-1.5"><Users size={14} className="text-emerald-500" /> Audiencia total:</span>
-                <span className="font-black text-slate-900">{metaInsights?.stats?.totalFollowers || 0}</span>
+                <div className="flex items-center gap-1">
+                  <span className="font-black text-slate-900">{(metaInsights?.stats?.totalFollowers || 0).toLocaleString()}</span>
+                  {(metaInsights?.stats?.totalGainedToday > 0) && (
+                    <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                      +{metaInsights.stats.totalGainedToday} hoy
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

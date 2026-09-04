@@ -268,7 +268,14 @@ export default function App() {
               <SidebarItem icon={Users}         label="Leads"            id="crm" />
               <SidebarItem icon={Calendar}      label="Agenda IA"        id="agenda" />
               <SidebarItem icon={ShoppingBag}   label="Pedidos IA"       id="pedidos" />
-              <SidebarItem icon={Globe}         label="Redes Sociales"  id="comentarios" />
+              <div className="relative">
+                <SidebarItem icon={Globe}         label="Redes Sociales"  id="comentarios" />
+                {(metaInsights?.stats?.totalGainedToday > 0) && (
+                  <span className="absolute top-2.5 right-4 px-1.5 py-0.5 bg-emerald-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-md shadow-emerald-500/30">
+                    +{metaInsights.stats.totalGainedToday}
+                  </span>
+                )}
+              </div>
               <SidebarItem icon={Laptop}        label="Bot Web (WP)"     id="webchat" />
               <SidebarItem icon={Paperclip}     label="Archivos"         id="archivos" />
             </div>

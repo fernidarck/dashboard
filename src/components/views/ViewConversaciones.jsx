@@ -68,12 +68,15 @@ export default function ViewConversaciones({
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const [sendingDoc, setSendingDoc] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [stagedFile, setStagedFile] = useState(null);
+  const [stagedFilePreview, setStagedFilePreview] = useState(null);
   const dragCounter = useRef(0);
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [chatSearch, setChatSearch] = useState('');
   const [channelTab, setChannelTab] = useState('todos');
   const fileInputRef = useRef(null);
+  const inputRef = useRef(null);
 
   // Al navegar desde Leads/Dashboard/notificación (cambia openChatNonce), abrir el chat
   // específico también en móvil (no quedarse en la lista general).
@@ -81,21 +84,66 @@ export default function ViewConversaciones({
     if (openChatNonce) setMobileShowChat(true);
   }, [openChatNonce]);
 
-  const handleSend = async () => {
-    if (!messageText.trim()) return;
-    const text = messageText;
-    setMessageText('');
-    await onSendMessage(selectedChatId, text);
+  const handleStageFile = (file) => {
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert(`El archivo "${file.name}" supera el límite de 25 MB.`);
+      return;
+    }
+    setStagedFile(file);
+    if (file.type && file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      setStagedFilePreview(url);
+    } else {
+      setStagedFilePreview(null);
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 60);
   };
 
-  const handleFile = async (e) => {
+  const handleClearStagedFile = () => {
+    if (stagedFilePreview) {
+      URL.revokeObjectURL(stagedFilePreview);
+    }
+    setStagedFile(null);
+    setStagedFilePreview(null);
+  };
+
+  const handleSend = async () => {
+    if (!selectedChatId) return;
+    const text = messageText.trim();
+    if (!text && !stagedFile) return;
+
+    // Si hay un archivo adjunto preparado
+    if (stagedFile) {
+      const fileToSend = stagedFile;
+      const caption = text;
+      handleClearStagedFile();
+      setMessageText('');
+      setSendingDoc(true);
+      try {
+        await onSendDocument?.(selectedChatId, fileToSend, caption);
+      } catch (err) {
+        console.error('Error enviando archivo adjunto:', err);
+      } finally {
+        setSendingDoc(false);
+      }
+      return;
+    }
+
+    // Si es solo mensaje de texto
+    if (text) {
+      setMessageText('');
+      await onSendMessage(selectedChatId, text);
+    }
+  };
+
+  const handleFile = (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !selectedChatId) return;
-    if (file.size > 25 * 1024 * 1024) { alert('El archivo supera el límite de 25 MB.'); return; }
-    setSendingDoc(true);
-    try { await onSendDocument?.(selectedChatId, file); }
-    finally { setSendingDoc(false); }
+    handleStageFile(file);
   };
 
   // Drag and Drop tipo WhatsApp Web
@@ -124,7 +172,7 @@ export default function ViewConversaciones({
     if (!isDragging) setIsDragging(true);
   };
 
-  const handleDrop = async (e) => {
+  const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -132,37 +180,16 @@ export default function ViewConversaciones({
 
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0 || !selectedChatId) return;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.size > 25 * 1024 * 1024) {
-        alert(`El archivo "${file.name}" supera el límite de 25 MB.`);
-        continue;
-      }
-      setSendingDoc(true);
-      try {
-        await onSendDocument?.(selectedChatId, file);
-      } catch (err) {
-        console.error('Error enviando archivo arrastrado:', err);
-      } finally {
-        setSendingDoc(false);
-      }
-    }
+    handleStageFile(files[0]);
   };
 
-  // Pegar imagen o archivos desde el portapapeles (Ctrl/Cmd+V) y enviarlos como WhatsApp Web
-  const handlePaste = async (e) => {
+  // Pegar imagen o archivos desde el portapapeles (Ctrl/Cmd+V) y adjuntarlos
+  const handlePaste = (e) => {
     // Si se pegan archivos copiados del sistema
     const files = e.clipboardData?.files;
     if (files && files.length > 0 && selectedChatId) {
       e.preventDefault();
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.size > 25 * 1024 * 1024) { alert(`El archivo "${file.name}" supera el límite de 25 MB.`); continue; }
-        setSendingDoc(true);
-        try { await onSendDocument?.(selectedChatId, file); }
-        finally { setSendingDoc(false); }
-      }
+      handleStageFile(files[0]);
       return;
     }
 
@@ -173,12 +200,9 @@ export default function ViewConversaciones({
         const blob = it.getAsFile();
         if (!blob) continue;
         e.preventDefault();
-        if (blob.size > 25 * 1024 * 1024) { alert('La imagen es muy grande (máximo 25 MB).'); return; }
         const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
         const file = new File([blob], `captura-${Date.now()}.${ext}`, { type: blob.type });
-        setSendingDoc(true);
-        try { await onSendDocument?.(selectedChatId, file); }
-        finally { setSendingDoc(false); }
+        handleStageFile(file);
         return;
       }
     }
@@ -418,7 +442,7 @@ export default function ViewConversaciones({
                   Soltá tu PDF o Archivo aquí
                 </h3>
                 <p className="text-xs font-semibold text-slate-500 mt-1">
-                  Se enviará automáticamente por WhatsApp a <span className="text-[#FF6B00] font-bold">{selectedLead.nombre || 'este cliente'}</span>
+                  Se adjuntará para que puedas escribir un mensaje y confirmar antes de enviar a <span className="text-[#FF6B00] font-bold">{selectedLead.nombre || 'este cliente'}</span>
                 </p>
               </div>
               <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full">
@@ -586,14 +610,50 @@ export default function ViewConversaciones({
 
         {/* Input Bar */}
         <div className="p-3 md:p-6 bg-white border-t border-slate-100">
+          {/* Tarjeta de Archivo Adjunto (Staged File Preview) */}
+          {stagedFile && (
+            <div className="mb-3 p-3.5 bg-orange-50/90 border border-orange-200/90 rounded-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2 duration-200 shadow-xs">
+              <div className="flex items-center gap-3 min-w-0">
+                {stagedFilePreview ? (
+                  <img src={stagedFilePreview} alt="Preview" className="h-12 w-12 rounded-xl object-cover border border-orange-200 shrink-0 shadow-xs" />
+                ) : (
+                  <div className="h-12 w-12 rounded-xl bg-orange-100 text-[#FF6B00] flex items-center justify-center shrink-0 border border-orange-200">
+                    <FileText size={24} />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#FF6B00] bg-white px-2 py-0.5 rounded-md border border-orange-200">
+                      📄 Archivo listo para enviar
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">
+                      {(stagedFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  </div>
+                  <p className="text-xs font-black text-slate-800 truncate mt-1">{stagedFile.name}</p>
+                  <p className="text-[10px] text-slate-500 font-medium">Escribe un comentario opcional abajo y presiona Enviar (o Enter)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearStagedFile}
+                className="p-2 hover:bg-orange-200/70 text-slate-400 hover:text-slate-700 rounded-xl transition-colors shrink-0 cursor-pointer"
+                title="Quitar archivo adjunto"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center space-x-2 md:space-x-3 bg-slate-50 p-2 rounded-2xl border border-slate-200 focus-within:ring-2 focus-within:ring-[#FF6B00]/20 transition-all">
             <input
+              ref={inputRef}
               type="text"
               value={messageText}
               onChange={e => setMessageText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
               onPaste={handlePaste}
-              placeholder="Escribe un mensaje o pega una imagen (Ctrl+V)..."
+              placeholder={stagedFile ? "Escribe un comentario opcional para el archivo..." : "Escribe un mensaje o pega una imagen (Ctrl+V)..."}
               className="flex-1 min-w-0 bg-transparent px-3 md:px-4 py-2 text-base md:text-xs outline-none font-medium text-slate-800"
             />
             
