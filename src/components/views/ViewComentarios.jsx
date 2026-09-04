@@ -43,6 +43,8 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [testDmText, setTestDmText] = useState('');
   const [testDmReply, setTestDmReply] = useState(null);
   const [testingDm, setTestingDm] = useState(false);
+  const [subscribingMeta, setSubscribingMeta] = useState(false);
+  const [subscribeResult, setSubscribeResult] = useState(null);
 
   // Calendario y Publicador
   const [scheduledPosts, setScheduledPosts] = useState([]);
@@ -308,6 +310,20 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
       setTestDmReply({ text: 'Error de conexión con el servidor.' });
     } finally {
       setTestingDm(false);
+    }
+  };
+
+  const handleSubscribeMeta = async () => {
+    setSubscribingMeta(true);
+    setSubscribeResult(null);
+    try {
+      const res = await apiFetch(`${apiBase}/api/meta/subscribe-page`, { method: 'POST' });
+      const data = await res.json();
+      setSubscribeResult(data);
+    } catch (err) {
+      setSubscribeResult({ success: false, error: err.message });
+    } finally {
+      setSubscribingMeta(false);
     }
   };
 
@@ -1856,14 +1872,40 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-start gap-2.5">
-                  <span className="h-5 w-5 rounded-full bg-orange-500/10 text-[#FF6B00] font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">2</span>
-                  <div>
-                    <p className="font-bold text-slate-800">En Meta Developer App (Webhook):</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                      En <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" className="text-[#FF6B00] font-bold hover:underline">Meta Developers</a> ➡️ Webhooks ➡️ Instagram: tener suscritos los eventos <b>messages</b> y <b>messaging_postbacks</b> a la URL <code>https://ycloud-dashboard.83aqlq.easypanel.host/webhooks/instagram</code>.
-                    </p>
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <span className="h-5 w-5 rounded-full bg-orange-500/10 text-[#FF6B00] font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                    <div>
+                      <p className="font-bold text-slate-800">Suscripción de Webhook (Automática / 1-Clic):</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                        Activa la suscripción de eventos en Meta para que tu Página de Facebook e Instagram envíen automáticamente los DMs y comentarios a este servidor.
+                      </p>
+                    </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSubscribeMeta}
+                    disabled={subscribingMeta}
+                    className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                  >
+                    {subscribingMeta ? <RefreshCw size={13} className="animate-spin" /> : <span>⚡</span>}
+                    <span>{subscribingMeta ? 'Conectando con Meta Graph API...' : 'Activar Suscripción de Webhook en Meta (1-Clic)'}</span>
+                  </button>
+
+                  {subscribeResult && (
+                    <div className={`p-2.5 rounded-xl text-[11px] font-medium border ${subscribeResult.success ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'}`}>
+                      {subscribeResult.success ? (
+                        <div>
+                          <p className="font-bold flex items-center gap-1 text-emerald-700">✅ Webhooks conectados con éxito en Meta:</p>
+                          <p className="text-[10px] mt-0.5 text-slate-600">Facebook Page: {subscribeResult.results?.facebookPage?.success ? 'Suscrita ✅' : JSON.stringify(subscribeResult.results?.facebookPage)}</p>
+                          <p className="text-[10px] text-slate-600">Instagram: {subscribeResult.results?.instagramAccount?.success ? 'Suscrito ✅' : JSON.stringify(subscribeResult.results?.instagramAccount)}</p>
+                        </div>
+                      ) : (
+                        <p className="font-bold">❌ Error: {subscribeResult.error}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

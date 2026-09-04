@@ -4255,6 +4255,63 @@ app.post('/api/comments/test-reply', async (req, res) => {
   }
 });
 
+// Helper para suscribir la Página de Facebook y cuenta de Instagram a la App Webhook de Meta
+async function ensureMetaSubscribedApps() {
+  try {
+    const { token, igUserId, fbPageId } = await getMetaConfig();
+    if (!token) {
+      return { success: false, error: 'No hay META_PAGE_TOKEN configurado' };
+    }
+
+    const results = {};
+
+    // 1. Suscribir Facebook Page
+    if (fbPageId) {
+      try {
+        const pageSubUrl = `${META_GRAPH}/${fbPageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,feed,mention&access_token=${token}`;
+        const pRes = await fetch(pageSubUrl, { method: 'POST' });
+        const pData = await pRes.json().catch(() => ({}));
+        results.facebookPage = pData;
+        if (pRes.ok && pData.success) {
+          console.log(`✅ [Meta] Página de Facebook ${fbPageId} suscrita con éxito a webhooks de mensajes`);
+        } else {
+          console.warn(`⚠️ [Meta] Advertencia suscripción Facebook Page:`, pData.error?.message || pData);
+        }
+      } catch (pe) {
+        results.facebookPage = { error: pe.message };
+      }
+    }
+
+    // 2. Suscribir Instagram Account
+    if (igUserId) {
+      try {
+        const igSubUrl = `${META_GRAPH}/${igUserId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,comments,mentions,story_insights&access_token=${token}`;
+        const igRes = await fetch(igSubUrl, { method: 'POST' });
+        const igData = await igRes.json().catch(() => ({}));
+        results.instagramAccount = igData;
+        if (igRes.ok && igData.success) {
+          console.log(`✅ [Meta] Cuenta de Instagram ${igUserId} suscrita con éxito a webhooks de mensajes`);
+        } else {
+          console.warn(`⚠️ [Meta] Advertencia suscripción Instagram:`, igData.error?.message || igData);
+        }
+      } catch (ige) {
+        results.instagramAccount = { error: ige.message };
+      }
+    }
+
+    return { success: true, results };
+  } catch (err) {
+    console.error('❌ Error en ensureMetaSubscribedApps:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// Endpoint para suscribir / activar webhooks de Meta bajo demanda
+app.post('/api/meta/subscribe-page', async (_req, res) => {
+  const result = await ensureMetaSubscribedApps();
+  res.json(result);
+});
+
 // Endpoint para probar generación de respuesta a Mensajes Directos (DMs) en vivo
 app.post('/api/meta/test-direct-message', async (req, res) => {
   try {
@@ -4653,8 +4710,12 @@ const server = app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Backend del Dashboard escuchando en http://0.0.0.0:${port}`);
   
   // Inicialización de BD en segundo plano
-  setup().then(() => {
+  setup().then(async () => {
     console.log("🎊 Sistema de base de datos listo.");
+    // Auto-suscribir webhooks de Meta (Facebook Page & Instagram Direct)
+    try {
+      await ensureMetaSubscribedApps();
+    } catch(e) {}
   }).catch(err => {
     console.error("❌ ERROR CRÍTICO EN SETUP:", err);
   });
