@@ -35,10 +35,14 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState('');
 
-  // Test de Comentarios en Vivo
+  // Test de Comentarios y DMs en Vivo
   const [testCommentText, setTestCommentText] = useState('');
   const [testCommentReply, setTestCommentReply] = useState('');
   const [testingComment, setTestingComment] = useState(false);
+
+  const [testDmText, setTestDmText] = useState('');
+  const [testDmReply, setTestDmReply] = useState(null);
+  const [testingDm, setTestingDm] = useState(false);
 
   // Calendario y Publicador
   const [scheduledPosts, setScheduledPosts] = useState([]);
@@ -283,6 +287,27 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
       setTestCommentReply('Error de conexión con el evaluador.');
     } finally {
       setTestingComment(false);
+    }
+  };
+
+  const testearMensajeDirecto = async (e) => {
+    if (e) e.preventDefault();
+    if (!testDmText.trim()) return;
+    setTestingDm(true);
+    setTestDmReply(null);
+    try {
+      const res = await apiFetch(`${apiBase}/api/meta/test-direct-message`, {
+        method: 'POST',
+        body: JSON.stringify({ text: testDmText, platform: 'Instagram Direct' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTestDmReply(data.reply || { text: 'Sin respuesta generada' });
+      }
+    } catch {
+      setTestDmReply({ text: 'Error de conexión con el servidor.' });
+    } finally {
+      setTestingDm(false);
     }
   };
 
@@ -1806,38 +1831,117 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
             </form>
           </div>
 
-          {/* Probador en Vivo de Respuestas */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Probar Respuesta a Comentario</span>
-              <p className="text-[11px] text-slate-500 mt-0.5">Simula cómo respondería el bot a un comentario real.</p>
+          {/* Columna Derecha: Probadores en Vivo y Diagnóstico de Mensajes Directos */}
+          <div className="space-y-6">
+            
+            {/* 1. Diagnóstico de Mensajes Directos de Instagram (DMs) */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-800 flex items-center gap-1.5">
+                    <span className="text-base">📸</span> ¿Por qué Instagram no respondió a los mensajes?
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Guía rápida de 2 pasos para activar respuestas automáticas en Instagram Direct.</p>
+                </div>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-start gap-2.5">
+                  <span className="h-5 w-5 rounded-full bg-orange-500/10 text-[#FF6B00] font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                  <div>
+                    <p className="font-bold text-slate-800">En la App de Instagram del celular:</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Abrí tu perfil de <b>@0ne_control</b> ➡️ Menú (3 líneas) ➡️ <i>Configuración y privacidad</i> ➡️ <i>Mensajes y respuestas a historias</i> ➡️ <i>Herramientas para mensajes / Controles de mensajes</i> ➡️ Activá <b>&quot;Permitir acceso a los mensajes&quot;</b> (Connected Tools).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-start gap-2.5">
+                  <span className="h-5 w-5 rounded-full bg-orange-500/10 text-[#FF6B00] font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                  <div>
+                    <p className="font-bold text-slate-800">En Meta Developer App (Webhook):</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      En <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" className="text-[#FF6B00] font-bold hover:underline">Meta Developers</a> ➡️ Webhooks ➡️ Instagram: tener suscritos los eventos <b>messages</b> y <b>messaging_postbacks</b> a la URL <code>https://ycloud-dashboard.83aqlq.easypanel.host/webhooks/instagram</code>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Probador de Mensaje Directo (DM) */}
+              <div className="pt-2 border-t border-slate-100 space-y-3">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-[#FF6B00]" /> Probar Respuesta a Mensaje Directo (DM):
+                </span>
+                
+                <form onSubmit={testearMensajeDirecto} className="space-y-2.5">
+                  <input
+                    type="text"
+                    value={testDmText}
+                    onChange={(e) => setTestDmText(e.target.value)}
+                    placeholder="Ej: Hola tienen motores para portón corredizo y cuánto cuesta?"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-[#FF6B00]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={testingDm || !testDmText.trim()}
+                    className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {testingDm ? <RefreshCw size={13} className="animate-spin" /> : <Bot size={13} />}
+                    <span>{testingDm ? 'Consultando RAG del Catálogo...' : 'Probar Respuesta de Instagram DM'}</span>
+                  </button>
+                </form>
+
+                {testDmReply && (
+                  <div className="p-3.5 bg-orange-50/60 border border-orange-200 rounded-xl space-y-2 text-xs">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-orange-800 flex items-center gap-1">
+                      <CheckCircle2 size={12} className="text-emerald-600" /> Respuesta que enviará el Bot:
+                    </span>
+                    <p className="text-slate-800 font-medium leading-relaxed whitespace-pre-line">{testDmReply.text}</p>
+                    {testDmReply.mediaUrl && (
+                      <div className="mt-2 pt-2 border-t border-orange-200/60 flex items-center gap-2">
+                        <img src={testDmReply.mediaUrl} alt="Foto producto" className="h-12 w-12 object-cover rounded-lg border border-orange-200" />
+                        <span className="text-[10px] text-slate-500 italic">Foto del producto adjunta automáticamente</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <form onSubmit={testearComentario} className="space-y-3">
-              <textarea
-                value={testCommentText}
-                onChange={(e) => setTestCommentText(e.target.value)}
-                placeholder="Ej: ¿Qué precio tiene la mesa de noche One Night y tienen pago contra entrega?"
-                rows={3}
-                className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-600 resize-none"
-              />
-
-              <button
-                type="submit"
-                disabled={testingComment || !testCommentText.trim()}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {testingComment ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                <span>{testingComment ? 'Evaluando...' : 'Generar Respuesta de Prueba'}</span>
-              </button>
-            </form>
-
-            {testCommentReply && (
-              <div className="p-3.5 bg-purple-50/60 border border-purple-200 rounded-xl space-y-1 text-xs">
-                <span className="text-[10px] font-black uppercase tracking-wider text-purple-800">Respuesta Generada:</span>
-                <p className="text-slate-800 font-medium leading-relaxed">{testCommentReply}</p>
+            {/* 2. Probador en Vivo de Respuestas a Comentarios Públicos */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-100 pb-3">
+                <span className="text-xs font-black uppercase tracking-widest text-slate-800">Probar Respuesta a Comentario Público</span>
+                <p className="text-[11px] text-slate-500 mt-0.5">Simula cómo respondería el bot a un comentario en un post o reel.</p>
               </div>
-            )}
+
+              <form onSubmit={testearComentario} className="space-y-3">
+                <textarea
+                  value={testCommentText}
+                  onChange={(e) => setTestCommentText(e.target.value)}
+                  placeholder="Ej: ¿Qué precio tiene el motor y hacen envíos a Quetzaltenango?"
+                  rows={2}
+                  className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-600 resize-none"
+                />
+
+                <button
+                  type="submit"
+                  disabled={testingComment || !testCommentText.trim()}
+                  className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  {testingComment ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  <span>{testingComment ? 'Evaluando...' : 'Generar Respuesta de Comentario'}</span>
+                </button>
+              </form>
+
+              {testCommentReply && (
+                <div className="p-3.5 bg-purple-50/60 border border-purple-200 rounded-xl space-y-1 text-xs">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-800">Respuesta Generada:</span>
+                  <p className="text-slate-800 font-medium leading-relaxed">{testCommentReply}</p>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       )}

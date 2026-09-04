@@ -669,21 +669,59 @@ async function getMetaConfig() {
 
 async function sendMetaMessage(recipientId, text, mediaUrl = null, mediaType = 'image') {
   try {
-    const { token } = await getMetaConfig();
+    const { token, igUserId } = await getMetaConfig();
     if (!token) {
       console.error('❌ No hay token de Meta configurado (META_PAGE_TOKEN)');
       return false;
     }
     if (!recipientId) return false;
 
-    let payload;
+    let textSuccess = false;
+
+    // 1. Enviar mensaje de texto principal (si existe)
+    if (text) {
+      const textPayload = {
+        recipient: { id: recipientId },
+        message: { text }
+      };
+
+      try {
+        let r = await fetch(`${META_GRAPH}/me/messages?access_token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(textPayload)
+        });
+        let data = await r.json().catch(() => ({}));
+
+        // Si falla por /me/messages e igUserId existe, reintentar con endpoint IG
+        if ((!r.ok || data.error) && igUserId) {
+          r = await fetch(`${META_GRAPH}/${igUserId}/messages?access_token=${token}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(textPayload)
+          });
+          data = await r.json().catch(() => ({}));
+        }
+
+        if (!r.ok || data.error) {
+          console.error(`❌ Error enviando texto Meta a ${recipientId}:`, data.error?.message || JSON.stringify(data));
+        } else {
+          console.log(`✅ Texto Meta enviado con éxito a ${recipientId}`);
+          textSuccess = true;
+        }
+      } catch (textErr) {
+        console.error(`❌ Excepción enviando texto Meta a ${recipientId}:`, textErr.message);
+      }
+    }
+
+    // 2. Enviar archivo multimedia / foto si existe
     if (mediaUrl) {
       let type = 'image';
       if (mediaType === 'video') type = 'video';
       else if (mediaType === 'audio') type = 'audio';
       else if (mediaType === 'document' || mediaType === 'file') type = 'file';
 
-      payload = {
+      const mediaPayload = {
         recipient: { id: recipientId },
         message: {
           attachment: {
@@ -692,25 +730,25 @@ async function sendMetaMessage(recipientId, text, mediaUrl = null, mediaType = '
           }
         }
       };
-    } else {
-      payload = {
-        recipient: { id: recipientId },
-        message: { text: text || '' }
-      };
+
+      try {
+        const r = await fetch(`${META_GRAPH}/me/messages?access_token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mediaPayload)
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) {
+          console.warn(`⚠️ No se pudo adjuntar imagen Meta a ${recipientId}:`, data.error?.message || JSON.stringify(data));
+        } else {
+          console.log(`✅ Adjunto Meta enviado a ${recipientId}`);
+        }
+      } catch (mediaErr) {
+        console.warn(`⚠️ Excepción enviando adjunto Meta a ${recipientId}:`, mediaErr.message);
+      }
     }
 
-    const r = await fetch(`${META_GRAPH}/me/messages?access_token=${token}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || data.error) {
-      console.error(`❌ Error enviando mensaje Meta a ${recipientId}:`, data.error?.message || JSON.stringify(data));
-      return false;
-    }
-    console.log(`✅ Mensaje Meta enviado a ${recipientId}`);
-    return true;
+    return textSuccess;
   } catch (err) {
     console.error('❌ Excepción enviando mensaje Meta:', err.message);
     return false;
@@ -4191,6 +4229,30 @@ app.post('/api/comments/sync', async (_req, res) => {
     res.json({ success: true, nuevos, revisados: total, posts });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Endpoint para probar generación de respuesta a comentarios en vivo
+app.post('/api/comments/test-reply', async (req, res) => {
+  try {
+    const { text, fromName, platform } = req.body;
+    if (!text) return res.status(400).json({ error: 'Falta el texto a evaluar' });
+    const reply = await generateCommentReply(text, fromName || 'Usuario Prueba', platform || 'instagram');
+    res.json({ success: true, reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para probar generación de respuesta a Mensajes Directos (DMs) en vivo
+app.post('/api/meta/test-direct-message', async (req, res) => {
+  try {
+    const { text, platform } = req.body;
+    if (!text) return res.status(400).json({ error: 'Falta el texto a evaluar' });
+    const reply = await generateDirectMessageReply(text, null, platform || 'Instagram Direct');
+    res.json({ success: true, reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

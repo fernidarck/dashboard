@@ -7,9 +7,124 @@ import {
 
 const TEMPLATES = [
   {
+    id: 'nordic_sand',
+    name: '🌾 Arena Nórdica Minimalista',
+    badge: 'Minimalista & Cálido',
+    category: 'minimal',
+    bgType: 'light',
+    primaryColor: '#4A5543',
+    secondaryColor: '#7A8B71',
+    darkBg: '#F7F5F0',
+    cardBg: '#FFFFFF',
+    cardBorder: 'rgba(74, 85, 67, 0.15)',
+    textColor: '#242B20',
+    textMuted: '#667362',
+    priceCardBg: '#FFFFFF',
+    priceColor: '#2E382A',
+    ctaBg: '#2E382A',
+    ctaColor: '#FFFFFF',
+    accentBadge: '🌿 DISEÑO NÓRDICO & ALTA CALIDAD'
+  },
+  {
+    id: 'slate_studio',
+    name: '🖤 Apple Slate Dark (Titanio)',
+    badge: 'Minimalista Dark',
+    category: 'dark',
+    bgType: 'dark',
+    primaryColor: '#38BDF8',
+    secondaryColor: '#818CF8',
+    darkBg: '#0F1218',
+    cardBg: '#161B24',
+    cardBorder: 'rgba(255, 255, 255, 0.09)',
+    textColor: '#FFFFFF',
+    textMuted: '#94A3B8',
+    priceCardBg: '#1E2430',
+    priceColor: '#38BDF8',
+    ctaBg: '#FFFFFF',
+    ctaColor: '#0F1218',
+    accentBadge: '⚡ EDICIÓN ESPECIAL • TITANIO'
+  },
+  {
+    id: 'mint_clean',
+    name: '🍃 Salvia & Menta Editorial',
+    badge: 'Fresco & Clean',
+    category: 'minimal',
+    bgType: 'light',
+    primaryColor: '#059669',
+    secondaryColor: '#34D399',
+    darkBg: '#F1F7F4',
+    cardBg: '#FFFFFF',
+    cardBorder: 'rgba(5, 150, 105, 0.16)',
+    textColor: '#132E23',
+    textMuted: '#527867',
+    priceCardBg: '#FFFFFF',
+    priceColor: '#047857',
+    ctaBg: '#132E23',
+    ctaColor: '#FFFFFF',
+    accentBadge: '🍃 CALIDAD 100% ORIGINAL'
+  },
+  {
+    id: 'pure_magazine',
+    name: '📰 Editorial B&W (Alta Gama)',
+    badge: 'Revista Monocromática',
+    category: 'minimal',
+    bgType: 'light',
+    primaryColor: '#000000',
+    secondaryColor: '#374151',
+    darkBg: '#FAFAFA',
+    cardBg: '#FFFFFF',
+    cardBorder: 'rgba(0, 0, 0, 0.85)',
+    textColor: '#000000',
+    textMuted: '#4B5563',
+    priceCardBg: '#FFFFFF',
+    priceColor: '#000000',
+    ctaBg: '#000000',
+    ctaColor: '#FFFFFF',
+    accentBadge: '◼ ONE CONTROL GUATEMALA'
+  },
+  {
+    id: 'terracotta_warm',
+    name: '🏺 Terracota & Arcilla Cálida',
+    badge: 'Cálido Moderno',
+    category: 'minimal',
+    bgType: 'light',
+    primaryColor: '#EA580C',
+    secondaryColor: '#F97316',
+    darkBg: '#FAF6F0',
+    cardBg: '#FFFFFF',
+    cardBorder: 'rgba(234, 88, 12, 0.2)',
+    textColor: '#382314',
+    textMuted: '#855F45',
+    priceCardBg: '#FFFFFF',
+    priceColor: '#C2410C',
+    ctaBg: '#C2410C',
+    ctaColor: '#FFFFFF',
+    accentBadge: '✨ ENTREGA RÁPIDA & GARANTÍA'
+  },
+  {
+    id: 'midnight_glass',
+    name: '🌌 Midnight Glass (Índigo)',
+    badge: 'Glassmorphism',
+    category: 'dark',
+    bgType: 'dark',
+    primaryColor: '#6366F1',
+    secondaryColor: '#06B6D4',
+    darkBg: '#0A0D1A',
+    cardBg: '#13192E',
+    cardBorder: 'rgba(99, 102, 241, 0.35)',
+    textColor: '#FFFFFF',
+    textMuted: '#A5B4FC',
+    priceCardBg: '#1B233D',
+    priceColor: '#38BDF8',
+    ctaBg: '#6366F1',
+    ctaColor: '#FFFFFF',
+    accentBadge: '🌌 PRODUCTO DESTACADO OFICIAL'
+  },
+  {
     id: 'orange_impact',
     name: '🔥 Marca OneControl (Naranja & Negro)',
-    badge: 'Recomendado',
+    badge: 'Oficial & Llamativo',
+    category: 'ofertas',
     bgType: 'dark',
     primaryColor: '#FF6B00',
     secondaryColor: '#FFA347',
@@ -18,7 +133,7 @@ const TEMPLATES = [
     cardBorder: 'rgba(255, 107, 0, 0.4)',
     textColor: '#FFFFFF',
     textMuted: '#94A3B8',
-    priceBg: 'linear-gradient(135deg, #FF6B00, #E05600)',
+    priceCardBg: '#1E2638',
     priceColor: '#FFFFFF',
     ctaBg: '#FF6B00',
     ctaColor: '#FFFFFF',
@@ -26,8 +141,9 @@ const TEMPLATES = [
   },
   {
     id: 'minimal_clean',
-    name: '✨ Blanco Minimalista & Editorial',
+    name: '✨ Blanco Minimalista & Clean',
     badge: 'Elegante',
+    category: 'minimal',
     bgType: 'light',
     primaryColor: '#0F172A',
     secondaryColor: '#10B981',
@@ -36,7 +152,7 @@ const TEMPLATES = [
     cardBorder: 'rgba(226, 232, 240, 0.9)',
     textColor: '#0F172A',
     textMuted: '#64748B',
-    priceBg: 'linear-gradient(135deg, #0F172A, #1E293B)',
+    priceCardBg: '#FFFFFF',
     priceColor: '#10B981',
     ctaBg: '#0F172A',
     ctaColor: '#FFFFFF',
@@ -46,6 +162,7 @@ const TEMPLATES = [
     id: 'cyber_neon',
     name: '⚡ Cyber Neon & Novedad',
     badge: 'Llamativo',
+    category: 'ofertas',
     bgType: 'dark',
     primaryColor: '#06B6D4',
     secondaryColor: '#A855F7',
@@ -54,7 +171,7 @@ const TEMPLATES = [
     cardBorder: 'rgba(6, 182, 212, 0.4)',
     textColor: '#FFFFFF',
     textMuted: '#94A3B8',
-    priceBg: 'linear-gradient(135deg, #7C3AED, #DB2777)',
+    priceCardBg: '#131438',
     priceColor: '#FFFFFF',
     ctaBg: '#06B6D4',
     ctaColor: '#08081A',
@@ -62,8 +179,9 @@ const TEMPLATES = [
   },
   {
     id: 'luxury_gold',
-    name: '💎 Oro & Lujo Premium',
+    name: '💎 Oro Imperial & Lujo',
     badge: 'Premium',
+    category: 'premium',
     bgType: 'dark',
     primaryColor: '#F59E0B',
     secondaryColor: '#FCD34D',
@@ -72,7 +190,7 @@ const TEMPLATES = [
     cardBorder: 'rgba(245, 158, 11, 0.4)',
     textColor: '#FFFFFF',
     textMuted: '#A1A1AA',
-    priceBg: 'linear-gradient(135deg, #D97706, #B45309)',
+    priceCardBg: '#242018',
     priceColor: '#FEF3C7',
     ctaBg: '#F59E0B',
     ctaColor: '#18181B',
@@ -82,6 +200,7 @@ const TEMPLATES = [
     id: 'red_sale',
     name: '🚨 Gran Liquidación (Rojo Fuego)',
     badge: 'Urgencia',
+    category: 'ofertas',
     bgType: 'dark',
     primaryColor: '#EF4444',
     secondaryColor: '#FBBF24',
@@ -90,7 +209,7 @@ const TEMPLATES = [
     cardBorder: 'rgba(239, 68, 68, 0.45)',
     textColor: '#FFFFFF',
     textMuted: '#FECACA',
-    priceBg: 'linear-gradient(135deg, #DC2626, #991B1B)',
+    priceCardBg: '#360D12',
     priceColor: '#FEF08A',
     ctaBg: '#EF4444',
     ctaColor: '#FFFFFF',
@@ -108,7 +227,8 @@ export default function StoryStudioModal({
   onUseInPublisher
 }) {
   const canvasRef = useRef(null);
-  const [selectedTemplate, setSelectedTemplate] = useState('orange_impact');
+  const [selectedTemplate, setSelectedTemplate] = useState('nordic_sand');
+  const [templateCategory, setTemplateCategory] = useState('todos'); // 'todos' | 'minimal' | 'dark' | 'ofertas' | 'premium'
   
   // Datos configurables de la historia
   const [storyData, setStoryData] = useState({
@@ -249,39 +369,73 @@ export default function StoryStudioModal({
     ctx.save();
     if (tpl.bgType === 'light') {
       const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, '#FFFFFF');
-      grad.addColorStop(0.5, '#F1F5F9');
-      grad.addColorStop(1, '#E2E8F0');
+      if (tpl.id === 'nordic_sand') {
+        grad.addColorStop(0, '#FAF8F5');
+        grad.addColorStop(0.5, '#F3EFE7');
+        grad.addColorStop(1, '#E8E1D5');
+      } else if (tpl.id === 'mint_clean') {
+        grad.addColorStop(0, '#FFFFFF');
+        grad.addColorStop(0.5, '#F0F7F4');
+        grad.addColorStop(1, '#E2EFE9');
+      } else if (tpl.id === 'terracotta_warm') {
+        grad.addColorStop(0, '#FCFAF6');
+        grad.addColorStop(0.5, '#F7EFE4');
+        grad.addColorStop(1, '#EFE2D2');
+      } else if (tpl.id === 'pure_magazine') {
+        grad.addColorStop(0, '#FFFFFF');
+        grad.addColorStop(1, '#F8F8F8');
+      } else {
+        grad.addColorStop(0, '#FFFFFF');
+        grad.addColorStop(0.5, '#F1F5F9');
+        grad.addColorStop(1, '#E2E8F0');
+      }
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
-      // Patrón sutil de puntos
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.03)';
-      for (let x = 40; x < W; x += 60) {
-        for (let y = 40; y < H; y += 60) {
-          ctx.beginPath();
-          ctx.arc(x, y, 2, 0, Math.PI * 2);
-          ctx.fill();
+      // Marco minimalista perimetral fino para estilo editorial puro
+      if (tpl.id === 'pure_magazine') {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(40, 40, W - 80, H - 80);
+      } else {
+        // Patrón sutil de puntos
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.025)';
+        for (let x = 40; x < W; x += 60) {
+          for (let y = 40; y < H; y += 60) {
+            ctx.beginPath();
+            ctx.arc(x, y, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
     } else {
       const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, tpl.darkBg);
-      grad.addColorStop(0.4, '#111726');
-      grad.addColorStop(1, '#05070B');
+      if (tpl.id === 'slate_studio') {
+        grad.addColorStop(0, '#151922');
+        grad.addColorStop(0.4, '#0F1218');
+        grad.addColorStop(1, '#080A0E');
+      } else if (tpl.id === 'midnight_glass') {
+        grad.addColorStop(0, '#11172E');
+        grad.addColorStop(0.4, '#090D1C');
+        grad.addColorStop(1, '#04060E');
+      } else {
+        grad.addColorStop(0, tpl.darkBg);
+        grad.addColorStop(0.4, '#111726');
+        grad.addColorStop(1, '#05070B');
+      }
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
       // Glow ambiental superior
       const glowTop = ctx.createRadialGradient(W / 2, 200, 50, W / 2, 200, 600);
-      glowTop.addColorStop(0, `${tpl.primaryColor}33`); // 20% opacity
+      glowTop.addColorStop(0, `${tpl.primaryColor}30`);
       glowTop.addColorStop(1, 'transparent');
       ctx.fillStyle = glowTop;
       ctx.fillRect(0, 0, W, 800);
 
       // Glow ambiental inferior
       const glowBottom = ctx.createRadialGradient(W / 2, H - 300, 50, W / 2, H - 300, 500);
-      glowBottom.addColorStop(0, `${tpl.secondaryColor}25`);
+      glowBottom.addColorStop(0, `${tpl.secondaryColor}22`);
       glowBottom.addColorStop(1, 'transparent');
       ctx.fillStyle = glowBottom;
       ctx.fillRect(0, H - 700, W, 700);
@@ -292,10 +446,10 @@ export default function StoryStudioModal({
     ctx.save();
     // Nombre de Marca
     ctx.font = 'bold 34px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = tpl.bgType === 'light' ? '#475569' : '#94A3B8';
+    ctx.fillStyle = tpl.bgType === 'light' ? (tpl.textMuted || '#475569') : '#94A3B8';
     ctx.textAlign = 'center';
-    ctx.letterSpacing = '2px';
-    ctx.fillText((storyData.brandName || 'CATÁLOGO OFICIAL').toUpperCase(), W / 2, 110);
+    ctx.letterSpacing = '3px';
+    ctx.fillText((storyData.brandName || 'ONECONTROL GUATEMALA').toUpperCase(), W / 2, 110);
 
     // Pill de Oferta / Tag
     if (storyData.badgeText) {
@@ -309,7 +463,7 @@ export default function StoryStudioModal({
 
       // Sombra del badge
       ctx.shadowColor = tpl.primaryColor;
-      ctx.shadowBlur = 24;
+      ctx.shadowBlur = tpl.bgType === 'light' ? 12 : 24;
       ctx.shadowOffsetY = 4;
 
       // Fondo del badge
@@ -340,11 +494,11 @@ export default function StoryStudioModal({
     const cardY = 260;
     const cardW = 900;
     const cardH = 820;
-    const cardRadius = 44;
+    const cardRadius = tpl.id === 'pure_magazine' ? 16 : 44;
 
     ctx.save();
     // Sombra de la tarjeta
-    ctx.shadowColor = tpl.bgType === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.7)';
+    ctx.shadowColor = tpl.bgType === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.6)';
     ctx.shadowBlur = 40;
     ctx.shadowOffsetY = 16;
 
@@ -356,7 +510,7 @@ export default function StoryStudioModal({
     // Borde de la tarjeta
     ctx.shadowColor = 'transparent';
     ctx.strokeStyle = tpl.cardBorder;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = tpl.id === 'pure_magazine' ? 3 : 2.5;
     roundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
     ctx.stroke();
     ctx.restore();
@@ -430,42 +584,36 @@ export default function StoryStudioModal({
     const priceBoxH = 190;
     const priceBoxW = 900;
     const priceBoxX = (W - priceBoxW) / 2;
+    const priceBoxRadius = tpl.id === 'pure_magazine' ? 16 : 36;
 
     // Fondo del contenedor de precio
-    ctx.shadowColor = tpl.bgType === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowColor = tpl.bgType === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(0, 0, 0, 0.4)';
     ctx.shadowBlur = 30;
     ctx.shadowOffsetY = 10;
 
     const pBoxGrad = ctx.createLinearGradient(priceBoxX, priceBoxY, priceBoxX + priceBoxW, priceBoxY + priceBoxH);
-    if (tpl.id === 'orange_impact') {
-      pBoxGrad.addColorStop(0, '#1E2638');
-      pBoxGrad.addColorStop(1, '#111622');
-    } else if (tpl.id === 'minimal_clean') {
+    if (tpl.priceCardBg) {
+      pBoxGrad.addColorStop(0, tpl.priceCardBg);
+      pBoxGrad.addColorStop(1, tpl.priceCardBg);
+    } else if (tpl.bgType === 'light') {
       pBoxGrad.addColorStop(0, '#FFFFFF');
       pBoxGrad.addColorStop(1, '#F8FAFC');
-    } else if (tpl.id === 'cyber_neon') {
-      pBoxGrad.addColorStop(0, '#131438');
-      pBoxGrad.addColorStop(1, '#0C0D24');
-    } else if (tpl.id === 'luxury_gold') {
-      pBoxGrad.addColorStop(0, '#242018');
-      pBoxGrad.addColorStop(1, '#15130E');
     } else {
-      pBoxGrad.addColorStop(0, '#360D12');
-      pBoxGrad.addColorStop(1, '#1F060A');
+      pBoxGrad.addColorStop(0, '#1E2638');
+      pBoxGrad.addColorStop(1, '#111622');
     }
 
     ctx.fillStyle = pBoxGrad;
-    roundRect(ctx, priceBoxX, priceBoxY, priceBoxW, priceBoxH, 36);
+    roundRect(ctx, priceBoxX, priceBoxY, priceBoxW, priceBoxH, priceBoxRadius);
     ctx.fill();
 
     ctx.shadowColor = 'transparent';
     ctx.strokeStyle = tpl.cardBorder;
     ctx.lineWidth = 2.5;
-    roundRect(ctx, priceBoxX, priceBoxY, priceBoxW, priceBoxH, 36);
+    roundRect(ctx, priceBoxX, priceBoxY, priceBoxW, priceBoxH, priceBoxRadius);
     ctx.stroke();
 
     // Mostrar Precio Anterior tachado si está activado
-    let currentPriceX = W / 2;
     if (storyData.showOldPrice && storyData.oldPrice) {
       // Precio anterior
       ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -517,12 +665,12 @@ export default function StoryStudioModal({
         benefits.forEach((ben, idx) => {
           const px = priceBoxX + idx * (pillW + gap);
           // Fondo del pill
-          ctx.fillStyle = tpl.bgType === 'light' ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)';
+          ctx.fillStyle = tpl.bgType === 'light' ? (tpl.id === 'nordic_sand' ? '#EAE5DB' : '#E2E8F0') : 'rgba(255, 255, 255, 0.08)';
           roundRect(ctx, px, benY, pillW, pillH, 20);
           ctx.fill();
 
           // Texto
-          ctx.fillStyle = tpl.bgType === 'light' ? '#334155' : '#E2E8F0';
+          ctx.fillStyle = tpl.bgType === 'light' ? (tpl.textColor || '#334155') : '#E2E8F0';
           ctx.fillText(ben, px + pillW / 2, benY + pillH / 2);
         });
       }
@@ -535,22 +683,23 @@ export default function StoryStudioModal({
     const ctaH = 100;
     const ctaW = 900;
     const ctaX = (W - ctaW) / 2;
+    const ctaRadius = tpl.id === 'pure_magazine' ? 18 : 50;
 
     // Sombra del botón CTA
-    ctx.shadowColor = tpl.ctaBg;
-    ctx.shadowBlur = 32;
+    ctx.shadowColor = tpl.ctaBg.startsWith('#') ? tpl.ctaBg : tpl.primaryColor;
+    ctx.shadowBlur = tpl.bgType === 'light' ? 20 : 32;
     ctx.shadowOffsetY = 8;
 
     // Fondo del botón
     ctx.fillStyle = tpl.ctaBg;
-    roundRect(ctx, ctaX, ctaY, ctaW, ctaH, 50);
+    roundRect(ctx, ctaX, ctaY, ctaW, ctaH, ctaRadius);
     ctx.fill();
 
     // Borde brillante
     ctx.shadowColor = 'transparent';
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
     ctx.lineWidth = 3;
-    roundRect(ctx, ctaX, ctaY, ctaW, ctaH, 50);
+    roundRect(ctx, ctaX, ctaY, ctaW, ctaH, ctaRadius);
     ctx.stroke();
 
     // Texto del CTA
@@ -562,7 +711,7 @@ export default function StoryStudioModal({
 
     // Instrucción final inferior
     ctx.font = '500 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = tpl.bgType === 'light' ? '#64748B' : '#64748B';
+    ctx.fillStyle = tpl.bgType === 'light' ? (tpl.textMuted || '#64748B') : '#64748B';
     ctx.textAlign = 'center';
     ctx.fillText('👆 Responde a esta historia para chatear con un asesor', W / 2, 1740);
 
@@ -778,35 +927,70 @@ export default function StoryStudioModal({
               </div>
             )}
 
-            {/* 2. PLANTILLAS DE DISEÑO */}
-            <div className="space-y-2">
-              <label className="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <Palette size={14} className="text-[#FF6B00]" /> 2. Estilo y Plantilla Visual:
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {TEMPLATES.map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setSelectedTemplate(t.id)}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                      selectedTemplate === t.id
-                        ? 'border-[#FF6B00] bg-orange-500/10 ring-2 ring-orange-500/30'
-                        : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span>{t.name}</span>
-                      </p>
-                      <span className="text-[10px] text-slate-400 font-medium">{t.badge}</span>
-                    </div>
-                    <div className="flex gap-1">
-                      <span className="h-4 w-4 rounded-full border border-white/20" style={{ background: t.primaryColor }} />
-                      <span className="h-4 w-4 rounded-full border border-white/20" style={{ background: t.darkBg }} />
-                    </div>
-                  </button>
-                ))}
+            {/* 2. PLANTILLAS DE DISEÑO CON FILTRO DE ESTILO */}
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Palette size={14} className="text-[#FF6B00]" /> 2. Estilos y Plantillas Visuales:
+                </label>
+                
+                {/* Filtros de Categoría */}
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  {[
+                    { id: 'todos', label: 'Todos' },
+                    { id: 'minimal', label: '🌿 Minimalistas' },
+                    { id: 'dark', label: '🖤 Dark' },
+                    { id: 'ofertas', label: '🔥 Ofertas' },
+                    { id: 'premium', label: '💎 Lujo' }
+                  ].map(cat => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setTemplateCategory(cat.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                        templateCategory === cat.id
+                          ? 'bg-[#FF6B00] text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
+                {TEMPLATES.filter(t => templateCategory === 'todos' || t.category === templateCategory).map(t => {
+                  const isSelected = selectedTemplate === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTemplate(t.id);
+                        if (t.accentBadge) {
+                          setStoryData(prev => ({ ...prev, badgeText: t.accentBadge }));
+                        }
+                      }}
+                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                        isSelected
+                          ? 'border-[#FF6B00] bg-orange-500/10 ring-2 ring-orange-500/30 shadow-md'
+                          : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-900/60'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-black text-white truncate flex items-center gap-1.5">
+                          <span>{t.name}</span>
+                        </p>
+                        <span className="text-[10px] text-slate-400 font-medium block truncate">{t.badge}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="h-4 w-4 rounded-full border border-white/20 shadow-xs" style={{ background: t.primaryColor }} title="Color primario" />
+                        <span className="h-4 w-4 rounded-full border border-white/20 shadow-xs" style={{ background: t.darkBg }} title="Fondo" />
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
