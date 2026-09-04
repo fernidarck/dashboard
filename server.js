@@ -921,7 +921,18 @@ app.get('/api/leads', async (req, res) => {
         query += ` AND (LOWER(l.origen) LIKE '%whatsapp%' OR l.origen = 'Manual' OR l.origen IS NULL)`;
       } else {
         const cleanChan = String(activeChannelPhone).replace(/\D/g, '');
-        if (cleanChan) {
+        if (cleanChan.includes('59658803')) {
+          // Canal Principal OneControl: incluye WhatsApp 59658803, Instagram Direct, Facebook Messenger y Web
+          query += ` AND (
+            REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?
+            OR l.channel_phone IS NULL
+            OR LOWER(l.origen) LIKE '%instagram%'
+            OR LOWER(l.origen) LIKE '%facebook%'
+            OR LOWER(l.origen) LIKE '%web%'
+            OR (l.origen = 'Manual' AND (l.channel_phone IS NULL OR l.channel_phone = ''))
+          )`;
+          params.push(cleanChan);
+        } else if (cleanChan) {
           query += ` AND REPLACE(REPLACE(REPLACE(l.channel_phone, '+', ''), ' ', ''), '-', '') = ?`;
           params.push(cleanChan);
         }
