@@ -30,6 +30,9 @@ export default function ViewEntrenamiento({
   const [formData, setFormData] = useState({
     type: 'permitido',
     title: '',
+    what_learned: '',
+    what_not_to_say: '',
+    prompt_instruction: '',
     rule: '',
     example_question: '',
     example_response: '',
@@ -50,6 +53,9 @@ export default function ViewEntrenamiento({
     setFormData({
       type: 'permitido',
       title: '',
+      what_learned: '',
+      what_not_to_say: '',
+      prompt_instruction: '',
       rule: '',
       example_question: '',
       example_response: '',
@@ -63,6 +69,9 @@ export default function ViewEntrenamiento({
     setFormData({
       type: rule.type || 'permitido',
       title: rule.title || '',
+      what_learned: rule.what_learned || '',
+      what_not_to_say: rule.what_not_to_say || (rule.type === 'prohibido' ? rule.rule : ''),
+      prompt_instruction: rule.prompt_instruction || (rule.type !== 'prohibido' ? rule.rule : ''),
       rule: rule.rule || '',
       example_question: rule.example_question || '',
       example_response: rule.example_response || '',
@@ -73,12 +82,18 @@ export default function ViewEntrenamiento({
 
   const handleSubmitForm = async (e) => {
     e.preventDefault();
-    if (!formData.title.trim() || !formData.rule.trim()) return;
+    if (!formData.title.trim()) return;
+
+    // Fallback de rule para compatibilidad
+    const dataToSend = {
+      ...formData,
+      rule: formData.rule.trim() || formData.prompt_instruction.trim() || formData.what_not_to_say.trim() || formData.title.trim()
+    };
 
     if (editingRule) {
-      await onUpdateRule?.(editingRule.id, formData);
+      await onUpdateRule?.(editingRule.id, dataToSend);
     } else {
-      await onSaveRule?.(formData);
+      await onSaveRule?.(dataToSend);
     }
     setModalOpen(false);
   };
@@ -214,9 +229,9 @@ export default function ViewEntrenamiento({
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900">{pendingCount}</span>
-            <span className="text-xs font-semibold text-amber-600">sugerencias</span>
+            <span className="text-xs font-semibold text-amber-600">lecciones</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-500">Lecciones detectadas por la IA esperando tu aprobación.</p>
+          <p className="mt-1 text-[11px] text-slate-500">Situaciones detectadas en chats esperando tu aprobación.</p>
         </div>
 
         <div
@@ -228,14 +243,14 @@ export default function ViewEntrenamiento({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-rose-700">Reglas Prohibidas</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-rose-700">Qué NO decir (Prohibido)</span>
             <div className="p-2 rounded-xl bg-rose-100/80 text-rose-600"><ShieldAlert size={16} /></div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900">{trainingStats.prohibidas || 0}</span>
-            <span className="text-xs font-semibold text-rose-600">activas</span>
+            <span className="text-xs font-semibold text-rose-600">reglas</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-500">Lo que el bot tiene estrictamente PROHIBIDO decir.</p>
+          <p className="mt-1 text-[11px] text-slate-500">Restricciones estrictas de lo que el bot NO debe decir.</p>
         </div>
 
         <div
@@ -247,14 +262,14 @@ export default function ViewEntrenamiento({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Guías Aprobadas</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Qué SÍ decir (Prompts)</span>
             <div className="p-2 rounded-xl bg-emerald-100/80 text-emerald-600"><CheckCircle2 size={16} /></div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900">{trainingStats.permitidas || 0}</span>
-            <span className="text-xs font-semibold text-emerald-600">activas</span>
+            <span className="text-xs font-semibold text-emerald-600">activos</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-500">Respuestas ideales y guías que el bot aplica en vivo.</p>
+          <p className="mt-1 text-[11px] text-slate-500">Nuevos prompts e instrucciones que la IA aplica en vivo.</p>
         </div>
 
         <div
@@ -266,14 +281,14 @@ export default function ViewEntrenamiento({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-purple-700">Simulador</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-purple-700">Simulador en Vivo</span>
             <div className="p-2 rounded-xl bg-purple-100/80 text-purple-600"><Zap size={16} /></div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900">{approvedCount}</span>
-            <span className="text-xs font-semibold text-purple-600">en vivo</span>
+            <span className="text-xs font-semibold text-purple-600">reglas activas</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-500">Probá cómo responde la IA aplicando las reglas.</p>
+          <p className="mt-1 text-[11px] text-slate-500">Probá cómo responde la IA aplicando todas las reglas.</p>
         </div>
       </div>
 
@@ -555,77 +570,117 @@ export default function ViewEntrenamiento({
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {filteredRules.map((rule) => (
                 <div
                   key={rule.id}
-                  className={`bg-white rounded-3xl p-5 border transition-all flex flex-col justify-between space-y-4 ${
+                  className={`bg-white rounded-3xl p-6 border transition-all flex flex-col justify-between space-y-5 shadow-xs hover:shadow-md ${
                     rule.status === 'pending'
-                      ? 'border-amber-200/80 shadow-sm ring-1 ring-amber-400/20'
+                      ? 'border-amber-300 ring-2 ring-amber-400/20 bg-amber-50/10'
                       : rule.type === 'prohibido'
-                      ? 'border-rose-100 hover:border-rose-200'
-                      : 'border-slate-200/80 hover:border-slate-300'
+                      ? 'border-rose-200/90 hover:border-rose-300'
+                      : 'border-slate-200/90 hover:border-slate-300'
                   }`}
                 >
-                  <div className="space-y-3">
-                    {/* Badge and Status */}
-                    <div className="flex items-center justify-between">
+                  <div className="space-y-4">
+                    {/* Header: Badge & Status */}
+                    <div className="flex items-center justify-between gap-2">
                       {getTypeBadge(rule.type)}
-                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                        rule.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : rule.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                        rule.status === 'approved'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : rule.status === 'pending'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
+                          : 'bg-slate-100 text-slate-500 border-slate-200'
                       }`}>
-                        {rule.status === 'approved' ? 'Activa en vivo' : rule.status === 'pending' ? 'Pendiente' : 'Descartada'}
+                        {rule.status === 'approved' ? '✅ Activa en vivo' : rule.status === 'pending' ? '⏳ Sugerencia Pendiente' : '⏸️ Pausada'}
                       </span>
                     </div>
 
-                    {/* Title and Rule Description */}
+                    {/* Título */}
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900 leading-snug">{rule.title}</h4>
-                      <p className="mt-1.5 text-xs text-slate-700 font-medium leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        {rule.rule}
-                      </p>
+                      <h4 className="text-base font-black text-slate-900 leading-snug">{rule.title}</h4>
                     </div>
 
-                    {/* Example Question / Response */}
+                    {/* BLOQUE 1: 🎯 ¿QUÉ APRENDIÓ LA IA? */}
+                    {(rule.what_learned || rule.source_context) && (
+                      <div className="p-3.5 bg-blue-50/70 border border-blue-100/90 rounded-2xl space-y-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-blue-700">
+                          <span>🎯</span> ¿Qué aprendió la IA en esta situación?
+                        </div>
+                        <p className="text-xs text-blue-950 font-medium leading-relaxed">
+                          {rule.what_learned || rule.source_context}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* BLOQUE 2: ⛔ QUÉ NO DEBE DECIR */}
+                    {(rule.what_not_to_say || rule.type === 'prohibido') && (
+                      <div className="p-3.5 bg-rose-50/80 border border-rose-200/80 rounded-2xl space-y-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-rose-700">
+                          <ShieldAlert size={13} /> ⛔ Lo que NO debe decir (Regla Prohibida):
+                        </div>
+                        <p className="text-xs text-rose-950 font-bold leading-relaxed">
+                          {rule.what_not_to_say || rule.rule}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* BLOQUE 3: ✨ QUÉ SÍ DEBE RESPONDER / NUEVO PROMPT */}
+                    {(rule.prompt_instruction || rule.type !== 'prohibido') && (
+                      <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                          <Sparkles size={13} /> ✨ Nuevo Prompt / Lo que SÍ debe responder:
+                        </div>
+                        <p className="text-xs text-emerald-950 font-medium leading-relaxed">
+                          {rule.prompt_instruction || rule.rule}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* BLOQUE 4: 💬 PREGUNTA Y RESPUESTA DE EJEMPLO */}
                     {(rule.example_question || rule.example_response) && (
-                      <div className="space-y-1.5 text-[11px]">
+                      <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                          💬 Ejemplo en Chat:
+                        </span>
                         {rule.example_question && (
-                          <div className="flex items-start gap-1.5 text-slate-600">
-                            <span className="font-bold text-slate-400 shrink-0">❓ Cliente:</span>
-                            <span className="italic text-slate-700">"{rule.example_question}"</span>
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="font-bold text-slate-400 shrink-0">👤 Cliente:</span>
+                            <span className="italic text-slate-700 font-medium">"{rule.example_question}"</span>
                           </div>
                         )}
                         {rule.example_response && (
-                          <div className="flex items-start gap-1.5 text-slate-600">
-                            <span className="font-bold text-emerald-600 shrink-0">💬 Respuesta:</span>
-                            <span className="text-slate-800">"{rule.example_response}"</span>
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="font-bold text-[#FF6B00] shrink-0">🤖 Bot / Asesor:</span>
+                            <span className="text-slate-900 font-semibold">"{rule.example_response}"</span>
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Source Context */}
-                    {rule.source_context && (
-                      <div className="text-[10px] text-slate-400 flex items-center gap-1.5 pt-1 border-t border-slate-50">
-                        <BookOpen size={11} className="text-slate-400" />
+                    {/* Contexto de origen */}
+                    {rule.source_context && !rule.what_learned && (
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                        <BookOpen size={11} className="text-slate-400 shrink-0" />
                         <span className="truncate">{rule.source_context}</span>
                       </div>
                     )}
                   </div>
 
                   {/* Actions */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="pt-3.5 border-t border-slate-100 flex items-center justify-between gap-2">
                     <div className="flex items-center space-x-1">
                       <button
                         onClick={() => handleOpenEditModal(rule)}
-                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-colors"
+                        className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                         title="Editar regla"
                       >
                         <Edit3 size={15} />
                       </button>
                       <button
                         onClick={() => onDeleteRule?.(rule.id)}
-                        className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                        className="p-2 hover:bg-rose-50 rounded-xl text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                         title="Eliminar regla"
                       >
                         <Trash2 size={15} />
@@ -637,30 +692,30 @@ export default function ViewEntrenamiento({
                         <>
                           <button
                             onClick={() => onRejectRule?.(rule.id)}
-                            className="px-3 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-xs rounded-xl transition-colors flex items-center space-x-1 cursor-pointer"
+                            className="px-3.5 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-xs rounded-xl transition-colors flex items-center space-x-1.5 cursor-pointer"
                           >
                             <X size={14} />
                             <span>Descartar</span>
                           </button>
                           <button
                             onClick={() => onApproveRule?.(rule.id)}
-                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm hover:shadow transition-all flex items-center space-x-1 cursor-pointer"
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md hover:shadow-lg transition-all flex items-center space-x-1.5 cursor-pointer"
                           >
                             <Check size={14} />
-                            <span>Aprobar</span>
+                            <span>Aprobar Regla</span>
                           </button>
                         </>
                       ) : rule.status === 'approved' ? (
                         <button
                           onClick={() => onRejectRule?.(rule.id)}
-                          className="px-3 py-1 bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700 font-bold text-[11px] rounded-xl transition-colors cursor-pointer"
+                          className="px-3.5 py-1.5 bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                         >
                           Pausar
                         </button>
                       ) : (
                         <button
                           onClick={() => onApproveRule?.(rule.id)}
-                          className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] rounded-xl transition-colors cursor-pointer"
+                          className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                         >
                           Reactivar
                         </button>
@@ -674,44 +729,50 @@ export default function ViewEntrenamiento({
         </div>
       )}
 
-      {/* Modal: Crear / Editar Regla */}
+      {/* Modal: Crear / Editar Regla Estructurada */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 animate-scaleUp space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center space-x-2">
-                <div className="p-2 bg-orange-50 text-[#FF6B00] rounded-xl">
-                  <GraduationCap size={18} />
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 animate-scaleUp space-y-6 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-orange-100 text-[#FF6B00] rounded-2xl">
+                  <GraduationCap size={22} />
                 </div>
-                <h3 className="text-base font-black text-slate-900">
-                  {editingRule ? 'Editar Regla de Entrenamiento' : 'Nueva Regla de Entrenamiento'}
-                </h3>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    {editingRule ? 'Editar Regla de Aprendizaje' : 'Nueva Regla de Aprendizaje IA'}
+                  </h3>
+                  <p className="text-xs text-slate-400">Estructura qué aprendió el bot, qué tiene prohibido decir y el nuevo prompt.</p>
+                </div>
               </div>
               <button
                 onClick={() => setModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleSubmitForm} className="space-y-4">
+              {/* 1. Tipo de Regla */}
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Tipo de Regla:</label>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                  1. Tipo de Regla:
+                </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { id: 'permitido', label: '✅ Permitido', desc: 'Guía de respuesta' },
                     { id: 'prohibido', label: '⛔ Prohibido', desc: 'Qué NO decir' },
-                    { id: 'faq',       label: '💡 FAQ',       desc: 'Pregunta fija' },
-                    { id: 'objecion',  label: '🎯 Objeción',  desc: 'Precio / Envíos' }
+                    { id: 'objecion',  label: '🎯 Objeción',  desc: 'Precios / Descuentos' },
+                    { id: 'faq',       label: '💡 FAQ',       desc: 'Pregunta fija' }
                   ].map((t) => (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => setFormData({ ...formData, type: t.id })}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer ${
                         formData.type === t.id
-                          ? 'border-[#FF6B00] bg-orange-50/40 text-slate-900 ring-1 ring-[#FF6B00]'
+                          ? 'border-[#FF6B00] bg-orange-50/50 text-slate-900 ring-2 ring-orange-200'
                           : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                       }`}
                     >
@@ -722,73 +783,105 @@ export default function ViewEntrenamiento({
                 </div>
               </div>
 
+              {/* 2. Título */}
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Título / Tema:</label>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
+                  2. Título o Tema del Aprendizaje:
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Aclarar precio por unidad en mesas de noche"
+                  placeholder="Ej: Aclarar precio por unidad vs par en mesas de noche"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FF6B00]"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FF6B00]"
                 />
               </div>
 
+              {/* 3. ¿Qué aprendió la IA? */}
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
-                  Regla o Instrucción Exacta para el Bot:
+                <label className="block text-[10px] font-black uppercase tracking-widest text-blue-700 mb-1 flex items-center gap-1">
+                  <span>🎯</span> 3. ¿Qué aprendió la IA en esta situación? (Contexto o error detectado):
                 </label>
                 <textarea
-                  rows={3}
-                  required
-                  placeholder={formData.type === 'prohibido' ? 'PROHIBIDO decir que... Siempre aclarar que...' : 'Cuando el cliente pregunte sobre X, responder siempre con...'}
-                  value={formData.rule}
-                  onChange={(e) => setFormData({ ...formData, rule: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FF6B00] resize-none"
+                  rows={2}
+                  placeholder="Ej: Los clientes confunden la foto doble y asumen que Q550 es el precio por las dos mesas."
+                  value={formData.what_learned}
+                  onChange={(e) => setFormData({ ...formData, what_learned: e.target.value })}
+                  className="w-full p-3 bg-blue-50/30 border border-blue-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 4. ¿Qué NO debe decir? (Regla Prohibida) */}
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-rose-700 mb-1 flex items-center gap-1">
+                  <ShieldAlert size={12} /> 4. ¿Qué NO debe decir el Bot? (Regla Prohibida):
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ej: PROHIBIDO decir que Q550 es el par. NO omitir el precio del par cuando pregunten por dos unidades."
+                  value={formData.what_not_to_say}
+                  onChange={(e) => setFormData({ ...formData, what_not_to_say: e.target.value })}
+                  className="w-full p-3 bg-rose-50/30 border border-rose-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 resize-none"
+                />
+              </div>
+
+              {/* 5. ¿Qué SÍ debe responder? (Nuevo Prompt) */}
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-1 flex items-center gap-1">
+                  <Sparkles size={12} /> 5. ¿Qué SÍ debe responder? (Nuevo Prompt / Instrucción exacta):
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ej: Aclarar siempre: 'El precio es de Q550 por unidad (1 mesita); si deseas el par completo te queda en Q1,100 con envío gratis.'"
+                  value={formData.prompt_instruction}
+                  onChange={(e) => setFormData({ ...formData, prompt_instruction: e.target.value })}
+                  className="w-full p-3 bg-emerald-50/30 border border-emerald-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 resize-none"
+                />
+              </div>
+
+              {/* 6. Ejemplo en Chat */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
-                    Ejemplo de Consulta del Cliente (Opcional):
+                    6. Pregunta de Ejemplo del Cliente:
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej: ¿Cuánto sale el par?"
+                    placeholder="Ej: ¿El precio de Q550 es por las dos mesas?"
                     value={formData.example_question}
                     onChange={(e) => setFormData({ ...formData, example_question: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FF6B00]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FF6B00]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
-                    Ejemplo de Respuesta Recomendada (Opcional):
+                    7. Respuesta Modelo del Bot:
                   </label>
                   <input
                     type="text"
                     placeholder="Ej: El precio es Q550 por unidad; el par le queda en Q1,100."
                     value={formData.example_response}
                     onChange={(e) => setFormData({ ...formData, example_response: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FF6B00]"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FF6B00]"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end space-x-2 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#FF6B00] hover:bg-[#e56000] text-white font-bold text-xs rounded-xl shadow-lg shadow-orange-500/20 transition-all cursor-pointer"
+                  className="px-6 py-2.5 bg-[#FF6B00] hover:bg-[#e56000] text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-orange-500/20 transition-all cursor-pointer"
                 >
-                  {editingRule ? 'Guardar Cambios' : 'Crear Regla'}
+                  {editingRule ? 'Guardar Cambios' : 'Crear Regla de Aprendizaje'}
                 </button>
               </div>
             </form>

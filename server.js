@@ -438,6 +438,9 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN whatsapp_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN reglas_bot TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_learned TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_not_to_say TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE training_rules ADD COLUMN prompt_instruction TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes_meta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagenes TEXT"); } catch(e){}
@@ -1743,20 +1746,24 @@ app.get('/api/settings', async (req, res) => {
       try {
         const approvedRules = await db.all("SELECT * FROM training_rules WHERE status = 'approved' ORDER BY id ASC");
         if (approvedRules.length > 0) {
-          const prohibidas = approvedRules.filter(r => r.type === 'prohibido');
+          const prohibidas = approvedRules.filter(r => r.type === 'prohibido' || r.what_not_to_say);
           const permitidas = approvedRules.filter(r => r.type !== 'prohibido');
 
-          let trainingSection = "\n\n🧠 REGLAS DE ENTRENAMIENTO APRENDIDAS (MÁXIMA PRIORIDAD):\n";
+          let trainingSection = "\n\n🧠 REGLAS DE ENTRENAMIENTO Y APRENDIZAJE SUPERVISADO (MÁXIMA PRIORIDAD):\n";
           if (prohibidas.length > 0) {
-            trainingSection += "⛔ LO QUE ESTÁ PROHIBIDO (NO HACER / NO DECIR):\n";
+            trainingSection += "⛔ LO QUE TIENES ESTRICTAMENTE PROHIBIDO (NO DECIR / NO ASUMIR):\n";
             prohibidas.forEach(r => {
-              trainingSection += `- 🚫 ${r.title}: ${r.rule}${r.example_question ? ` (Si el cliente dice: "${r.example_question}")` : ''}\n`;
+              const noSay = r.what_not_to_say || r.rule;
+              const promptInst = r.prompt_instruction ? ` 👉 EN SU LUGAR DECIR: ${r.prompt_instruction}` : '';
+              trainingSection += `- 🚫 ${r.title}: PROHIBIDO: "${noSay}".${promptInst}${r.example_question ? ` (Si el cliente dice: "${r.example_question}")` : ''}\n`;
             });
           }
           if (permitidas.length > 0) {
-            trainingSection += "\n✅ GUÍAS Y RESPUESTAS APROBADAS:\n";
+            trainingSection += "\n✅ NUEVOS PROMPTS Y GUÍAS DE RESPUESTA APROBADAS:\n";
             permitidas.forEach(r => {
-              trainingSection += `- ✨ ${r.title}: ${r.rule}${r.example_question ? ` (Pregunta: "${r.example_question}" → Respuesta: "${r.example_response || r.rule}")` : ''}\n`;
+              const promptInst = r.prompt_instruction || r.rule;
+              const learned = r.what_learned ? ` [Contexto/Lección: ${r.what_learned}]` : '';
+              trainingSection += `- ✨ ${r.title}: ${promptInst}${learned}${r.example_question ? ` (Si pregunta: "${r.example_question}" → Decir: "${r.example_response || promptInst}")` : ''}\n`;
             });
           }
 
@@ -3103,16 +3110,29 @@ app.get('/api/training/stats', async (_req, res) => {
 // 3. Crear regla de entrenamiento manual
 app.post('/api/training/rules', async (req, res) => {
   try {
-    const { type, title, rule, example_question, example_response, source_lead_id, source_context, status } = req.body;
-    if (!title || !rule) return res.status(400).json({ error: "Título y regla son requeridos" });
+    const {
+      type, title, rule,
+      what_learned, what_not_to_say, prompt_instruction,
+      example_question, example_response,
+      source_lead_id, source_context, status
+    } = req.body;
+
+    if (!title || (!rule && !prompt_instruction && !what_not_to_say)) {
+      return res.status(400).json({ error: "Título e instrucciones de regla son requeridos" });
+    }
 
     const finalStatus = status || 'approved';
     const finalType = type || 'permitido';
+    const finalRule = rule || prompt_instruction || what_not_to_say || title;
 
     const result = await db.run(
-      `INSERT INTO training_rules (type, title, rule, example_question, example_response, source_lead_id, source_context, status, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-      finalType, title, rule, example_question || null, example_response || null,
+      `INSERT INTO training_rules (
+        type, title, rule, what_learned, what_not_to_say, prompt_instruction,
+        example_question, example_response, source_lead_id, source_context, status, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      finalType, title, finalRule,
+      what_learned || null, what_not_to_say || null, prompt_instruction || null,
+      example_question || null, example_response || null,
       source_lead_id || null, source_context || 'Creado manualmente', finalStatus
     );
 
@@ -3125,20 +3145,32 @@ app.post('/api/training/rules', async (req, res) => {
 // 4. Actualizar o aprobar/rechazar regla
 app.put('/api/training/rules/:id', async (req, res) => {
   try {
-    const { type, title, rule, example_question, example_response, status } = req.body;
+    const {
+      type, title, rule,
+      what_learned, what_not_to_say, prompt_instruction,
+      example_question, example_response, status
+    } = req.body;
+
     const existing = await db.get("SELECT * FROM training_rules WHERE id = ?", req.params.id);
     if (!existing) return res.status(404).json({ error: "Regla no encontrada" });
 
-    const newType = type || existing.type;
-    const newTitle = title || existing.title;
-    const newRule = rule || existing.rule;
+    const newType = type !== undefined ? type : existing.type;
+    const newTitle = title !== undefined ? title : existing.title;
+    const newRule = rule !== undefined ? rule : (prompt_instruction || existing.rule);
+    const newWhatLearned = what_learned !== undefined ? what_learned : existing.what_learned;
+    const newWhatNotToSay = what_not_to_say !== undefined ? what_not_to_say : existing.what_not_to_say;
+    const newPromptInstruction = prompt_instruction !== undefined ? prompt_instruction : existing.prompt_instruction;
     const newQ = example_question !== undefined ? example_question : existing.example_question;
     const newR = example_response !== undefined ? example_response : existing.example_response;
-    const newStatus = status || existing.status;
+    const newStatus = status !== undefined ? status : existing.status;
 
     await db.run(
-      `UPDATE training_rules SET type=?, title=?, rule=?, example_question=?, example_response=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-      newType, newTitle, newRule, newQ, newR, newStatus, req.params.id
+      `UPDATE training_rules SET
+        type=?, title=?, rule=?, what_learned=?, what_not_to_say=?, prompt_instruction=?,
+        example_question=?, example_response=?, status=?, updated_at=CURRENT_TIMESTAMP
+       WHERE id=?`,
+      newType, newTitle, newRule, newWhatLearned, newWhatNotToSay, newPromptInstruction,
+      newQ, newR, newStatus, req.params.id
     );
 
     res.json({ success: true });
@@ -3157,7 +3189,7 @@ app.delete('/api/training/rules/:id', async (req, res) => {
   }
 });
 
-// 6. Analizador de Conversaciones con IA (Auto-aprendizaje)
+// 6. Analizador de Conversaciones con IA (Auto-aprendizaje Estructurado)
 app.post('/api/training/analyze', async (_req, res) => {
   try {
     // Traer los últimos 200 mensajes agrupados por lead
@@ -3181,9 +3213,8 @@ app.post('/api/training/analyze', async (_req, res) => {
       const messages = group.messages;
       const clientMsgs = messages.filter(m => m.sender === 'client');
       const agentMsgs = messages.filter(m => m.sender === 'agent');
-      const botMsgs = messages.filter(m => m.sender === 'bot');
 
-      // Patrón 1: El agente humano intervino para dar una aclaración o cerrar venta
+      // Patrón 1: El asesor humano intervino para dar una aclaración de experto
       if (agentMsgs.length > 0 && clientMsgs.length > 0) {
         const lastClient = clientMsgs[clientMsgs.length - 1];
         const lastAgent = agentMsgs[agentMsgs.length - 1];
@@ -3191,70 +3222,113 @@ app.post('/api/training/analyze', async (_req, res) => {
         const tAgent = lastAgent.text || '';
 
         if (tAgent.length > 15 && !tAgent.toLowerCase().includes('hola') && tAgent.length < 400) {
-          let tema = 'Respuesta de asesor';
-          let tipo = 'permitido';
-          if (tClient.includes('precio') || tClient.includes('cuanto') || tClient.includes('costo')) tema = 'Cotización / Precios';
-          else if (tClient.includes('envio') || tClient.includes('zona') || tClient.includes('departamento')) tema = 'Política de Envíos';
-          else if (tClient.includes('medida') || tClient.includes('mide') || tClient.includes('alto') || tClient.includes('ancho')) tema = 'Medidas y Especificaciones';
-          else if (tClient.includes('armad') || tClient.includes('caja')) tema = 'Entrega y Armado';
+          let tema = 'Respuesta de asesor humano';
+          let whatLearned = `El asesor intervino para responder con precisión al cliente ${group.lead.nombre || group.lead.phone}.`;
+          let whatNotToSay = `NO dejar la pregunta sin respuesta técnica ni dar información genérica.`;
+          let promptInst = `Responder con la estructura probada por el asesor: "${tAgent.slice(0, 250)}"`;
+
+          if (tClient.includes('precio') || tClient.includes('cuanto') || tClient.includes('costo')) {
+            tema = 'Cotización y Precios Claros';
+            whatLearned = 'El cliente requería conocer el precio exacto y qué incluye.';
+            whatNotToSay = 'NO dar precios sin especificar la moneda (Quetzales) ni omitir si incluye impuestos o accesorios.';
+            promptInst = `Indicar el precio exacto y detallar lo que incluye: "${tAgent.slice(0, 200)}"`;
+          } else if (tClient.includes('envio') || tClient.includes('zona') || tClient.includes('departamento')) {
+            tema = 'Cobertura y Costo de Envíos';
+            whatLearned = 'El cliente consultó sobre envíos a su municipio o departamento.';
+            whatNotToSay = 'NO prometer envío gratis a zonas no cubiertas sin verificar antes.';
+            promptInst = `Consultar la zona o municipio exacto y confirmar tiempo de entrega: "${tAgent.slice(0, 200)}"`;
+          } else if (tClient.includes('medida') || tClient.includes('mide') || tClient.includes('alto') || tClient.includes('ancho')) {
+            tema = 'Medidas y Especificaciones Técnicas';
+            whatLearned = 'El cliente necesita saber las dimensiones exactas antes de comprar.';
+            whatNotToSay = 'NO inventar medidas ni suponer dimensiones sin consultar el catálogo.';
+            promptInst = `Dar las medidas exactas en centímetros (Alto x Ancho x Fondo).`;
+          } else if (tClient.includes('armad') || tClient.includes('caja')) {
+            tema = 'Entrega Armada sin Costo Adicional';
+            whatLearned = 'Los clientes dudan si deben armar el mueble o contratar a alguien.';
+            whatNotToSay = 'PROHIBIDO decir que los muebles vienen desarmados o en piezas.';
+            promptInst = `Aclarar enfáticamente que todos los muebles se entregan 100% armados y listos para usar.`;
+          }
 
           suggestions.push({
-            type: tipo,
-            title: `Respuesta recomendada en: ${tema}`,
-            rule: `Cuando el cliente pregunte sobre ${tema.toLowerCase()}, responder con la siguiente estructura: "${tAgent.slice(0, 200)}"`,
+            type: 'permitido',
+            title: `Lección: ${tema}`,
+            what_learned: whatLearned,
+            what_not_to_say: whatNotToSay,
+            prompt_instruction: promptInst,
+            rule: promptInst,
             example_question: lastClient.text?.slice(0, 150) || '',
             example_response: tAgent.slice(0, 250),
             source_lead_id: Number(leadId),
-            source_context: `Aprendido de la respuesta enviada por un asesor humano al cliente ${group.lead.nombre || group.lead.phone}.`
+            source_context: `Aprendido de la conversación con ${group.lead.nombre || group.lead.phone}.`
           });
         }
       }
 
-      // Patrón 2: Detección de Confusiones / Objeciones del Cliente (Reglas Prohibidas)
+      // Patrón 2: Detección de Confusiones / Objeciones / Lo que NO debe decir
       for (const cm of clientMsgs) {
         const txt = (cm.text || '').toLowerCase();
+
+        // 1. Confusión de precio por el par
         if (txt.includes('el par') || txt.includes('las dos') || txt.includes('los dos') || txt.includes('vienen dos')) {
           suggestions.push({
             type: 'prohibido',
-            title: 'No asumir que el precio es por el par de mesas',
-            rule: 'PROHIBIDO decir o dar a entender que Q550 es el precio por el par. Aclarar SIEMPRE que Q550 es por unidad (1 mesita) y el par sale en Q1,100.',
+            title: 'No asumir que el precio es por el par de muebles',
+            what_learned: 'Muchos clientes ven la foto con dos mesas y asumen que el precio publicado de Q550 es por ambas.',
+            what_not_to_say: 'PROHIBIDO decir o dejar que el cliente crea que Q550 es por el par.',
+            prompt_instruction: 'Aclarar SIEMPRE: "El precio es de Q550 por unidad (1 mesita); si desea el par completo le queda en Q1,100 con envío incluido."',
+            rule: 'PROHIBIDO decir que Q550 es por el par. Siempre aclarar que Q550 es por unidad y el par sale en Q1,100.',
             example_question: cm.text.slice(0, 150),
-            example_response: 'El precio es Q550 por unidad; el par le queda en Q1,100.',
+            example_response: 'El precio es de Q550 por unidad (1 mesita); el par completo le sale en Q1,100 con envío gratis.',
             source_lead_id: Number(leadId),
-            source_context: 'Cliente consultó si el precio publicado correspondía al par o por unidad.'
+            source_context: 'Detección automática de confusión de precios en catálogo.'
           });
         }
+
+        // 2. Duda de muebles desarmados
         if (txt.includes('desarmad') || txt.includes('para armar') || txt.includes('vienen armadas')) {
           suggestions.push({
             type: 'prohibido',
             title: 'No decir que los muebles vienen desarmados',
-            rule: 'PROHIBIDO decir que los muebles o mesas vienen desarmados en caja. Todos los muebles de OneControl se entregan completamente armados y listos para usar.',
+            what_learned: 'Clientes temen recibir cajas con tornillos difíciles de armar.',
+            what_not_to_say: 'PROHIBIDO decir que vienen desarmados o que el cliente debe armarlos.',
+            prompt_instruction: 'Responder con tranquilidad que todos los muebles de OneControl se entregan 100% armados, embalados y listos para usar.',
+            rule: 'PROHIBIDO decir que vienen desarmados. Se entregan completamente armados y listos para usar.',
             example_question: cm.text.slice(0, 150),
-            example_response: 'Vienen completamente armadas y listas para usar.',
+            example_response: 'Se entregan completamente armadas y listas para usar, no tiene que armar nada.',
             source_lead_id: Number(leadId),
-            source_context: 'Duda frecuente de clientes sobre el armado de muebles.'
+            source_context: 'Pregunta recurrente sobre armado de producto.'
           });
         }
+
+        // 3. Manejo de solicitud de rebaja o descuento
         if (txt.includes('descuento') || txt.includes('menos') || txt.includes('rebaja') || txt.includes('ultimo precio') || txt.includes('lo menos')) {
           suggestions.push({
             type: 'objecion',
-            title: 'Manejo de solicitud de descuento',
-            rule: 'No prometer descuentos directos sin autorización. Explicar que el precio es fijo con excelente calidad, o tomar datos para que el asesor evalúe promociones por volumen.',
+            title: 'Manejo de objeción: Solicitud de descuento',
+            what_learned: 'El cliente busca rebaja antes de comprometerse a comprar.',
+            what_not_to_say: 'NO prometer descuentos no autorizados ni rechazar al cliente de forma cortante.',
+            prompt_instruction: 'Explicar el valor de la melamina y calidad, y ofrecer que si lleva 2 o más unidades un asesor le revisará una atención especial.',
+            rule: 'No prometer descuentos directos sin autorización. Explicar la alta calidad o consultar con asesor por compras de 2 o más unidades.',
             example_question: cm.text.slice(0, 150),
-            example_response: 'Nuestros precios ya incluyen la mejor calidad de melamina. Si llevás más de una unidad, con gusto le pido al asesor que te revise una opción especial.',
+            example_response: 'Nuestros precios ya incluyen la mejor calidad de melamina y armado. Si te interesan 2 o más unidades, con gusto le pido a nuestro asesor una opción especial.',
             source_lead_id: Number(leadId),
-            source_context: 'Solicitud de descuento detectada en conversación.'
+            source_context: 'Negociación de precio detectada en chat.'
           });
         }
+
+        // 4. Trato respetuoso neutro
         if (txt.includes('señor') || txt.includes('señora') || txt.includes('doña') || txt.includes('don')) {
           suggestions.push({
             type: 'prohibido',
-            title: 'Trato respetuoso neutro (Evitar señor/señora)',
-            rule: 'PROHIBIDO usar "señor" o "señora" si no se conoce con certeza. Tratar siempre de "usted" neutro utilizando el nombre del cliente.',
+            title: 'Trato personalizado respetuoso (Evitar asumir género)',
+            what_learned: 'Asumir señor/señora puede generar incomodidad si el perfil no lo especifica.',
+            what_not_to_say: 'PROHIBIDO usar títulos como "señora" o "señor" sin confirmación.',
+            prompt_instruction: 'Tratar de usted de forma cálida y profesional utilizando el nombre del cliente.',
+            rule: 'PROHIBIDO usar señor/señora si no se conoce con certeza. Tratar con el nombre propio del cliente de forma respetuosa.',
             example_question: cm.text.slice(0, 150),
-            example_response: '¡Con mucho gusto! ¿En qué modelo le puedo apoyar?',
+            example_response: '¡Con mucho gusto! ¿En qué le puedo apoyar hoy?',
             source_lead_id: Number(leadId),
-            source_context: 'Regla de tono de comunicación con clientes.'
+            source_context: 'Protocolo de cortesía y atención.'
           });
         }
       }
@@ -3269,9 +3343,12 @@ app.post('/api/training/analyze', async (_req, res) => {
       );
       if (!existing) {
         await db.run(
-          `INSERT INTO training_rules (type, title, rule, example_question, example_response, source_lead_id, source_context, status, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)`,
-          s.type, s.title, s.rule, s.example_question, s.example_response, s.source_lead_id, s.source_context
+          `INSERT INTO training_rules (
+            type, title, rule, what_learned, what_not_to_say, prompt_instruction,
+            example_question, example_response, source_lead_id, source_context, status, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)`,
+          s.type, s.title, s.rule, s.what_learned || null, s.what_not_to_say || null, s.prompt_instruction || null,
+          s.example_question, s.example_response, s.source_lead_id, s.source_context
         );
         nuevas++;
       }
