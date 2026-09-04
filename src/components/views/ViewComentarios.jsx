@@ -3,8 +3,10 @@ import {
   Send, AlertTriangle, RefreshCw, MessageCircle, Heart, Users,
   ExternalLink, Sparkles, Bot, Settings, ShieldCheck, CheckCircle2,
   Video, Image as ImageIcon, Eye, Check, Globe, Calendar, Clock,
-  Plus, Trash2, ArrowRight, Share2, UploadCloud, TrendingUp, UserPlus
+  Plus, Trash2, ArrowRight, Share2, UploadCloud, TrendingUp, UserPlus,
+  Wand2, Palette
 } from 'lucide-react';
+import StoryStudioModal from '../StoryStudioModal.jsx';
 
 export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [activeTab, setActiveTab] = useState('comentarios'); // 'comentarios' | 'feed' | 'bot_settings' | 'calendario'
@@ -53,6 +55,23 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
     scheduledTime: '',
     mode: 'now' // 'now' | 'schedule'
   });
+
+  // Creador de Historias 9:16 (Plantilla & Precio)
+  const [storyStudioOpen, setStoryStudioOpen] = useState(false);
+  const [storyStudioProduct, setStoryStudioProduct] = useState(null);
+
+  const handleUseStoryInPublisher = (storyOutput) => {
+    setPostForm(prev => ({
+      ...prev,
+      platform: prev.platform === 'facebook' ? 'instagram' : prev.platform,
+      postType: 'historia',
+      mediaType: 'image',
+      mediaUrl: storyOutput.mediaUrl,
+      caption: storyOutput.caption || prev.caption
+    }));
+    setPublishStatus('✨ ¡Imagen de historia 9:16 lista con plantilla y precio! Cargada en el publicador.');
+    setTimeout(() => setPublishStatus(''), 7000);
+  };
 
   const apiFetch = useCallback((url, opts = {}) => {
     const headers = { Authorization: `Bearer ${authToken}`, ...(opts.headers || {}) };
@@ -512,6 +531,30 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
 
             <form onSubmit={handlePublishOrSchedule} className="space-y-4">
               
+              {/* BANNER CREADOR DE HISTORIAS 9:16 */}
+              <div className="bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 border border-orange-500/30 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-[#FF6B00] to-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-orange-500/20">
+                    <Wand2 size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <span>Diseñar Historia con Plantilla & Precio</span>
+                      <span className="px-1.5 py-0.2 rounded bg-[#FF6B00] text-white text-[9px] font-black">9:16 HD</span>
+                    </h4>
+                    <p className="text-[10px] text-slate-500">Crea el arte con tu producto, precio tachado y llamado a la acción sin editar a mano.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setStoryStudioProduct(null); setStoryStudioOpen(true); }}
+                  className="w-full sm:w-auto px-4 py-2 bg-[#FF6B00] hover:bg-[#e05e00] text-white font-black text-xs rounded-xl shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Sparkles size={13} />
+                  <span>Abrir Creador 9:16</span>
+                </button>
+              </div>
+
               {/* Selector de Red */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Publicar en:</label>
@@ -558,42 +601,70 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                   ))}
                 </div>
                 {(postForm.postType === 'reel') && <p className="text-[9px] text-slate-400 italic">El reel necesita un video (.mp4).</p>}
-                {(postForm.postType === 'historia') && <p className="text-[9px] text-slate-400 italic">Las historias no llevan descripción y solo van a Instagram.</p>}
+                {(postForm.postType === 'historia') && (
+                  <div className="p-2.5 rounded-xl bg-orange-50/80 border border-orange-200 text-orange-950 space-y-1">
+                    <p className="text-[10px] font-bold">💡 Las historias de Instagram no llevan texto escrito.</p>
+                    <p className="text-[9px] text-orange-700">Te recomendamos usar el Creador 9:16 para que la foto ya incluya el precio y la oferta integrados.</p>
+                    <button
+                      type="button"
+                      onClick={() => { setStoryStudioProduct(null); setStoryStudioOpen(true); }}
+                      className="text-[10px] font-black text-[#FF6B00] underline hover:text-[#e05e00] flex items-center gap-1 cursor-pointer pt-0.5"
+                    >
+                      <Wand2 size={11} /> <span>Abrir Creador de Historia con Plantilla</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Agregar producto del catálogo (con miniaturas) */}
               {products.length > 0 && (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">🛍️ Agregar producto del catálogo:</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">🛍️ Agregar producto del catálogo:</label>
+                    <span className="text-[9px] text-slate-400 font-medium">Toca 9:16 para diseñar historia</span>
+                  </div>
                   <div className="flex gap-2 overflow-x-auto pb-2">
                     {products.map(p => {
                       let imgUrl = p.imagen || '';
                       try { if (p.imagenes) imgUrl = (typeof p.imagenes === 'string' ? JSON.parse(p.imagenes) : p.imagenes)[0] || imgUrl; } catch { /* */ }
                       const selected = postForm.mediaUrl && postForm.mediaUrl === imgUrl;
                       return (
-                        <button
+                        <div
                           key={p.id}
-                          type="button"
                           onClick={() => setPostForm(prev => ({
                             ...prev,
                             mediaUrl: imgUrl || prev.mediaUrl,
                             mediaType: 'image',
                             caption: `✨ ${p.nombre} ✨\n\n💰 Precio: Q${p.precio}\n🚚 Envío a toda Guatemala, pago contra entrega.\n\n📲 Escribinos por WhatsApp para pedir el tuyo.`
                           }))}
-                          className={`shrink-0 w-24 rounded-xl border overflow-hidden text-left transition-all cursor-pointer ${selected ? 'border-[#FF6B00] ring-2 ring-orange-200' : 'border-slate-200 hover:border-orange-300'}`}
+                          className={`shrink-0 w-28 rounded-xl border overflow-hidden text-left transition-all cursor-pointer flex flex-col justify-between ${selected ? 'border-[#FF6B00] ring-2 ring-orange-200' : 'border-slate-200 hover:border-orange-300'}`}
                         >
                           {imgUrl
                             ? <img src={imgUrl} alt={p.nombre} className="h-20 w-full object-cover" />
                             : <div className="h-20 w-full bg-slate-100 flex items-center justify-center text-slate-300 text-[9px]">sin foto</div>}
-                          <div className="p-1.5">
+                          <div className="p-1.5 flex-1 flex flex-col justify-between">
                             <p className="text-[9px] font-bold text-slate-700 truncate">{p.nombre}</p>
-                            <p className="text-[9px] text-[#FF6B00] font-black">Q{p.precio}</p>
+                            <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100">
+                              <span className="text-[9px] text-[#FF6B00] font-black">Q{p.precio}</span>
+                              <button
+                                type="button"
+                                title="Diseñar historia 9:16 de este producto"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setStoryStudioProduct(p);
+                                  setStoryStudioOpen(true);
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-orange-100 hover:bg-[#FF6B00] text-[#FF6B00] hover:text-white text-[8px] font-black transition-colors flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <Wand2 size={8} /> 9:16
+                              </button>
+                            </div>
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
-                  <p className="text-[9px] text-slate-400 italic">Tocá un producto → carga su foto y descripción, listo para publicar.</p>
+                  <p className="text-[9px] text-slate-400 italic">Tocá un producto para cargar su foto y texto, o el botón 9:16 para abrir el creador visual.</p>
                 </div>
               )}
 
@@ -1276,6 +1347,17 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
           </div>
         </div>
       )}
+
+      {/* MODAL CREADOR DE HISTORIAS 9:16 CON PLANTILLA Y PRECIO */}
+      <StoryStudioModal
+        isOpen={storyStudioOpen}
+        onClose={() => setStoryStudioOpen(false)}
+        products={products}
+        apiBase={apiBase}
+        authToken={authToken}
+        initialProduct={storyStudioProduct}
+        onUseInPublisher={handleUseStoryInPublisher}
+      />
     </div>
   );
 }

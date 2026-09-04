@@ -4445,6 +4445,52 @@ app.post('/api/media/upload', productImagesUpload.single('file'), async (req, re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/media/upload-base64', async (req, res) => {
+  try {
+    const { base64, filename = 'story_image.jpg' } = req.body || {};
+    if (!base64) return res.status(400).json({ error: 'Falta base64' });
+    const matches = base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    let buffer;
+    let mimetype = 'image/jpeg';
+    if (matches && matches.length === 3) {
+      mimetype = matches[1];
+      buffer = Buffer.from(matches[2], 'base64');
+    } else {
+      buffer = Buffer.from(base64, 'base64');
+    }
+    const ext = mimetype.includes('png') ? '.png' : '.jpg';
+    const cleanName = `${Date.now()}-${Math.round(Math.random() * 1E9)}-${filename.replace(/\s+/g, '_')}${ext.startsWith('.') ? '' : '.'}${ext}`;
+    const uploadsDir = join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    const filePath = join(uploadsDir, cleanName);
+    fs.writeFileSync(filePath, buffer);
+    const url = `https://${req.get('host')}/uploads/${cleanName}`;
+    const r = await db.run(
+      "INSERT INTO media_files (name, url, mimetype, size) VALUES (?, ?, ?, ?)",
+      filename, url, mimetype, buffer.length
+    );
+    res.json({ success: true, id: r.lastID, name: filename, url, mimetype, size: buffer.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/media/proxy', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') return res.status(400).send('URL requerida');
+    const response = await fetch(url);
+    if (!response.ok) return res.status(response.status).send('Error al obtener la imagen');
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).send(`Error proxy: ${err.message}`);
+  }
+});
+
 app.get('/api/media', async (_req, res) => {
   try {
     const rows = await db.all("SELECT * FROM media_files ORDER BY id DESC LIMIT 300");
