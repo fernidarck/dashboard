@@ -1,7 +1,85 @@
 # ESTADO / HANDOFF — Dashboard OneControl + Bot WhatsApp
 
-> Documento para que **otra IA (Gemini)** continúe sin romper nada.
-> Última actualización: **2026-09-02**. Leé TODO, en especial la sección **REGLAS** y **CÓMO PROBAR**.
+> Documento para que **otra IA (Claude / Gemini)** continúe sin romper nada.
+> Última actualización: **2026-09-04 00:33**. Leé TODO, en especial la sección **REGLAS** y **CÓMO PROBAR**.
+
+---
+
+## 📱 INTEGRACIÓN DE INSTAGRAM DIRECT Y META WEBHOOKS (2026-09-04) — LEER PRIMERO CLAUDE
+
+### 🎯 Objetivo del usuario
+El usuario quiere que cuando cualquier persona (o él mismo en pruebas) envíe un mensaje directo (DM) a la cuenta de Instagram comercial **`@0ne_control`**, el mensaje entre automáticamente al **Dashboard de OneControl** (`https://ycloud-dashboard.83aqlq.easypanel.host`), se cree el lead con origen `Instagram Direct` y el bot con IA/RAG responda con información de productos (precios, armado, fotos de mesas/motores).
+
+---
+
+### ✅ LO QUE SE LOGRÓ Y ESTÁ 100% VERIFICADO EN VIVO
+
+1. **Datos de la cuenta y Meta Developers**:
+   - **App Meta**: `onecontrol` (App ID: `1586224589846115`), Business ID: `1345215860700334`.
+   - **Página de Facebook**: `Onecontrolshop` (Page ID: `1059922890527747`).
+   - **Cuenta IG Business**: `@0ne_control` (IG User ID: `17841477412607895`).
+   - **Estado de la App**: Se configuró la política de privacidad (`https://onecontrol.shop`) y la App pasó exitosamente de *Sin publicar* a **`Publicada` (Modo En Vivo)**.
+   - **Caso de uso añadido**: Se añadió el caso de uso **Messenger from Meta (`FACEBOOK_MESSAGING`)**.
+
+2. **Webhooks configurados y verificados**:
+   - **URL Webhook**: `https://ycloud-dashboard.83aqlq.easypanel.host/webhooks/meta` (y `/webhooks/instagram`).
+   - **Verify Token**: `onecontrol_ig_verify_2026`.
+   - **Estado en Meta Developers**: Sección *1. Configurar webhooks* verificada y guardada con **Check Verde** ✅.
+   - **Suscripción de la Página oficial**:
+     `POST /1059922890527747/subscribed_apps?subscribed_fields=messages,messaging_postbacks` ejecutado con éxito vía API. **Meta respondió: `{"success": true}`** ✅.
+
+3. **Token de Página permanente configurado**:
+   - Guardado en la base de datos de settings del Dashboard (`meta_page_token`):
+     `EAAWiqbE2NmMBSZA3ScZBOFbgwBJfKEzTh8SnFNIZCodVRXnu1xq8PbLeiQO5FAQ7KxNmeCPAUeVJYPs0TbT9x6HhlQwvIZCZAQplkP2eEem2SbMvLYD4KdBOaJ5NBMvInHfgb4IAL5RRWkUAUDjqjrU9b1dveeptuFhvukPB7ZA4ZCKv2WEiYsZBCyMtZBSnGJiRzEihoXgZDZD`
+   - **Scopes activos y verificados en el token**:
+     `pages_show_list`, `business_management`, `pages_messaging` (¡crítico, ya lo tiene!), `instagram_basic`, `instagram_manage_comments`, `instagram_content_publish`, `instagram_manage_messages`, `pages_read_engagement`, `pages_manage_posts`, `public_profile`.
+
+4. **Código del Backend (`dashboard-onecontrol/server.js`)**:
+   - `handleMetaWebhookPost` en `/webhooks/instagram` y `/webhooks/meta` procesa DMs entrantes (`entry.messaging`).
+   - Busca/crea el lead en SQLite (`leads` con origen `'Instagram Direct'`).
+   - Dispara auto-respuesta del bot (`generateDirectMessageReply`) con catálogo, precios (mesas Q550 / LiftMaster / etc.) e imagen adjunta.
+   - Se probó con un webhook simulado directo a la URL de producción y **funcionó perfecto**: creó el lead en vivo, generó la respuesta y guardó el historial en `messages`.
+
+---
+
+### 🔍 ESTADO EXACTO DEL PROBLEMA ACTUAL: ¿POR QUÉ NO ENTRÓ EL MENSAJE DE PRUEBA?
+
+1. **El mensaje SÍ llegó a Meta**: En **Meta Business Suite** (`business.facebook.com/latest/inbox/all`) se confirmó en captura de pantalla que los mensajes de **Fer** (`@fer_musik`) están en la bandeja oficial de entrada.
+2. **Meta NO disparó el Webhook hacia el Dashboard por 2 razones específicas**:
+
+   #### A. Falta agregar a `@fer_musik` como Evaluador de Instagram (Crítico)
+   - Aunque la app está en modo *Publicada*, el permiso `instagram_manage_messages` está en **Acceso Estándar** (Standard Access) porque no ha pasado la Revisión de la App de 48h de Meta.
+   - En Acceso Estándar, **Meta SOLO envía webhooks de mensajes provenientes de cuentas que tengan un rol de "Evaluador de Instagram" (Instagram Tester) en la App**.
+   - **El error del usuario**: En *Roles de la aplicación > Evaluadores de Instagram*, agregó a `One_control` (la cuenta comercial de la tienda), en vez de agregar a **`fer_musik`** (la cuenta personal desde la que Fer escribe).
+   - **Lo que hay que hacer**:
+     1. En Meta Developers > *Roles de la aplicación* > botón azul **Añadir personas**.
+     2. Rol: **Evaluador de Instagram**.
+     3. Escribir usuario: **`fer_musik`** y guardar.
+     4. En el celular, en la cuenta `@fer_musik` de Instagram > *Configuración y privacidad > Apps y sitios web > pestaña Invitaciones de evaluador > Aceptar*.
+
+   #### B. En Messenger from Meta: Revisar submenú "Configuración de Instagram"
+   - En `developers.facebook.com/apps/1586224589846115/use_cases/customize/...`:
+   - El usuario completó *Configuración de Messenger API* (check verde).
+   - Justo abajo en ese mismo submenú está **`Configuración de Instagram`**. Hay que entrar ahí y verificar que la cuenta `@0ne_control` esté vinculada y con los webhooks activos para Instagram.
+
+   #### C. Teléfono móvil de `@0ne_control` (Permitir acceso a mensajes)
+   - En la app de Instagram de la tienda `@0ne_control`:
+   - *Configuración y privacidad > Mensajes y respuestas a historias > Herramientas conectadas / Acceso a mensajes > Permitir acceso a los mensajes = ACTIVADO*. (Sin esto, Meta bloquea la API de mensajes).
+
+---
+
+### ⚡ SOLUCIÓN ALTERNATIVA INMEDIATA (Para responder a CUALQUIER cliente hoy)
+Para responder a cualquier cliente del público general sin esperar a que Meta apruebe Acceso Avanzado en App Review:
+- En **Meta Business Suite** (`business.facebook.com/latest/inbox`) > botón **Automatizaciones** > **Respuesta instantánea** para Instagram:
+  Poner el mensaje de bienvenida con el link oficial de WhatsApp (`wa.me/50235154362`). Esto funciona para el 100% de los usuarios desde ya.
+
+---
+
+### ⚠️ RECORDATORIO TÉCNICO PARA CLAUDE
+- Último commit pusheado en `master`: `07859fe` (`feat: Suscripcion automatica de Webhooks de Meta`).
+- El servicio en EasyPanel (`ycloud-dashboard.83aqlq.easypanel.host`) sigue pendiente de que el usuario dé clic en el botón **"Deploy"** para refrescar los assets de `dist/`, aunque el backend de Node ya responde a los webhooks.
+- Para verificar leads en vivo:
+  `GET https://ycloud-dashboard.83aqlq.easypanel.host/api/leads` con header `Authorization: Bearer onecontrol-n8n-token-static-2026`.
 
 ---
 
