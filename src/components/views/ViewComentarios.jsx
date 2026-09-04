@@ -386,6 +386,32 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
     }
   };
 
+  const [publishingNow, setPublishingNow] = useState({});
+
+  const handlePublishNow = async (id) => {
+    setPublishingNow(prev => ({ ...prev, [id]: true }));
+    setPublishStatus('');
+    try {
+      const res = await apiFetch(`${apiBase}/api/meta/scheduled/${id}/publish-now`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPublishStatus('🚀 ¡Publicación enviada a Meta con éxito!');
+        setTimeout(() => setPublishStatus(''), 6000);
+        loadScheduledPosts();
+        loadMetaInsights();
+      } else {
+        alert('Error al publicar: ' + (data.error || data.error_msg || data.errors?.join(', ') || 'No se pudo publicar'));
+        loadScheduledPosts();
+      }
+    } catch {
+      alert('Error de conexión al forzar publicación');
+    } finally {
+      setPublishingNow(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
   const handleDeleteScheduled = async (id) => {
     if (!confirm('¿Eliminar esta publicación programada?')) return;
     try {
@@ -1087,57 +1113,106 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
 
                     return (
                       <div className="space-y-3">
-                        {selectedDayPosts.map(post => (
-                          <div key={post.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/40 space-y-2.5">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                  post.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
-                                  post.status === 'failed' ? 'bg-rose-100 text-rose-700' :
-                                  'bg-amber-100 text-amber-700 animate-pulse'
-                                }`}>
-                                  {post.status === 'published' ? '✅ Hecha / Publicada' : post.status === 'failed' ? '❌ Fallida' : '⏳ Programada'}
-                                </span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 uppercase">
-                                  {post.platform}
-                                </span>
-                              </div>
+                        {selectedDayPosts.map(post => {
+                          const isStory = post.post_type === 'historia';
+                          const isReel = post.post_type === 'reel';
+                          const isPending = post.status === 'pending';
+                          const isFailed = post.status === 'failed';
+                          const isPublished = post.status === 'published';
+                          const isWorking = publishingNow[post.id];
 
-                              {post.status === 'pending' && (
-                                <button
-                                  onClick={() => handleDeleteScheduled(post.id)}
-                                  className="p-1 rounded-lg bg-white hover:bg-rose-600 hover:text-white text-slate-400 transition-colors cursor-pointer border border-slate-200"
-                                  title="Cancelar publicación"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              )}
-                            </div>
+                          return (
+                            <div key={post.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                                    isPublished ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                    isFailed ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                    'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                                  }`}>
+                                    {isPublished ? '✅ Publicado con Éxito' : isFailed ? '❌ Error al Publicar' : '⏳ Programado'}
+                                  </span>
 
-                            <div className="flex gap-3 items-start">
-                              {post.media_url && (
-                                <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-200 shrink-0 border border-slate-300">
-                                  {post.media_type === 'video' ? (
-                                    <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={16} /></div>
-                                  ) : (
-                                    <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
-                                  )}
-                                </div>
-                              )}
-                              <div className="flex-1 min-w-0 space-y-1">
-                                <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed">
-                                  {post.caption}
-                                </p>
-                                <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium pt-1">
-                                  <span className="flex items-center gap-1">
-                                    <Clock size={11} />
-                                    {post.status === 'published' ? `Publicado: ${post.published_at || post.scheduled_time}` : `Programado: ${post.scheduled_time}`}
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700">
+                                    {isStory ? '⭕ Historia' : isReel ? '🎬 Reel' : '🖼️ Post'}
+                                  </span>
+
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 uppercase">
+                                    {post.platform === 'instagram' ? '📸 IG' : post.platform === 'facebook' ? '📘 FB' : '🌟 Ambas'}
                                   </span>
                                 </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  {isPending && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePublishNow(post.id)}
+                                      disabled={isWorking}
+                                      className="px-2.5 py-1 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                      title="Publicar inmediatamente en Meta sin esperar la fecha programada"
+                                    >
+                                      {isWorking ? <RefreshCw size={10} className="animate-spin" /> : <Send size={10} />}
+                                      <span>{isWorking ? 'Publicando...' : 'Publicar Ahora'}</span>
+                                    </button>
+                                  )}
+
+                                  {isFailed && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePublishNow(post.id)}
+                                      disabled={isWorking}
+                                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                      title="Reintentar publicación en Meta"
+                                    >
+                                      {isWorking ? <RefreshCw size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                                      <span>{isWorking ? 'Reintentando...' : 'Reintentar'}</span>
+                                    </button>
+                                  )}
+
+                                  {isPending && (
+                                    <button
+                                      onClick={() => handleDeleteScheduled(post.id)}
+                                      className="p-1.5 rounded-lg bg-white hover:bg-rose-600 hover:text-white text-slate-400 transition-colors cursor-pointer border border-slate-200"
+                                      title="Cancelar y eliminar publicación programada"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex gap-3.5 items-start">
+                                {post.media_url && (
+                                  <div className={`rounded-xl overflow-hidden bg-slate-200 shrink-0 border border-slate-300 ${isStory ? 'w-14 h-24' : 'w-18 h-18'}`}>
+                                    {post.media_type === 'video' ? (
+                                      <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={18} /></div>
+                                    ) : (
+                                      <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
+                                    )}
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0 space-y-1.5">
+                                  <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed">
+                                    {post.caption || <span className="italic text-slate-400">Sin descripción (Solo imagen)</span>}
+                                  </p>
+
+                                  <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500 font-medium pt-0.5">
+                                    <span className="flex items-center gap-1 font-bold text-slate-600">
+                                      <Clock size={11} />
+                                      {isPublished ? `Publicado el: ${post.published_at || post.scheduled_time}` : `Programado para: ${post.scheduled_time}`}
+                                    </span>
+                                  </div>
+
+                                  {post.error_msg && (
+                                    <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-[10px] font-bold">
+                                      ⚠️ Razón del error: {post.error_msg}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   })()}
@@ -1149,60 +1224,104 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
             {/* VISTA 2: LISTA TRADICIONAL DE TARJETAS */}
             {calendarViewMode === 'list' && (
               <div className="space-y-3 max-h-[75vh] overflow-y-auto pr-1">
-                {scheduledPosts.map(post => (
-                  <div key={post.id} className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          post.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
-                          post.status === 'failed' ? 'bg-rose-100 text-rose-700' :
-                          'bg-amber-100 text-amber-700 animate-pulse'
-                        }`}>
-                          {post.status === 'published' ? '✅ Publicado' : post.status === 'failed' ? '❌ Fallido' : '⏳ Programado'}
-                        </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 uppercase">
-                          {post.platform}
-                        </span>
-                      </div>
+                {scheduledPosts.map(post => {
+                  const isStory = post.post_type === 'historia';
+                  const isReel = post.post_type === 'reel';
+                  const isPending = post.status === 'pending';
+                  const isFailed = post.status === 'failed';
+                  const isPublished = post.status === 'published';
+                  const isWorking = publishingNow[post.id];
 
-                      {post.status === 'pending' && (
-                        <button
-                          onClick={() => handleDeleteScheduled(post.id)}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-600 hover:text-white text-slate-500 transition-colors cursor-pointer"
-                          title="Cancelar publicación"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
+                  return (
+                    <div key={post.id} className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                            isPublished ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                            isFailed ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                            'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                          }`}>
+                            {isPublished ? '✅ Publicado con Éxito' : isFailed ? '❌ Error al Publicar' : '⏳ Programado'}
+                          </span>
 
-                    <div className="flex gap-4 items-start">
-                      {post.media_url && (
-                        <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                          {post.media_type === 'video' ? (
-                            <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={20} /></div>
-                          ) : (
-                            <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed line-clamp-3">
-                          {post.caption}
-                        </p>
-                        <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium pt-1">
-                          <span className="flex items-center gap-1">
-                            <Clock size={11} />
-                            {post.status === 'published' ? `Publicado: ${post.published_at || post.scheduled_time}` : `Programado: ${post.scheduled_time}`}
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                            {isStory ? '⭕ Historia' : isReel ? '🎬 Reel' : '🖼️ Post'}
+                          </span>
+
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 uppercase">
+                            {post.platform === 'instagram' ? '📸 Instagram' : post.platform === 'facebook' ? '📘 Facebook' : '🌟 Ambas'}
                           </span>
                         </div>
-                        {post.error_msg && (
-                          <p className="text-[10px] text-rose-600 font-bold">{post.error_msg}</p>
+
+                        <div className="flex items-center gap-1.5">
+                          {isPending && (
+                            <button
+                              type="button"
+                              onClick={() => handlePublishNow(post.id)}
+                              disabled={isWorking}
+                              className="px-3 py-1.5 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              title="Publicar inmediatamente en Meta sin esperar la fecha programada"
+                            >
+                              {isWorking ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
+                              <span>{isWorking ? 'Publicando...' : 'Publicar Ahora'}</span>
+                            </button>
+                          )}
+
+                          {isFailed && (
+                            <button
+                              type="button"
+                              onClick={() => handlePublishNow(post.id)}
+                              disabled={isWorking}
+                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              title="Reintentar publicación en Meta"
+                            >
+                              {isWorking ? <RefreshCw size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                              <span>{isWorking ? 'Reintentando...' : 'Reintentar'}</span>
+                            </button>
+                          )}
+
+                          {isPending && (
+                            <button
+                              onClick={() => handleDeleteScheduled(post.id)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-600 hover:text-white text-slate-500 transition-colors cursor-pointer"
+                              title="Cancelar publicación"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-4 items-start">
+                        {post.media_url && (
+                          <div className={`rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200 ${isStory ? 'w-16 h-28' : 'w-20 h-20'}`}>
+                            {post.media_type === 'video' ? (
+                              <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white"><Video size={20} /></div>
+                            ) : (
+                              <img src={post.media_url} alt="Media" className="w-full h-full object-cover" />
+                            )}
+                          </div>
                         )}
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed line-clamp-3">
+                            {post.caption || <span className="italic text-slate-400">Sin descripción</span>}
+                          </p>
+                          <div className="flex items-center gap-3 text-[10px] text-slate-500 font-medium pt-1">
+                            <span className="flex items-center gap-1 font-bold">
+                              <Clock size={11} />
+                              {isPublished ? `Publicado: ${post.published_at || post.scheduled_time}` : `Programado: ${post.scheduled_time}`}
+                            </span>
+                          </div>
+                          {post.error_msg && (
+                            <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[10px] font-bold">
+                              ⚠️ Razón del error: {post.error_msg}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {scheduledPosts.length === 0 && (
                   <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-2">

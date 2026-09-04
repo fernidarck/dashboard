@@ -441,6 +441,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_learned TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_not_to_say TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN prompt_instruction TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE scheduled_posts ADD COLUMN post_type TEXT DEFAULT 'post'"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes_meta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagenes TEXT"); } catch(e){}
@@ -4290,9 +4291,9 @@ app.post('/api/meta/publish', async (req, res) => {
     const errorMsg = results.errors.length > 0 ? results.errors.join(' | ') : null;
 
     const dbRes = await db.run(
-      `INSERT INTO scheduled_posts (platform, media_type, media_url, caption, scheduled_time, status, published_at, post_id_ig, post_id_fb, error_msg)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      platform, mediaType, mediaUrl || null, caption, time, status, time, results.instagram?.id || null, results.facebook?.id || null, errorMsg
+      `INSERT INTO scheduled_posts (platform, post_type, media_type, media_url, caption, scheduled_time, status, published_at, post_id_ig, post_id_fb, error_msg)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      platform, postType, mediaType, mediaUrl || null, caption, time, status, time, results.instagram?.id || null, results.facebook?.id || null, errorMsg
     );
 
     res.json({
@@ -4310,17 +4311,20 @@ app.post('/api/meta/publish', async (req, res) => {
 // Endpoint para programar una publicación con fecha y hora
 app.post('/api/meta/schedule', async (req, res) => {
   try {
-    const { platform = 'both', mediaUrl, mediaType = 'image', caption, scheduledTime } = req.body;
+    const { platform = 'both', mediaUrl, mediaType = 'image', caption, scheduledTime, postType = 'post' } = req.body;
     if (!caption && !mediaUrl) return res.status(400).json({ error: 'Se requiere texto o imagen' });
     if (!scheduledTime) return res.status(400).json({ error: 'Se requiere fecha y hora programada (scheduledTime)' });
 
+    // Normalizar scheduledTime a formato 'YYYY-MM-DD HH:mm'
+    const cleanScheduledTime = scheduledTime.replace('T', ' ').trim();
+
     const result = await db.run(
-      `INSERT INTO scheduled_posts (platform, media_type, media_url, caption, scheduled_time, status)
-       VALUES (?, ?, ?, ?, ?, 'pending')`,
-      platform, mediaType, mediaUrl || null, caption, scheduledTime
+      `INSERT INTO scheduled_posts (platform, post_type, media_type, media_url, caption, scheduled_time, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+      platform, postType, mediaType, mediaUrl || null, caption, cleanScheduledTime
     );
 
-    res.json({ success: true, id: result.lastID, scheduledTime });
+    res.json({ success: true, id: result.lastID, scheduledTime: cleanScheduledTime });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -4329,8 +4333,44 @@ app.post('/api/meta/schedule', async (req, res) => {
 // Listar publicaciones programadas e historial
 app.get('/api/meta/scheduled', async (_req, res) => {
   try {
-    const rows = await db.all("SELECT * FROM scheduled_posts ORDER BY id DESC LIMIT 100");
+    const rows = await db.all("SELECT * FROM scheduled_posts ORDER BY id DESC LIMIT 150");
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Forzar publicación inmediata o reintentar post programado
+app.post('/api/meta/scheduled/:id/publish-now', async (req, res) => {
+  try {
+    const post = await db.get("SELECT * FROM scheduled_posts WHERE id = ?", req.params.id);
+    if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+
+    console.log(`🚀 [Manual Publish] Publicando post #${post.id} (${post.post_type || 'post'}) para ${post.platform}...`);
+    const results = await publishPostDirectly({
+      platform: post.platform,
+      mediaUrl: post.media_url,
+      mediaType: post.media_type,
+      caption: post.caption,
+      postType: post.post_type || 'post'
+    });
+
+    const hasSuccess = results.instagram?.success || results.facebook?.success;
+    const status = hasSuccess ? 'published' : 'failed';
+    const errorMsg = results.errors.length > 0 ? results.errors.join(' | ') : null;
+
+    const time = horaGuate();
+    await db.run(
+      "UPDATE scheduled_posts SET status = ?, published_at = ?, post_id_ig = ?, post_id_fb = ?, error_msg = ? WHERE id = ?",
+      status, time, results.instagram?.id || null, results.facebook?.id || null, errorMsg, post.id
+    );
+
+    res.json({
+      success: hasSuccess,
+      status,
+      results,
+      error_msg: errorMsg
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -4346,19 +4386,29 @@ app.delete('/api/meta/scheduled/:id', async (req, res) => {
   }
 });
 
-// Worker en segundo plano que revisa y publica posts programados cada 30 segundos
+// Worker en segundo plano que revisa y publica posts programados cada 20 segundos
 setInterval(async () => {
   try {
-    const now = horaGuate();
-    const pendingPosts = await db.all("SELECT * FROM scheduled_posts WHERE status = 'pending' AND scheduled_time <= ?", now);
+    if (!db) return;
+    const d = new Date();
+    const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' }); // YYYY-MM-DD
+    const timeStr = d.toLocaleTimeString('en-GB', { timeZone: 'America/Guatemala', hour12: false, hour: '2-digit', minute: '2-digit' }); // HH:mm
+    const nowGuate = `${dateStr} ${timeStr}`;
+
+    const pendingPosts = await db.all(
+      "SELECT * FROM scheduled_posts WHERE status = 'pending' AND scheduled_time <= ?",
+      nowGuate
+    );
+
     for (const post of pendingPosts) {
-      console.log(`⏰ [Scheduler] Publicando post programado #${post.id} para ${post.platform}...`);
+      console.log(`⏰ [Scheduler] Ejecutando publicación #${post.id} (${post.post_type || 'post'}) programada para ${post.scheduled_time}...`);
       try {
         const results = await publishPostDirectly({
           platform: post.platform,
           mediaUrl: post.media_url,
           mediaType: post.media_type,
-          caption: post.caption
+          caption: post.caption,
+          postType: post.post_type || 'post'
         });
         const hasSuccess = results.instagram?.success || results.facebook?.success;
         const status = hasSuccess ? 'published' : 'failed';
@@ -4366,7 +4416,7 @@ setInterval(async () => {
 
         await db.run(
           "UPDATE scheduled_posts SET status = ?, published_at = ?, post_id_ig = ?, post_id_fb = ?, error_msg = ? WHERE id = ?",
-          status, horaGuate(), results.instagram?.id || null, results.facebook?.id || null, errorMsg, post.id
+          status, `${nowGuate} (${horaGuate()})`, results.instagram?.id || null, results.facebook?.id || null, errorMsg, post.id
         );
         console.log(`✅ [Scheduler] Post #${post.id} completado con estado: ${status}`);
       } catch (err) {
@@ -4374,8 +4424,10 @@ setInterval(async () => {
         await db.run("UPDATE scheduled_posts SET status = 'failed', error_msg = ? WHERE id = ?", err.message, post.id);
       }
     }
-  } catch (e) {}
-}, 30000);
+  } catch (e) {
+    // Silencioso si la BD aún está arrancando
+  }
+}, 20000);
 
 // ─── WEB CHATBOT PARA WORDPRESS (onecontrol.shop) ────────────────────────────
 app.post('/api/webchat/message', async (req, res) => {
