@@ -3668,6 +3668,16 @@ app.get('/api/meta/insights', async (req, res) => {
   }
 });
 
+// Endpoint para obtener el historial registrado de seguidores y crecimiento
+app.get('/api/meta/followers-history', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM social_followers_log ORDER BY id DESC LIMIT 100");
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Helper para generar respuesta directa a mensajes de Messenger / Instagram con RAG
 async function generateDirectMessageReply(customerMsg, leadId, platform = 'Facebook Messenger') {
   const qClean = (customerMsg || '').toLowerCase();

@@ -18,8 +18,9 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
 
-  // Meta Insights (Feed & Likes)
+  // Meta Insights (Feed, Likes & Followers History)
   const [metaInsights, setMetaInsights] = useState(null);
+  const [followersHistory, setFollowersHistory] = useState([]);
   const [loadingMeta, setLoadingMeta] = useState(false);
 
   // Settings de Auto-Respuesta del Bot
@@ -75,6 +76,11 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
       if (res.ok) {
         const data = await res.json();
         setMetaInsights(data);
+      }
+      const histRes = await apiFetch(`${apiBase}/api/meta/followers-history`);
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        setFollowersHistory(Array.isArray(histData) ? histData : []);
       }
     } catch { /* silencioso */ }
     setLoadingMeta(false);
@@ -964,7 +970,7 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
       )}
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* TAB 2: MÉTRICAS & LIKES (FEED COMPLETO) */}
+      {/* TAB 2: MÉTRICAS & LIKES (FEED COMPLETO & REGISTRO HISTÓRICO) */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'feed' && (
         <div className="space-y-6">
@@ -974,20 +980,40 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Likes Meta</span>
               <p className="text-3xl font-black text-pink-600 mt-2 flex items-center gap-2">
                 <Heart className="fill-pink-500 text-pink-500" size={24} />
-                {metaInsights?.stats?.totalLikes || 0}
+                {(metaInsights?.stats?.totalLikes || 0).toLocaleString()}
               </p>
               <p className="text-[11px] text-slate-400 mt-1">Acumulado en publicaciones</p>
             </div>
 
             <div className="bg-white border border-pink-200 bg-pink-50/30 rounded-3xl p-5 shadow-xs">
-              <span className="text-[10px] font-black uppercase tracking-wider text-pink-700">Instagram (@0ne_control)</span>
-              <p className="text-3xl font-black text-slate-900 mt-2">{metaInsights?.instagram?.followers || 0}</p>
-              <p className="text-[11px] text-pink-600 font-bold mt-1">{metaInsights?.instagram?.mediaCount || 0} Publicaciones & Reels</p>
+              <span className="text-[10px] font-black uppercase tracking-wider text-pink-700 flex items-center justify-between">
+                <span>Instagram (@0ne_control)</span>
+                {metaInsights?.instagram?.gained_today > 0 && (
+                  <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                    +{metaInsights.instagram.gained_today} hoy
+                  </span>
+                )}
+              </span>
+              <p className="text-3xl font-black text-slate-900 mt-2">
+                {(metaInsights?.instagram?.followers_count || metaInsights?.instagram?.followers || 0).toLocaleString()}
+              </p>
+              <p className="text-[11px] text-pink-600 font-bold mt-1">
+                {metaInsights?.instagram?.media_count || metaInsights?.instagram?.mediaCount || 0} Publicaciones & Reels
+              </p>
             </div>
 
             <div className="bg-white border border-blue-200 bg-blue-50/30 rounded-3xl p-5 shadow-xs">
-              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700">Facebook Page</span>
-              <p className="text-3xl font-black text-slate-900 mt-2">{metaInsights?.facebook?.fanCount || 0}</p>
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 flex items-center justify-between">
+                <span>Facebook Page</span>
+                {metaInsights?.facebook?.gained_today > 0 && (
+                  <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                    +{metaInsights.facebook.gained_today} hoy
+                  </span>
+                )}
+              </span>
+              <p className="text-3xl font-black text-slate-900 mt-2">
+                {(metaInsights?.facebook?.followers_count || metaInsights?.facebook?.fan_count || metaInsights?.facebook?.fanCount || 0).toLocaleString()}
+              </p>
               <p className="text-[11px] text-blue-600 font-bold mt-1">Seguidores / Fans</p>
             </div>
 
@@ -996,6 +1022,71 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
               <p className="text-3xl font-black text-slate-900 mt-2">{comments.length}</p>
               <p className="text-[11px] text-slate-400 mt-1">Gestionados en CRM</p>
             </div>
+          </div>
+
+          {/* REGISTRO HISTÓRICO DE CRECIMIENTO */}
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <TrendingUp className="text-emerald-500" size={16} /> Registro Histórico de Seguidores & Crecimiento
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Historial automático de registros tomados de Instagram y Facebook para medir cuántos seguidores nuevos se ganan día a día.
+                </p>
+              </div>
+              <button
+                onClick={loadMetaInsights}
+                disabled={loadingMeta}
+                className="text-xs font-bold text-[#FF6B00] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw size={12} className={loadingMeta ? 'animate-spin' : ''} />
+                <span>Actualizar Historial</span>
+              </button>
+            </div>
+
+            {followersHistory.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-xs text-slate-400">
+                Aún no hay suficientes registros históricos acumulados en la base de datos. Se van guardando automáticamente con cada consulta a Meta.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      <th className="py-3 px-4">Fecha / Hora (Guate)</th>
+                      <th className="py-3 px-4">Red Social</th>
+                      <th className="py-3 px-4">Seguidores Registrados</th>
+                      <th className="py-3 px-4">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {followersHistory.map((row) => (
+                      <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-4 text-slate-600 font-mono text-[11px]">
+                          {row.date_str} {row.timestamp ? `• ${row.timestamp}` : ''}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            row.platform === 'instagram' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {row.platform === 'instagram' ? '📸 Instagram' : '📘 Facebook'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-900 font-black tabular-nums">
+                          {Number(row.followers_count).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                            <CheckCircle2 size={10} /> Registro Guardado
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Cuadrícula de Publicaciones con Likes */}
