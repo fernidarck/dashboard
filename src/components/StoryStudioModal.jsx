@@ -23,7 +23,7 @@ const TEMPLATES = [
     priceColor: '#2E382A',
     ctaBg: '#2E382A',
     ctaColor: '#FFFFFF',
-    accentBadge: '🌿 DISEÑO NÓRDICO & ALTA CALIDAD'
+    accentBadge: '✨ ALTA CALIDAD & 100% ORIGINAL'
   },
   {
     id: 'slate_studio',
