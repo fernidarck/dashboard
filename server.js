@@ -2154,6 +2154,14 @@ app.post('/api/messages/send', async (req, res) => {
     }
 
     if (msgSender === 'agent') {
+      // Un humano respondió desde el dashboard → pasar a modo manual (apagar bot)
+      // y resolver cualquier handoff pendiente. Igual que cuando responde desde el celular.
+      await db.run(
+        "UPDATE leads SET botActive = 0, priority = 'normal', handoff_reason = NULL WHERE id = ?",
+        leadId
+      );
+      console.log(`🙋 [Dashboard] Agente respondió a lead ${leadId} → bot DESACTIVADO (modo manual).`);
+
       const lead = await db.get("SELECT phone, channel_phone, origen, whatsapp_id FROM leads WHERE id = ?", leadId);
       const isInstagram = lead?.origen && String(lead.origen).toLowerCase().includes('instagram');
       const isFacebook = lead?.origen && String(lead.origen).toLowerCase().includes('facebook');
@@ -2229,6 +2237,11 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
       const b = String(req.user.channel_phone).replace(/\D/g, '');
       if (a !== b) return res.status(403).json({ error: "Sin permiso para este lead" });
     }
+    // Un humano envió un archivo desde el dashboard → modo manual (apagar bot).
+    await db.run(
+      "UPDATE leads SET botActive = 0, priority = 'normal', handoff_reason = NULL WHERE id = ?",
+      leadId
+    );
     const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
     const docUrl = `https://${req.get('host')}/uploads/${req.file.filename}`;
     const time = horaGuate();
