@@ -80,6 +80,7 @@ export function useAppData(apiBase, authToken) {
   // Refs para detección de mensajes/pedidos nuevos
   const knownLastClientMsgId = useRef({});
   const knownPedidoCount = useRef(null);
+  const lastLeadsChannel = useRef(null);
   const playMessageAlert = useRef(() => {
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
     audio.play().catch(() => {});
@@ -92,6 +93,12 @@ export function useAppData(apiBase, authToken) {
       const res = await apiFetch(`${apiBase}/api/leads?t=${Date.now()}${channelParam}`);
       const data = await res.json();
       const known = knownLastClientMsgId.current;
+      // Si cambió el canal (o es la primera carga), NO notifiques: los leads del
+      // canal nuevo no son "mensajes nuevos", solo son otra lista. Reiniciamos el
+      // conteo y lo repoblamos en silencio. Así no salta el popup falso al entrar.
+      const channelChanged = lastLeadsChannel.current !== null && lastLeadsChannel.current !== channel;
+      lastLeadsChannel.current = channel;
+      if (channelChanged) { for (const k in known) delete known[k]; }
       const isFirstLoad = Object.keys(known).length === 0;
       data.forEach(lead => {
         const prev = known[lead.id];
