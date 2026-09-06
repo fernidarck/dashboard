@@ -3040,23 +3040,33 @@ app.get('/api/rag/context', async (req, res) => {
                       .map(normalizeKw);
     
     const scored = allKnowledge.map(doc => {
-      const lower = (doc.name + ' ' + doc.content).toLowerCase();
+      const nameL    = String(doc.name || '').toLowerCase();
+      const contentL = String(doc.content || '').toLowerCase();
       let score = 0;
-      keywords.forEach(kw => { if (lower.includes(kw)) score++; });
+      keywords.forEach(kw => {
+        // Un match en el NOMBRE pesa mucho más que en la descripción: así una consulta
+        // con marca ("chamberlain") prioriza el producto correcto y no cualquiera que
+        // solo mencione "control" en el texto.
+        if (nameL.includes(kw)) score += 3;
+        else if (contentL.includes(kw)) score += 1;
+      });
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
     if (scored.length === 0) return res.json({ context: (adNote + "No se encontró información relevante para: " + q).trim(), found: !!adNote, sources: [] });
 
-    // Construir respuesta
+    // Construir respuesta: agregamos BLOQUES COMPLETOS de producto hasta llenar maxChars,
+    // sin cortar ninguno a la mitad (antes se hacía un substring que partía el último).
     let context = "";
     const sources = [];
-    scored.slice(0, 5).forEach(doc => {
-      context += `--- RESULTADO: ${doc.name} ---\n${doc.content}\n\n`;
+    const budget = Number(maxChars) - adNote.length;
+    for (const doc of scored) {
+      const block = `--- RESULTADO: ${doc.name} ---\n${doc.content}\n\n`;
+      if (sources.length > 0 && context.length + block.length > budget) break;
+      context += block;
       sources.push(doc.name);
-    });
-
-    if (context.length > maxChars) context = context.substring(0, maxChars) + "...";
+      if (sources.length >= 6) break;
+    }
 
     res.json({ context: (adNote + context).trim(), found: true, sources });
   } catch (err) { res.status(500).json({ error: err.message }); }
