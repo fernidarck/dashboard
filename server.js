@@ -3657,8 +3657,17 @@ app.post('/api/training/test', async (req, res) => {
     let finalReply = simulatedReply;
     let replySource = 'aprox'; // 'aprox' = plantilla local | 'bot-real' = LLM real
     try {
-      const setRows = await db.all("SELECT key, value FROM settings");
-      const S = {}; setRows.forEach(r => S[r.key] = r.value);
+      // Traemos el cerebro por el MISMO endpoint que usa el bot (/api/settings), que
+      // YA inyecta las reglas de entrenamiento aprobadas en prompt_recepcionista. Así el
+      // simulador respeta las reglas del entrenador igual que el bot real. Fallback a DB.
+      let S = {};
+      try {
+        const sres = await fetch(`http://127.0.0.1:${port}/api/settings`, { headers: { Authorization: 'Bearer onecontrol-n8n-token-static-2026' } });
+        S = await sres.json();
+      } catch (e) {
+        const setRows = await db.all("SELECT key, value FROM settings");
+        setRows.forEach(r => S[r.key] = r.value);
+      }
       const apiKey = S.deepseek_api_key;
       if (apiKey) {
         const baseUrl = String(S.deepseek_base_url || 'https://api.deepseek.com').replace(/\/+$/, '');
