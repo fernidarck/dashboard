@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Plus, X, Pencil, Trash2, Search, RefreshCw,
   Sparkles, BookOpen, Tag, ShoppingBag, Bot,
@@ -41,7 +41,8 @@ const emptyProduct = {
   imagenes: [],
   imagenes_meta: [],
   catalog_link: '',
-  whatsapp_link: ''
+  whatsapp_link: '',
+  ad_ids: ''
 };
 
 // Helper para obtener fotos con descripción de cualquier producto o tarjeta
@@ -83,7 +84,17 @@ export default function ViewRAG({
   const [testQuery,      setTestQuery]      = useState('');
   const [testResults,    setTestResults]    = useState([]);
   const [isSearching,    setIsSearching]    = useState(false);
+  const [unmappedAds,    setUnmappedAds]    = useState([]);
   const fileInputRef = useRef(null);
+
+  // Cargar anuncios de los que llegaron leads pero que aún no están conectados a un producto.
+  useEffect(() => {
+    const t = (() => { try { return localStorage.getItem('dashboard_token'); } catch { return null; } })();
+    fetch('/api/ads/unmapped', { headers: t ? { Authorization: `Bearer ${t}` } : {} })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && Array.isArray(d.unmapped)) setUnmappedAds(d.unmapped); })
+      .catch(() => {});
+  }, [products]);
 
   const handleRunSearch = async () => {
     if (!testQuery.trim()) return;
@@ -437,6 +448,23 @@ export default function ViewRAG({
           )}
         </div>
       ) : (
+        <>
+        {unmappedAds.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-[28px] p-5 mb-6">
+            <p className="text-[11px] font-black text-amber-900 uppercase tracking-widest flex items-center gap-1.5">📢 Anuncios sin conectar ({unmappedAds.length})</p>
+            <p className="text-[10px] text-amber-700 mt-1 leading-relaxed">Llegaron clientes de estos anuncios pero no están ligados a un producto. Abrí el link para ver cuál es, copiá el ID y pegalo en el campo <b>"IDs de anuncios de Meta"</b> del producto correcto. Así el bot sabrá qué mandar cuando digan "la del anuncio".</p>
+            <div className="mt-3 space-y-2">
+              {unmappedAds.map(a => (
+                <div key={a.ad_source_id} className="flex items-center gap-2 flex-wrap bg-white/70 rounded-2xl px-3 py-2">
+                  <code className="text-[10px] font-bold text-slate-700 select-all break-all">{a.ad_source_id}</code>
+                  <span className="text-[9px] text-slate-400">· {a.leads} lead{a.leads > 1 ? 's' : ''}</span>
+                  {a.ad_source_url && <a href={a.ad_source_url.startsWith('http') ? a.ad_source_url : `https://${a.ad_source_url}`} target="_blank" rel="noreferrer" className="text-[10px] font-black text-[#FF6B00] hover:underline">ver anuncio ↗</a>}
+                  <button onClick={() => { try { navigator.clipboard.writeText(a.ad_source_id); } catch { /* noop */ } }} className="text-[9px] font-black text-slate-500 hover:text-slate-800 uppercase">copiar ID</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {products.map(prod => {
             const prodImgs = getImagesMeta(prod);
@@ -522,6 +550,7 @@ export default function ViewRAG({
             </div>
           )}
         </div>
+        </>
       )}
 
       {/* Modal: Nueva Tarjeta de Conocimiento */}
@@ -678,6 +707,9 @@ export default function ViewRAG({
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block pt-2">🛒 Link tienda onecontrol.shop (opcional)</label>
                 <input type="text" value={newProduct.catalog_link || ''} onChange={e => setNewProduct({...newProduct, catalog_link: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="https://onecontrol.shop/..." />
                 <p className="text-[9px] text-slate-400 italic ml-2">El bot comparte estos links para generar más vistas.</p>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block pt-2">📢 IDs de anuncios de Meta (opcional)</label>
+                <input type="text" value={newProduct.ad_ids || ''} onChange={e => setNewProduct({...newProduct, ad_ids: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="120250800200560462, 120250..." />
+                <p className="text-[9px] text-slate-400 italic ml-2">Si un cliente llega de estos anuncios y dice "la del anuncio", el bot manda ESTE producto. Separá varios con coma.</p>
               </div>
 
               <button onClick={handleSaveProduct} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#FF6B00] transition-all active:scale-95">Publicar en Catálogo</button>
@@ -763,6 +795,9 @@ export default function ViewRAG({
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block pt-2">🛒 Link tienda onecontrol.shop (opcional)</label>
                 <input type="text" value={editingProduct.catalog_link || ''} onChange={e => setEditingProduct({...editingProduct, catalog_link: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="https://onecontrol.shop/..." />
                 <p className="text-[9px] text-slate-400 italic ml-2">El bot comparte estos links para generar más vistas.</p>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block pt-2">📢 IDs de anuncios de Meta (opcional)</label>
+                <input type="text" value={editingProduct.ad_ids || ''} onChange={e => setEditingProduct({...editingProduct, ad_ids: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="120250800200560462, 120250..." />
+                <p className="text-[9px] text-slate-400 italic ml-2">Si un cliente llega de estos anuncios y dice "la del anuncio", el bot manda ESTE producto. Separá varios con coma.</p>
               </div>
 
               <button onClick={handleUpdateProduct} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#FF6B00] transition-all active:scale-95">Guardar Cambios</button>

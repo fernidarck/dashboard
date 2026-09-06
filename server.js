@@ -438,6 +438,10 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN whatsapp_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN reglas_bot TEXT"); } catch(e){}
+    // ad_ids: IDs de anuncios de Meta (separados por coma) que muestran ESTE producto.
+    // Sirve para que, cuando un lead venga de ese anuncio y diga "la del anuncio",
+    // el bot sepa exactamente qué producto/foto mandar.
+    try { await db.exec("ALTER TABLE products ADD COLUMN ad_ids TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_learned TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_not_to_say TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN prompt_instruction TEXT"); } catch(e){}
@@ -2274,6 +2278,29 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
   }
 });
 
+// Helper: normaliza la lista de IDs de anuncios de Meta de un producto.
+// Acepta array o string separado por coma/espacio/salto de línea → "id1,id2,id3".
+function normalizeAdIds(v) {
+  if (v == null) return '';
+  const arr = Array.isArray(v) ? v : String(v).split(/[\s,;]+/);
+  return arr.map(x => String(x).trim()).filter(Boolean).join(',');
+}
+
+// Dado un ad_source_id (el anuncio del que vino el lead), busca el producto
+// que lo tenga listado en su columna ad_ids. Devuelve el producto o null.
+async function getProductByAdId(adSourceId) {
+  const id = String(adSourceId || '').trim();
+  if (!id) return null;
+  try {
+    const rows = await db.all("SELECT * FROM products WHERE activo = 1 AND ad_ids IS NOT NULL AND ad_ids != ''");
+    for (const p of rows) {
+      const ids = String(p.ad_ids || '').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+      if (ids.includes(id)) return p;
+    }
+  } catch (e) { console.error('getProductByAdId:', e.message); }
+  return null;
+}
+
 // Helper: normaliza imágenes de productos con descripciones
 function normalizeProductImages(p) {
   let arr = [];
@@ -2661,14 +2688,14 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', ts
+      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', normalizeAdIds(ad_ids), ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2676,12 +2703,12 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids } = req.body;
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=? WHERE id=?",
-      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2691,6 +2718,23 @@ app.delete('/api/products/:id', async (req, res) => {
   try {
     await db.run("DELETE FROM products WHERE id = ?", req.params.id);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/ads/unmapped → anuncios de los que han llegado leads pero que
+// TODAVÍA no están conectados a ningún producto (para que el dueño los asigne).
+app.get('/api/ads/unmapped', async (_req, res) => {
+  try {
+    const leads = await db.all(
+      "SELECT ad_source_id, MAX(ad_source_url) as ad_source_url, COUNT(*) as leads, MAX(nombre) as ejemplo FROM leads WHERE ad_source_id IS NOT NULL AND ad_source_id != '' GROUP BY ad_source_id ORDER BY leads DESC"
+    );
+    const prods = await db.all("SELECT nombre, ad_ids FROM products WHERE ad_ids IS NOT NULL AND ad_ids != ''");
+    const mapped = {};
+    prods.forEach(p => String(p.ad_ids).split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).forEach(id => { mapped[id] = p.nombre; }));
+    const unmapped = leads.filter(l => !mapped[String(l.ad_source_id).trim()]);
+    const yaConectados = leads.filter(l => mapped[String(l.ad_source_id).trim()])
+      .map(l => ({ ...l, producto: mapped[String(l.ad_source_id).trim()] }));
+    res.json({ unmapped, mapped: yaConectados });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2918,6 +2962,27 @@ app.get('/api/rag/context', async (req, res) => {
     const maxChars = req.query.maxChars || 2500;
     if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
 
+    // ── ATRIBUCIÓN DE ANUNCIO ────────────────────────────────────────────────
+    // Si viene el teléfono del cliente, revisamos de qué anuncio llegó y si ese
+    // anuncio está conectado a un producto. Así el bot sabe qué es "la del anuncio".
+    let adNote = "";
+    try {
+      const phoneRaw = req.query.phone || req.query.from;
+      if (phoneRaw) {
+        const cleanPhone = String(phoneRaw).replace(/\D/g, '');
+        const lead = await db.get(
+          "SELECT ad_source_id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND ad_source_id IS NOT NULL AND ad_source_id != '' ORDER BY id DESC LIMIT 1",
+          cleanPhone
+        );
+        if (lead && lead.ad_source_id) {
+          const adProd = await getProductByAdId(lead.ad_source_id);
+          if (adProd) {
+            adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO (IMPORTANTE): Este cliente llegó desde un anuncio de Meta que muestra el producto *${adProd.nombre}*. Si dice "la del anuncio", "la que sale en el anuncio", "la de la publicidad", "esa" o algo parecido SIN nombrar otro modelo, se refiere a *${adProd.nombre}*. Enfocate en ESE producto y mandale su foto directo — NO le tires todos los modelos primero.\n\n`;
+          }
+        }
+      }
+    } catch (e) { console.error('adNote:', e.message); }
+
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
     const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot FROM products WHERE activo = 1");
@@ -2969,7 +3034,7 @@ app.get('/api/rag/context', async (req, res) => {
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
-    if (scored.length === 0) return res.json({ context: "No se encontró información relevante para: " + q, found: false, sources: [] });
+    if (scored.length === 0) return res.json({ context: (adNote + "No se encontró información relevante para: " + q).trim(), found: !!adNote, sources: [] });
 
     // Construir respuesta
     let context = "";
@@ -2981,7 +3046,7 @@ app.get('/api/rag/context', async (req, res) => {
 
     if (context.length > maxChars) context = context.substring(0, maxChars) + "...";
 
-    res.json({ context: context.trim(), found: true, sources });
+    res.json({ context: (adNote + context).trim(), found: true, sources });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
