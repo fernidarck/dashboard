@@ -442,6 +442,10 @@ async function setup() {
     // Sirve para que, cuando un lead venga de ese anuncio y diga "la del anuncio",
     // el bot sepa exactamente qué producto/foto mandar.
     try { await db.exec("ALTER TABLE products ADD COLUMN ad_ids TEXT"); } catch(e){}
+    // compatibilidad: con qué marcas/modelos de motor sirve este producto (controles,
+    // botoneras, repuestos). Ej: "LiftMaster, Chamberlain". El bot lo usa para ofrecer
+    // el producto correcto y para NO prometer compatibilidad que no existe.
+    try { await db.exec("ALTER TABLE products ADD COLUMN compatibilidad TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_learned TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN what_not_to_say TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN prompt_instruction TEXT"); } catch(e){}
@@ -2688,14 +2692,14 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', normalizeAdIds(ad_ids), ts
+      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', normalizeAdIds(ad_ids), compatibilidad || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2703,12 +2707,12 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad } = req.body;
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=? WHERE id=?",
-      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, compatibilidad=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), compatibilidad ?? '', req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2985,7 +2989,7 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
-    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot FROM products WHERE activo = 1");
+    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad FROM products WHERE activo = 1");
     // Detecta agotado (sin stock inmediato). Los muebles se fabrican a pedido en ~4 días.
     // 3 estados de stock:
     //  - AGOTADO  → no se ofrece; solo aparece (a pedido) si el cliente lo nombra específicamente.
@@ -3000,6 +3004,14 @@ app.get('/api/rag/context', async (req, res) => {
       const aPedido  = !agotado && APEDIDO.test(stockStr);
       // Formato IDÉNTICO al anterior para los disponibles (no rompe nada).
       let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + (p.whatsapp_link ? ' - Link WhatsApp (compartilo para que vean el producto): ' + p.whatsapp_link : '') + (p.catalog_link ? ' - Link tienda onecontrol.shop (compartilo para más info): ' + p.catalog_link : '');
+      // Compatibilidad por marca de motor: dato duro para ofrecer el producto correcto.
+      if (p.compatibilidad && String(p.compatibilidad).trim()) {
+        content += ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO ofrezcas este producto ni prometas que le sirve; para otra marca/desconocida hay que adaptar un receptor externo (pasá con asesor).`;
+      }
+      // Reglas específicas del producto (antes NO llegaban al bot): ahora sí.
+      if (p.reglas_bot && String(p.reglas_bot).trim()) {
+        content += ` - REGLA IMPORTANTE (cumplila): ${String(p.reglas_bot).trim()}`;
+      }
       // Avisar a la IA si el producto tiene VIDEO, para que ofrezca mandarlo y NO diga "no tengo video".
       try {
         const vid = normalizeProductImages(p).find(im => /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(im.url || ''));

@@ -42,7 +42,8 @@ const emptyProduct = {
   imagenes_meta: [],
   catalog_link: '',
   whatsapp_link: '',
-  ad_ids: ''
+  ad_ids: '',
+  compatibilidad: ''
 };
 
 // Helper para obtener fotos con descripción de cualquier producto o tarjeta
@@ -696,6 +697,9 @@ export default function ViewRAG({
                 <p className="text-[9px] text-amber-700/80 italic">
                   💡 Usa este campo para poner condiciones: cuándo ofrecerlo, cuándo no enviarlo, objeciones o qué decir si piden rebaja.
                 </p>
+                <label className="text-[10px] font-black text-emerald-700 uppercase tracking-widest ml-2 block pt-3">✅ Compatibilidad (marcas de motor)</label>
+                <input type="text" value={newProduct.compatibilidad || ''} onChange={e => setNewProduct({...newProduct, compatibilidad: e.target.value})} className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all text-emerald-900 placeholder:text-emerald-400" placeholder="Ej: LiftMaster, Chamberlain  ·  o: Genius  ·  o: Universal" />
+                <p className="text-[9px] text-emerald-700/80 italic ml-2">Para controles/botoneras/repuestos: con qué marcas de motor SÍ sirve. El bot solo lo ofrece a esos motores y no promete lo que no funciona.</p>
               </div>
 
               {/* Subida de fotos con especificación para el producto */}
@@ -784,6 +788,9 @@ export default function ViewRAG({
                 <p className="text-[9px] text-amber-700/80 italic">
                   💡 Usa este campo para poner condiciones: cuándo ofrecerlo, cuándo no enviarlo, objeciones o qué decir si piden rebaja.
                 </p>
+                <label className="text-[10px] font-black text-emerald-700 uppercase tracking-widest ml-2 block pt-3">✅ Compatibilidad (marcas de motor)</label>
+                <input type="text" value={editingProduct.compatibilidad || ''} onChange={e => setEditingProduct({...editingProduct, compatibilidad: e.target.value})} className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all text-emerald-900 placeholder:text-emerald-400" placeholder="Ej: LiftMaster, Chamberlain  ·  o: Genius  ·  o: Universal" />
+                <p className="text-[9px] text-emerald-700/80 italic ml-2">Para controles/botoneras/repuestos: con qué marcas de motor SÍ sirve. El bot solo lo ofrece a esos motores y no promete lo que no funciona.</p>
               </div>
 
               {/* Subida de fotos con especificación para el producto */}
