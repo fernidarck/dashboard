@@ -2282,6 +2282,19 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
   }
 });
 
+// Palabras muy comunes que NO deben pesar en la búsqueda del catálogo (si no,
+// "para motor" hacía ganar a "Batería para motor" sobre el "control" que se pedía).
+// OJO: nunca metas aquí palabras de producto (noche, mesa, control, motor, riel...).
+const RAG_STOPWORDS = new Set([
+  'para','pero','por','que','con','como','los','las','una','unos','unas','del',
+  'este','esta','esto','ese','esa','esos','esas','mas','muy','sus','tus','mis',
+  'quiero','quisiera','necesito','tengo','busco','ocupo','desea','deseo','favor',
+  'hola','gracias','buenos','buenas','dias','dia','tardes','tarde','noches',
+  'sobre','tambien','tienen','tiene','hay','algun','alguna','cual','cuales',
+  'porfa','porfavor','saber','info','informacion','ustedes','nosotros','estoy',
+  'seria','fuera','puede','puedo','podria','me','mi','tu','su','lo','le','les',
+]);
+
 // Helper: normaliza la lista de IDs de anuncios de Meta de un producto.
 // Acepta array o string separado por coma/espacio/salto de línea → "id1,id2,id3".
 function normalizeAdIds(v) {
@@ -3036,8 +3049,9 @@ app.get('/api/rag/context', async (req, res) => {
     const keywords = q.toLowerCase()
                       .replace(/[¿?¡!.,;:()"'*\n]/g, ' ')   // quitar puntuación: "visacuotas?" → "visacuotas"
                       .split(/\s+/)
-                      .filter(k => k.length > 2)
-                      .map(normalizeKw);
+                      .filter(k => k.length > 2 && !RAG_STOPWORDS.has(k))
+                      .map(normalizeKw)
+                      .filter(k => !RAG_STOPWORDS.has(k));
     
     const scored = allKnowledge.map(doc => {
       const nameL    = String(doc.name || '').toLowerCase();
@@ -3534,17 +3548,19 @@ app.post('/api/training/test', async (req, res) => {
     const keywords = qClean
       .replace(/[¿?¡!.,;:()"'*\n]/g, ' ')
       .split(/\s+/)
-      .filter(k => k.length > 2)
-      .map(normalizeKw);
+      .filter(k => k.length > 2 && !RAG_STOPWORDS.has(k))
+      .map(normalizeKw)
+      .filter(k => !RAG_STOPWORDS.has(k));
 
+    // Mismo scoring que el RAG real (/api/rag/context): nombre pesa 3, resto 1, con
+    // compatibilidad incluida. Así el simulador refleja lo que de verdad recibe el bot.
     const scoredProducts = products.map(p => {
-      const fullText = `${p.nombre} ${p.categoria || ''} ${p.descripcion || ''}`.toLowerCase();
+      const nameL = String(p.nombre || '').toLowerCase();
+      const restL = `${p.categoria || ''} ${p.descripcion || ''} ${p.compatibilidad || ''} ${p.reglas_bot || ''}`.toLowerCase();
       let score = 0;
       keywords.forEach(kw => {
-        if (fullText.includes(kw)) {
-          score += 2;
-          if ((p.nombre || '').toLowerCase().includes(kw)) score += 6;
-        }
+        if (nameL.includes(kw)) score += 3;
+        else if (restL.includes(kw)) score += 1;
       });
       return { ...p, score };
     }).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
