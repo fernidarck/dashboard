@@ -420,7 +420,9 @@ export default function ViewEntrenamiento({
           <div className="lg:col-span-7 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <span className="text-xs font-black uppercase tracking-widest text-slate-400">Resultado de la IA</span>
-              {simResult && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">✅ Reglas Aplicadas</span>}
+              {simResult && (simResult.source === 'bot-real'
+                ? <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">🤖 Bot real (deepseek)</span>
+                : <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">≈ Aproximación (sin llave)</span>)}
             </div>
 
             {simResult ? (

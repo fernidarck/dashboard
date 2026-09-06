@@ -3649,10 +3649,49 @@ app.post('/api/training/test', async (req, res) => {
       mediaInfo.summary = `🎬 Enviará ${mediaInfo.videos.length} video(s) demostrativo(s) adjunto(s)`;
     }
 
+    // ── SIMULADOR REAL: llamar al MISMO LLM que el bot (deepseek-v4-pro) ─────────
+    // Si hay una API key configurada (settings.deepseek_api_key), replicamos el
+    // cerebro del bot: mismo system message + mismo RAG + mismo modelo. Así el
+    // simulador responde IGUAL que el bot real (un solo mensaje, sin memoria).
+    // Si algo falla o no hay key, cae al texto aproximado de arriba (no rompe).
+    let finalReply = simulatedReply;
+    let replySource = 'aprox'; // 'aprox' = plantilla local | 'bot-real' = LLM real
+    try {
+      const setRows = await db.all("SELECT key, value FROM settings");
+      const S = {}; setRows.forEach(r => S[r.key] = r.value);
+      const apiKey = S.deepseek_api_key;
+      if (apiKey) {
+        const baseUrl = String(S.deepseek_base_url || 'https://api.deepseek.com').replace(/\/+$/, '');
+        const model = S.deepseek_model || 'deepseek-v4-pro';
+        // RAG idéntico al bot: llamamos al MISMO endpoint (sin refactor) con el token interno.
+        let ragCtx = '', ragFound = false;
+        try {
+          const ragRes = await fetch(`http://127.0.0.1:${port}/api/rag/context?maxChars=2500&q=${encodeURIComponent(question)}`, { headers: { Authorization: 'Bearer onecontrol-n8n-token-static-2026' } });
+          const ragJson = await ragRes.json();
+          ragCtx = ragJson.context || ''; ragFound = !!ragJson.found;
+        } catch (e) { console.error('sim RAG:', e.message); }
+        // MISMO system message que el agente "recepcionista" en n8n.
+        const sys = `Eres ${S.agent_nombre || 'el asistente'}, ${S.agent_rol || 'asistente virtual'} de ${S.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${S.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${S.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.\n\n📸 REGLA SOBRE IMÁGENES Y ANUNCIOS:\n- Si el cliente viene de un [ANUNCIO de origen] o menciona un modelo específico (ej: Mesa de noche modelo 5, Motor LiftMaster, Control Genius): NO preguntes cuál busca. Da el precio de inmediato y envía la foto de ese modelo con [Ver Imagen](URL_EXACTA_DEL_RAG).\n- Si el cliente pregunta de forma general por una categoría o artículo sin modelo (ej: "¿Venden botoneras?"): Confirma el producto disponible, dale el precio, pregúntale cuál modelo busca y adjunta [Ver Imagen](URL) de la que tenemos.\n- JAMÁS inventes URLs de imágenes. Usa ÚNICAMENTE las URLs que aparezcan textualmente en la INFORMACIÓN DE REFERENCIA.` + (ragFound && ragCtx ? '\n\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión y extraer las fotos:\n' + ragCtx : '');
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 30000);
+        const llmRes = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({ model, temperature: 0.5, messages: [{ role: 'system', content: sys }, { role: 'user', content: question }] }),
+          signal: ctrl.signal
+        }).finally(() => clearTimeout(to));
+        const llmJson = await llmRes.json();
+        const txt = llmJson?.choices?.[0]?.message?.content;
+        if (txt && txt.trim()) { finalReply = txt.trim(); replySource = 'bot-real'; }
+        else if (llmJson?.error) { console.error('deepseek sim error:', JSON.stringify(llmJson.error).slice(0, 200)); }
+      }
+    } catch (e) { console.error('simulador LLM:', e.message); }
+
     res.json({
       success: true,
       question,
-      reply: simulatedReply,
+      reply: finalReply,
+      source: replySource,
       mediaInfo,
       appliedRules: matchingRules.map(r => ({ id: r.id, title: r.title, type: r.type, rule: r.rule })),
       productsFound: scoredProducts.slice(0, 3).map(p => `${p.nombre} (Q${p.precio})`)
