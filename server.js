@@ -3687,6 +3687,25 @@ app.post('/api/training/test', async (req, res) => {
       }
     } catch (e) { console.error('simulador LLM:', e.message); }
 
+    // Ajustar el indicador de media al comportamiento REAL del bot: solo manda fotos/videos
+    // que aparecen como URL en SU PROPIA respuesta (los [Ver Imagen](URL) que n8n extrae).
+    // Antes mostraba la foto del "producto top" aunque el bot NO la ofreciera (ej: salía la
+    // del Genius aunque el bot solo pidiera identificar la marca).
+    if (replySource === 'bot-real') {
+      const urls = [...String(finalReply).matchAll(/https?:\/\/[^\s)\]]+/gi)].map(m => m[0].replace(/[.,)]+$/, ''));
+      mediaInfo.images = []; mediaInfo.videos = [];
+      mediaInfo.willSendImage = false; mediaInfo.willSendVideo = false;
+      urls.forEach(u => {
+        if (VIDEO_EXT.test(u)) { mediaInfo.videos.push({ url: u, desc: 'Video' }); mediaInfo.willSendVideo = true; }
+        else if (/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(u) || /\/uploads\//i.test(u)) { mediaInfo.images.push({ url: u, desc: 'Foto del producto' }); mediaInfo.willSendImage = true; }
+      });
+      mediaInfo.summary = mediaInfo.willSendImage && mediaInfo.willSendVideo
+        ? `📸 Enviará ${mediaInfo.images.length} imagen(es) + 🎬 ${mediaInfo.videos.length} video(s)`
+        : mediaInfo.willSendImage ? `📸 Enviará ${mediaInfo.images.length} imagen(es) del producto`
+        : mediaInfo.willSendVideo ? `🎬 Enviará ${mediaInfo.videos.length} video(s)`
+        : "📝 Solo mensaje de texto (no enviará fotos ni videos)";
+    }
+
     res.json({
       success: true,
       question,
