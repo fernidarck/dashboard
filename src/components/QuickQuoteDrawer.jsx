@@ -815,60 +815,60 @@ export default function QuickQuoteDrawer({
         )}
       </div>
 
-      {/* FOOTER CON BOTONES DE ACCIÓN RÁPIDA */}
+      {/* FOOTER CON BOTONES DE ACCIÓN RÁPIDA (DISEÑO MINIMALISTA) */}
       {items.length > 0 && (
-        <div className="p-4 border-t border-slate-100 bg-white space-y-2 shrink-0">
+        <div className="p-3.5 border-t border-slate-100 bg-white space-y-2 shrink-0">
           {/* BOTÓN 1: ENVIAR COTIZACIÓN PDF POR WHATSAPP */}
           <button
             type="button"
             onClick={handleSendPdfWhatsApp}
             disabled={sendingPdf || sending}
-            className={`w-full py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-2 transition-all shadow-md active:scale-98 cursor-pointer disabled:opacity-50 ${
+            className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 ${
               pdfSentSuccess
-                ? 'bg-emerald-600 text-white shadow-emerald-200'
-                : 'bg-slate-900 hover:bg-slate-800 text-white'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'
             }`}
             title="Genera el archivo PDF membretado formal y lo envía al chat de WhatsApp"
           >
             {pdfSentSuccess ? (
               <>
-                <Check size={14} className="stroke-[3] text-emerald-300" />
-                <span>¡Cotización PDF Enviada por WhatsApp!</span>
+                <Check size={14} className="stroke-[2.5]" />
+                <span>¡Cotización PDF enviada!</span>
               </>
             ) : sendingPdf ? (
               <>
-                <RefreshCw size={14} className="animate-spin text-[#FF6B00]" />
+                <RefreshCw size={14} className="animate-spin text-slate-300" />
                 <span>Generando y enviando PDF...</span>
               </>
             ) : (
               <>
-                <FileText size={14} className="text-[#FF6B00]" />
-                <span>Enviar Cotización PDF por WhatsApp</span>
+                <FileText size={14} className="text-amber-400" />
+                <span>Enviar cotización PDF por WhatsApp</span>
               </>
             )}
           </button>
 
-          {/* BOTÓN 2: ENVIAR RESUMEN TEXTO POR WHATSAPP */}
+          {/* BOTÓN 2: ENVIAR RESUMEN TEXTO */}
           <button
             type="button"
             onClick={handleSendDirect}
             disabled={sending || sendingPdf}
-            className="w-full py-2 px-3 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-2 transition-all shadow-xs active:scale-98 cursor-pointer disabled:opacity-50"
+            className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
             title="Enviar cotización como mensaje de texto en WhatsApp"
           >
-            <SendHorizontal size={13} />
-            <span>{sending ? 'Enviando texto a WhatsApp...' : 'Enviar por WhatsApp (Texto)'}</span>
+            <SendHorizontal size={13} className="text-slate-500" />
+            <span>{sending ? 'Enviando texto...' : 'Enviar resumen en texto'}</span>
           </button>
 
-          {/* Botones secundarios: Descargar/Imprimir PDF + Pegar en Chat */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Botones secundarios: Descargar PDF + Pegar en Chat */}
+          <div className="grid grid-cols-2 gap-2 pt-0.5">
             <button
               type="button"
               onClick={handleDownloadPdf}
-              title="Descargar archivo PDF membretado en tu computadora"
-              className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              title="Descargar archivo PDF membretado"
+              className="py-1.5 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/60 text-slate-600 hover:text-slate-900 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Download size={13} className="text-[#FF6B00]" />
+              <Download size={13} className="text-slate-400" />
               <span>Descargar PDF</span>
             </button>
 
@@ -876,27 +876,27 @@ export default function QuickQuoteDrawer({
               type="button"
               onClick={handleInsertIntoChat}
               title="Pegar texto en el cuadro de escritura para editarlo antes de mandar"
-              className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              className="py-1.5 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/60 text-slate-600 hover:text-slate-900 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-              <span>{copied ? '¡Pegado!' : 'Pegar en Chat'}</span>
+              {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} className="text-slate-400" />}
+              <span>{copied ? '¡Pegado!' : 'Pegar en chat'}</span>
             </button>
           </div>
 
-          {/* Botón terciario: Guardar como Pedido (si existe onSavePedido) */}
+          {/* Botón terciario: Guardar como Pedido */}
           {onSavePedido && (
             <button
               type="button"
               onClick={handleSaveAsPedido}
               disabled={savedOrder}
-              className="w-full py-1.5 text-slate-400 hover:text-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+              className="w-full py-1 text-slate-400 hover:text-slate-600 text-[10.5px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               {savedOrder ? (
                 <span className="text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 size={12} /> Guardado en Pedidos
+                  <CheckCircle2 size={12} /> Guardado en pedidos
                 </span>
               ) : (
-                <span>📦 Guardar en Módulo de Pedidos</span>
+                <span>Guardar en pedidos</span>
               )}
             </button>
           )}
