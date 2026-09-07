@@ -4,43 +4,49 @@ import {
   MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft, Paperclip, FileText,
   ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon,
   UserPlus, Phone, Download, RefreshCw, UploadCloud,
-  CheckCheck, Trophy, XCircle, Clock, MapPin, ChevronDown, ListFilter
+  CheckCheck, Trophy, XCircle, Clock, MapPin, ChevronDown, ListFilter,
+  UserCircle
 } from 'lucide-react';
 import QuickQuoteDrawer from '../QuickQuoteDrawer.jsx';
 
-// Etiquetas estilo WhatsApp Business (colores sobrios, sutiles y minimalistas)
-export const WHATSAPP_LABELS = [
-  { id: 'En Seguimiento', label: 'En seguimiento', color: '#D97706' },
-  { id: 'Nuevo', label: 'Nuevo cliente', color: '#0284C7' },
-  { id: 'Pago Pendiente', label: 'Pago pendiente', color: '#7C3AED' },
-  { id: 'Venta', label: 'A Pedido / Venta', color: '#059669' },
-  { id: 'Cita Agendada', label: 'Cita / Visita agendada', color: '#4F46E5' },
-  { id: 'Trabajo Pendiente', label: 'Trabajo pendiente', color: '#65A30D' },
-  { id: 'Perdido', label: 'No compró', color: '#94A3B8' },
+// Configuraciones y etapas reales del Lead (embudo oficial de Leads / CRM de OneControl)
+export const LEAD_STAGES = [
+  { id: 'En Seguimiento', label: 'En seguimiento', shortLabel: 'En seguimiento', color: '#D97706' },
+  { id: 'Venta', label: 'A pedido / Venta', shortLabel: 'A pedido', color: '#059669' },
+  { id: 'Cita Agendada', label: 'Cita / Visita agendada', shortLabel: 'Cita / Visita', color: '#4F46E5' },
+  { id: 'Perdido', label: 'No compró', shortLabel: 'No compró', color: '#94A3B8' },
+  { id: 'Nuevo', label: 'Por hablarles (Nuevo)', shortLabel: 'Por hablarles', color: '#64748B' },
+  { id: 'Interesado', label: 'Interesado (Cotizando)', shortLabel: 'Interesado', color: '#0284C7' },
+  { id: 'Post-Venta', label: 'Post-venta', shortLabel: 'Post-venta', color: '#0D9488' },
 ];
 
+export const WHATSAPP_LABELS = LEAD_STAGES;
+
 export function getLeadLabel(lead) {
-  if (!lead) return WHATSAPP_LABELS[1];
+  if (!lead) return LEAD_STAGES[4]; // Por hablarles (Nuevo)
   const estado = lead.estado || 'Nuevo';
-  if (estado === 'En Seguimiento' || estado === 'Interesado' || (lead.etiquetas && String(lead.etiquetas).toLowerCase().includes('seguimiento'))) {
-    return WHATSAPP_LABELS[0];
+  const found = LEAD_STAGES.find(s => s.id === estado);
+  if (found) return found;
+
+  if (estado === 'Cerrado' || estado === 'Vendido' || estado === 'Pedido') {
+    return LEAD_STAGES[1]; // Venta
   }
-  if (estado === 'Venta' || estado === 'Cerrado') {
-    return WHATSAPP_LABELS[3];
+  if (estado === 'Cita') {
+    return LEAD_STAGES[2]; // Cita / Visita
   }
-  if (estado === 'Cita Agendada' || estado === 'Cita') {
-    return WHATSAPP_LABELS[4];
+  if (estado === 'Descartado') {
+    return LEAD_STAGES[3]; // No compró / Perdido
   }
-  if (estado === 'Perdido' || estado === 'Descartado') {
-    return WHATSAPP_LABELS[6];
+  if (estado === 'Interesado') {
+    return LEAD_STAGES[5]; // Interesado
   }
-  if (estado === 'Pago Pendiente' || estado === 'Cotizado') {
-    return WHATSAPP_LABELS[2];
+  if (estado === 'Post-Venta' || estado === 'PostVenta' || estado === 'Garantia') {
+    return LEAD_STAGES[6]; // Post-Venta
   }
-  if (estado === 'Trabajo Pendiente') {
-    return WHATSAPP_LABELS[5];
+  if (String(lead.etiquetas || '').toLowerCase().includes('seguimiento')) {
+    return LEAD_STAGES[0]; // En Seguimiento
   }
-  return WHATSAPP_LABELS[1]; // Nuevo cliente
+  return LEAD_STAGES[4]; // Por hablarles (Nuevo)
 }
 
 function ChannelBadge({ origen, size = 'sm' }) {
@@ -473,7 +479,7 @@ export default function ViewConversaciones({
             )}
           </div>
 
-          {/* Filtros estilo WhatsApp Web: sobrios, limpios y minimalistas */}
+          {/* Filtros rápidos de etapa del Lead */}
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
             <button
               type="button"
@@ -486,42 +492,21 @@ export default function ViewConversaciones({
             >
               Todos
             </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('En Seguimiento')}
-              className={`px-3 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                stageFilter === 'En Seguimiento'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-              <span>En seguimiento</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('Venta')}
-              className={`px-3 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                stageFilter === 'Venta'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-              <span>Venta</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('Perdido')}
-              className={`px-3 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                stageFilter === 'Perdido'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-              <span>No compró</span>
-            </button>
+            {LEAD_STAGES.slice(0, 5).map(s => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setStageFilter(stageFilter === s.id ? 'todos' : s.id)}
+                className={`px-3 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  stageFilter === s.id
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span>{s.shortLabel || s.label}</span>
+              </button>
+            ))}
           </div>
 
           {/* Selector de orden: Más recientes (WhatsApp) vs Urgentes */}
@@ -720,13 +705,6 @@ export default function ViewConversaciones({
                 <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedLead.botActive ? 'text-emerald-500' : 'text-amber-500'}`}>
                   {selectedLead.botActive ? 'IA Gestionando' : 'Modo Manual / Humano'}
                 </p>
-                {selectedLead.estado && (
-                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
-                    selectedLead.estado === 'Venta' ? 'bg-emerald-500 text-white' :
-                    selectedLead.estado === 'En Seguimiento' ? 'bg-blue-500 text-white' :
-                    'bg-slate-700 text-white'
-                  }`}>{selectedLead.estado}</span>
-                )}
                 {selectedLead.phone && (
                   <span className="text-[10px] text-slate-400 font-medium">· {selectedLead.phone}</span>
                 )}
@@ -734,56 +712,57 @@ export default function ViewConversaciones({
             </div>
           </div>
           <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
-            {/* PILL ETIQUETAS / ESTADO ESTILO WHATSAPP BUSINESS */}
+            {/* PILL DESPLEGABLE: CONFIGURACIÓN Y ETAPA DEL LEAD */}
             {selectedLead?.id && (
               <div className="relative" ref={labelDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setShowLabelDropdown(prev => !prev)}
-                  className="flex items-center gap-2 px-3 py-1 rounded-full border border-slate-200/80 bg-slate-50/80 hover:bg-slate-100 text-[12px] font-medium text-slate-700 transition-colors cursor-pointer shrink-0"
-                  title="Etiquetas y estado de la conversación"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200/90 bg-slate-50/90 hover:bg-slate-100/90 text-[12px] font-medium text-slate-700 transition-colors cursor-pointer shrink-0"
+                  title="Configuración de etapa del lead"
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: activeLabel.color }}
                   />
-                  <span className="truncate max-w-[110px] sm:max-w-[150px] text-slate-700">{activeLabel.label}</span>
+                  <span className="truncate max-w-[120px] sm:max-w-[160px] text-slate-700">{activeLabel.shortLabel || activeLabel.label}</span>
                   <ChevronDown size={13} className={`text-slate-400 transition-transform duration-150 ${showLabelDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Popover flotante idéntico a WhatsApp Web */}
+                {/* Popover desplegable: estrictamente las configuraciones del lead */}
                 {showLabelDropdown && (
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-100 py-1.5 z-[300] animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3.5 py-1 text-[11px] font-medium text-slate-400">
-                      Etiquetas
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl shadow-slate-200/70 border border-slate-100 py-2 z-[300] animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3.5 pb-1.5 text-[11px] font-medium text-slate-400 border-b border-slate-50 flex items-center justify-between">
+                      <span>Configuración del Lead</span>
+                      <span className="text-[10px] text-slate-400">Etapa</span>
                     </div>
 
-                    <div className="max-h-72 overflow-y-auto py-0.5">
-                      {WHATSAPP_LABELS.map(lbl => {
-                        const isSelected = activeLabel.id === lbl.id;
+                    <div className="max-h-72 overflow-y-auto py-1">
+                      {LEAD_STAGES.map(stage => {
+                        const isSelected = activeLabel.id === stage.id;
                         return (
                           <button
-                            key={lbl.id}
+                            key={stage.id}
                             type="button"
                             onClick={async () => {
-                              await handleQuickStatus(lbl.id);
+                              await handleQuickStatus(stage.id);
                               setShowLabelDropdown(false);
                             }}
                             className={`w-full px-3.5 py-2 flex items-center justify-between gap-3 text-left hover:bg-slate-50 transition-colors cursor-pointer ${
-                              isSelected ? 'bg-slate-50' : ''
+                              isSelected ? 'bg-slate-50/80' : ''
                             }`}
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
                               <span
                                 className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: lbl.color }}
+                                style={{ backgroundColor: stage.color }}
                               />
                               <span className={`text-[12.5px] truncate ${isSelected ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
-                                {lbl.label}
+                                {stage.label}
                               </span>
                             </div>
 
-                            {/* Checkbox minimalista cuadrado de WhatsApp */}
+                            {/* Checkbox minimalista */}
                             <div
                               className={`w-3.5 h-3.5 rounded-[3px] flex items-center justify-center transition-all ${
                                 isSelected
@@ -798,26 +777,34 @@ export default function ViewConversaciones({
                       })}
                     </div>
 
+                    {/* Acciones directas de configuración del lead */}
                     <div className="h-px bg-slate-100 my-1" />
-
-                    <div className="px-2 pt-0.5">
+                    <div className="px-2 pt-0.5 space-y-0.5">
                       <button
                         type="button"
                         onClick={() => {
                           setShowLabelDropdown(false);
-                          const tag = window.prompt('Escribe una nueva etiqueta para este lead:');
-                          if (tag && tag.trim()) {
-                            const currentTags = selectedLead.etiquetas ? selectedLead.etiquetas.split(',').map(t => t.trim()) : [];
-                            if (!currentTags.includes(tag.trim())) {
-                              currentTags.push(tag.trim());
-                              onUpdateLead({ ...selectedLead, etiquetas: currentTags.join(', ') });
-                            }
-                          }
+                          if (onToggleBot) onToggleBot(selectedLead.id);
                         }}
-                        className="w-full px-2.5 py-1.5 rounded-lg text-left text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                        className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] font-medium text-slate-600 hover:bg-slate-50 flex items-center justify-between transition-colors cursor-pointer"
                       >
-                        <span className="text-sm font-medium leading-none text-slate-400">+</span>
-                        <span>Nueva etiqueta...</span>
+                        <span className="flex items-center gap-2">
+                          <Bot size={13} className={selectedLead.botActive ? 'text-emerald-500' : 'text-slate-400'} />
+                          <span>{selectedLead.botActive ? 'Pausar IA (Modo Manual)' : 'Activar IA en este chat'}</span>
+                        </span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${selectedLead.botActive ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowLabelDropdown(false);
+                          setRightPanelTab('perfil');
+                          setShowRightPanel(true);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <UserCircle size={13} className="text-slate-400" />
+                        <span>Ver / Editar ficha y datos del lead</span>
                       </button>
                     </div>
                   </div>
