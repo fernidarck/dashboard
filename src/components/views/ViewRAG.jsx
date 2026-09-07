@@ -230,6 +230,8 @@ export default function ViewRAG({
 
   // Categorías: las por defecto + las que ya usás en tus productos (podés escribir nuevas).
   const allProductCats = [...new Set([...PRODUCT_CATEGORIES, ...products.map(p => p.categoria).filter(Boolean)])];
+  // Categorías de tarjetas: las por defecto + las que ya usás en tarjetas + las de productos (campo libre).
+  const allCardCats = [...new Set([...CARD_CATEGORIES, ...documents.map(d => d.category).filter(Boolean), ...allProductCats])];
 
   // Componente reutilizable para galería y especificación de fotos
   const renderImageManager = (item, type, isCard = false) => {
@@ -570,9 +572,8 @@ export default function ViewRAG({
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
-                  <select value={newCard.category} onChange={e => setNewCard({...newCard, category: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
-                    {CARD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                  </select>
+                  <input list="cardcats-new" value={newCard.category} onChange={e => setNewCard({...newCard, category: e.target.value})} placeholder="Escribí o elegí (podés crear una nueva)" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
+                  <datalist id="cardcats-new">{allCardCats.map(c => <option key={c} value={c} />)}</datalist>
                 </div>
               </div>
               <div className="space-y-2">
@@ -605,9 +606,8 @@ export default function ViewRAG({
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
-                  <select value={editingCard.category} onChange={e => setEditingCard({...editingCard, category: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all">
-                    {CARD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                  </select>
+                  <input list="cardcats-edit" value={editingCard.category} onChange={e => setEditingCard({...editingCard, category: e.target.value})} placeholder="Escribí o elegí (podés crear una nueva)" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" />
+                  <datalist id="cardcats-edit">{allCardCats.map(c => <option key={c} value={c} />)}</datalist>
                 </div>
               </div>
               <div className="space-y-2">
