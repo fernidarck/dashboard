@@ -3064,10 +3064,12 @@ app.get('/api/rag/context', async (req, res) => {
         if (nameL.includes(kw)) score += 3;
         else if (contentL.includes(kw)) score += 1;
       });
-      // Los productos AGOTADOS bajan en el ranking: se siguen mostrando (se venden a
-      // pedido), pero NUNCA por encima de los que SÍ hay en stock. Así en "muéstreme
-      // las mesas" salen primero las disponibles (ej: Modelo 1) y no la agotada.
-      if (/ESTADO: SIN STOCK/.test(doc.content)) score -= 2;
+      // PRIORIDAD POR DISPONIBILIDAD: primero lo que HAY en stock (lo que se ofrece),
+      // luego lo que es a pedido/fabricación, y de último lo agotado. Los agotados y a
+      // pedido se siguen mostrando (se venden), pero NUNCA por encima de lo disponible.
+      // Así en "muéstreme las mesas" salen primero las que tiene (ej: Modelo 1).
+      if (/ESTADO: SIN STOCK/.test(doc.content)) score -= 3;            // agotado → hasta abajo
+      else if (/ESTADO: A PEDIDO/.test(doc.content)) score -= 1;        // a pedido → en medio
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
