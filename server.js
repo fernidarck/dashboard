@@ -3064,6 +3064,10 @@ app.get('/api/rag/context', async (req, res) => {
         if (nameL.includes(kw)) score += 3;
         else if (contentL.includes(kw)) score += 1;
       });
+      // Los productos AGOTADOS bajan en el ranking: se siguen mostrando (se venden a
+      // pedido), pero NUNCA por encima de los que SÍ hay en stock. Así en "muéstreme
+      // las mesas" salen primero las disponibles (ej: Modelo 1) y no la agotada.
+      if (/ESTADO: SIN STOCK/.test(doc.content)) score -= 2;
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
