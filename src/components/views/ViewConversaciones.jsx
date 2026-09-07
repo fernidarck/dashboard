@@ -3,8 +3,10 @@ import {
   Search, X, AlertTriangle, Bot, Power, Database,
   MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft, Paperclip, FileText,
   ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon,
-  UserPlus, Phone, Download, RefreshCw, UploadCloud
+  UserPlus, Phone, Download, RefreshCw, UploadCloud,
+  CheckCheck, Trophy, XCircle, Clock, MapPin
 } from 'lucide-react';
+import QuickQuoteDrawer from '../QuickQuoteDrawer.jsx';
 
 function ChannelBadge({ origen, size = 'sm' }) {
   const orig = String(origen || '').toLowerCase();
@@ -49,6 +51,56 @@ const getChannelIcon = (origen, channelPhone) => {
   return '🌟';
 };
 
+// Helper: resuelve y normaliza medios (imágenes, videos, audios, documentos)
+// con compatibilidad de aliases, MIME types y resolución de URLs localhost/uploads
+function getMediaInfo(m) {
+  if (!m) return { url: null, type: null, text: '' };
+
+  let url = m.mediaUrl || m.media_url || m.imageUrl || m.image_url || m.url || null;
+  let type = (m.mediaType || m.media_type || '').toLowerCase();
+  let text = m.text || '';
+
+  // Si no hay mediaUrl explícito, pero el texto es o contiene una URL directa de imagen
+  if (!url && text) {
+    const trimmed = text.trim();
+    if (/^https?:\/\/[^\s]+(\.(jpg|jpeg|png|webp|gif|svg)|(\/uploads\/))/i.test(trimmed)) {
+      url = trimmed;
+      type = 'image';
+      text = '';
+    }
+  }
+
+  // Normalizar tipo de medio
+  if (url) {
+    if (!type || type.includes('image') || type.includes('foto') || type.includes('photo') || /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(url)) {
+      type = 'image';
+    } else if (type.includes('video') || /\.(mp4|mov|webm)(\?.*)?$/i.test(url)) {
+      type = 'video';
+    } else if (type.includes('audio') || type.includes('voice') || /\.(mp3|ogg|wav|m4a)(\?.*)?$/i.test(url)) {
+      type = 'audio';
+    } else {
+      type = 'document';
+    }
+
+    // Normalizar localhost https -> http para evitar net::ERR_SSL_PROTOCOL_ERROR
+    if (url.startsWith('https://localhost') || url.startsWith('https://127.0.0.1')) {
+      url = url.replace('https://', 'http://');
+    }
+
+    // Si es una ruta relativa /uploads/... y estamos en dev con Vite en localhost
+    if (url.startsWith('/uploads/') && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      url = `http://localhost:3002${url}`;
+    }
+  }
+
+  // Si el texto es idéntico a la URL del medio, no duplicarlo en la burbuja
+  if (url && text && text.trim() === url.trim()) {
+    text = '';
+  }
+
+  return { url, type, text };
+}
+
 export default function ViewConversaciones({
   leads = [],
   messages = [],
@@ -59,17 +111,22 @@ export default function ViewConversaciones({
   onSendMessage,
   onSendDocument,
   onToggleBot,
+  onSavePedido,
+  onUpdateLead,
   messagesContainerRef,
   messagesEndRef,
   openChatNonce = 0
 }) {
   const [messageText, setMessageText] = useState('');
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [showRightPanel, setShowRightPanel] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState('cotizador'); // 'cotizador' | 'perfil'
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const [sendingDoc, setSendingDoc] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [stagedFile, setStagedFile] = useState(null);
   const [stagedFilePreview, setStagedFilePreview] = useState(null);
+  const [sortMode, setSortMode] = useState('recent'); // 'recent' (WhatsApp) | 'urgent' (Urgentes primero)
+  const [imageErrors, setImageErrors] = useState({});
   const dragCounter = useRef(0);
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -77,6 +134,25 @@ export default function ViewConversaciones({
   const [channelTab, setChannelTab] = useState('todos');
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Acción rápida para mover etapa / estado del cliente (como en ViewCRM)
+  const handleQuickStatus = async (targetEstado) => {
+    if (!selectedLead || !selectedLead.id || !onUpdateLead) return;
+    const isVenta = targetEstado === 'Venta';
+    const isPerdido = targetEstado === 'Perdido';
+    const isSeg = targetEstado === 'En Seguimiento' || targetEstado === 'Interesado';
+    const isCita = targetEstado === 'Cita Agendada';
+
+    const updated = {
+      ...selectedLead,
+      estado: targetEstado,
+      score: isVenta ? 100 : isPerdido ? 0 : (isSeg || isCita) ? 60 : (selectedLead.score || 50),
+      priority: isVenta || isPerdido || isSeg || isCita ? 'normal' : selectedLead.priority,
+      handoff_reason: isVenta || isPerdido || isSeg || isCita ? null : selectedLead.handoff_reason
+    };
+
+    await onUpdateLead(updated);
+  };
 
   // Al navegar desde Leads/Dashboard/notificación (cambia openChatNonce), abrir el chat
   // específico también en móvil (no quedarse en la lista general).
@@ -108,6 +184,13 @@ export default function ViewConversaciones({
     }
     setStagedFile(null);
     setStagedFilePreview(null);
+  };
+
+  const handleInsertQuoteText = (quoteText) => {
+    setMessageText(prev => prev ? `${prev}\n\n${quoteText}` : quoteText);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
   const handleSend = async () => {
@@ -266,17 +349,21 @@ export default function ViewConversaciones({
         return nameMatch || phoneMatch || motorMatch || msgMatch || estadoMatch || origenMatch;
       });
     }
-    // Ordenar: urgentes primero, luego la conversación con mensaje más reciente en primera fila
+    // Ordenar conversaciones:
+    // Modo 'recent' (predeterminado): Orden cronológico WhatsApp (último mensaje arriba)
+    // Modo 'urgent': Prioriza los leads urgentes arriba y luego por mensaje más reciente
     return list.sort((a, b) => {
-      const aUrgent = a.priority === 'urgent' ? 1 : 0;
-      const bUrgent = b.priority === 'urgent' ? 1 : 0;
-      if (aUrgent !== bUrgent) return bUrgent - aUrgent;
+      if (sortMode === 'urgent') {
+        const aUrgent = a.priority === 'urgent' ? 1 : 0;
+        const bUrgent = b.priority === 'urgent' ? 1 : 0;
+        if (aUrgent !== bUrgent) return bUrgent - aUrgent;
+      }
       const aMsg = Number(a.lastMsgId || 0);
       const bMsg = Number(b.lastMsgId || 0);
       if (aMsg !== bMsg) return bMsg - aMsg;
       return (b.id || 0) - (a.id || 0);
     });
-  }, [leads, chatSearch, channelTab]);
+  }, [leads, chatSearch, channelTab, sortMode]);
 
   // Filtrado de productos para enviar desde el catálogo
   const filteredProducts = useMemo(() => {
@@ -321,6 +408,35 @@ export default function ViewConversaciones({
                 <X size={12} />
               </button>
             )}
+          </div>
+
+          {/* Selector de orden: Más recientes (WhatsApp) vs Urgentes */}
+          <div className="flex items-center justify-between gap-1 pt-0.5">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Orden:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setSortMode('recent')}
+                className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase transition-all cursor-pointer ${
+                  sortMode === 'recent'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                🕒 Más recientes
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortMode('urgent')}
+                className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase transition-all cursor-pointer ${
+                  sortMode === 'urgent'
+                    ? 'bg-red-500 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-red-600'
+                }`}
+              >
+                ⚠️ Urgentes
+              </button>
+            </div>
           </div>
 
           {/* Filtro rápido de canales */}
@@ -517,9 +633,138 @@ export default function ViewConversaciones({
                 <span className="hidden sm:inline">{selectedLead.botActive ? 'Desactivar IA' : 'Activar IA'}</span>
               </button>
             )}
-            <button onClick={() => setShowSidebar(!showSidebar)} className="hidden md:block p-2.5 bg-slate-50 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all" title="Ver ficha del lead"><Database size={18} /></button>
+            {/* BOTÓN HEADER: COTIZADOR RÁPIDO */}
+            <button
+              type="button"
+              onClick={() => {
+                if (showRightPanel && rightPanelTab === 'cotizador') {
+                  setShowRightPanel(false);
+                } else {
+                  setRightPanelTab('cotizador');
+                  setShowRightPanel(true);
+                }
+              }}
+              className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border shadow-xs cursor-pointer ${
+                showRightPanel && rightPanelTab === 'cotizador'
+                  ? 'bg-slate-900 text-[#FF6B00] border-slate-900'
+                  : 'bg-orange-50 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white border-orange-200'
+              }`}
+              title="Abrir cotizador rápido"
+            >
+              <Sparkles size={13} />
+              <span className="hidden sm:inline">Cotizar</span>
+            </button>
+
+            {/* BOTÓN HEADER: FICHA DEL LEAD */}
+            <button
+              type="button"
+              onClick={() => {
+                if (showRightPanel && rightPanelTab === 'perfil') {
+                  setShowRightPanel(false);
+                } else {
+                  setRightPanelTab('perfil');
+                  setShowRightPanel(true);
+                }
+              }}
+              className={`hidden md:flex items-center justify-center p-2.5 rounded-xl transition-all cursor-pointer ${
+                showRightPanel && rightPanelTab === 'perfil'
+                  ? 'bg-slate-900 text-[#FF6B00]'
+                  : 'bg-slate-50 text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+              }`}
+              title="Ver ficha del lead"
+            >
+              <Database size={18} />
+            </button>
           </div>
         </div>
+
+        {/* Barra de Acciones Rápidas del Lead (Seguimiento, Pedido, No Compró) */}
+        {selectedLead?.id && (
+          <div className="px-4 md:px-8 py-2 bg-slate-50/95 border-b border-slate-100 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+                <Tag size={11} className="text-[#FF6B00]" /> Etapa:
+              </span>
+
+              {/* Botón 1: En Seguimiento */}
+              <button
+                type="button"
+                onClick={() => handleQuickStatus('En Seguimiento')}
+                className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
+                  selectedLead.estado === 'En Seguimiento' || selectedLead.estado === 'Interesado'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-blue-100'
+                    : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                }`}
+                title="Marcar como atendido y pasar a En Seguimiento"
+              >
+                <CheckCheck size={12} />
+                <span>En Seguimiento</span>
+              </button>
+
+              {/* Botón 2: Pasar a Pedido / Cerró Venta */}
+              <button
+                type="button"
+                onClick={() => handleQuickStatus('Venta')}
+                className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
+                  selectedLead.estado === 'Venta'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-100'
+                    : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                }`}
+                title="Marcar como Venta Cerrada / A Pedido"
+              >
+                <Trophy size={12} />
+                <span>A Pedido / Venta</span>
+              </button>
+
+              {/* Botón 3: Cita Agendada */}
+              <button
+                type="button"
+                onClick={() => handleQuickStatus('Cita Agendada')}
+                className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
+                  selectedLead.estado === 'Cita Agendada'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-100'
+                    : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                }`}
+                title="Marcar como Cita o Visita técnica agendada"
+              >
+                <Clock size={12} />
+                <span className="hidden sm:inline">Cita / Visita</span>
+              </button>
+
+              {/* Botón 4: No Compró */}
+              <button
+                type="button"
+                onClick={() => handleQuickStatus('Perdido')}
+                className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
+                  selectedLead.estado === 'Perdido'
+                    ? 'bg-slate-700 text-white border-slate-700 shadow-xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+                }`}
+                title="Marcar que no compró (descartar)"
+              >
+                <XCircle size={12} />
+                <span>No Compró</span>
+              </button>
+            </div>
+
+            {/* Selector dropdown de todas las etapas */}
+            <div className="flex items-center gap-2 shrink-0">
+              <select
+                value={selectedLead.estado || 'Nuevo'}
+                onChange={(e) => handleQuickStatus(e.target.value)}
+                className="px-2.5 py-1 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-wider text-slate-700 outline-none cursor-pointer hover:border-[#FF6B00] transition-all shadow-xs"
+                title="Cambiar etapa del lead"
+              >
+                <option value="Nuevo">Etapa: 1. Nuevo</option>
+                <option value="En Seguimiento">Etapa: 2. En Seguimiento</option>
+                <option value="Cita Agendada">Etapa: 3. Cita Agendada</option>
+                <option value="Venta">Etapa: 4. Cerró Venta</option>
+                <option value="Post-Venta">Etapa: 5. Post-Venta</option>
+                <option value="Perdido">Etapa: 6. No Compró</option>
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Mensajes */}
         <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 no-scrollbar">
@@ -562,39 +807,77 @@ export default function ViewConversaciones({
                       </span>
                     </div>
 
-                    {/* Imagen adjunta */}
-                    {m.mediaUrl && m.mediaType === 'image' && (
-                      <div className="px-3 pt-2">
-                        <img
-                          src={m.mediaUrl}
-                          alt="imagen adjunta"
-                          className="w-full max-w-sm rounded-xl object-cover cursor-pointer hover:opacity-95 transition-opacity max-h-72 border border-black/10"
-                          onClick={() => window.open(m.mediaUrl, '_blank')}
-                        />
-                      </div>
-                    )}
+                    {(() => {
+                      const media = getMediaInfo(m);
+                      const isImage = media.url && media.type === 'image';
+                      const isVideo = media.url && media.type === 'video';
+                      const isDoc = media.url && media.type === 'document';
+                      const isAudio = media.url && media.type === 'audio';
 
-                    {/* Video adjunto */}
-                    {m.mediaUrl && m.mediaType === 'video' && (
-                      <div className="px-3 pt-2">
-                        <video src={m.mediaUrl} controls className="w-full max-w-sm rounded-xl max-h-72 border border-black/10" />
-                      </div>
-                    )}
+                      return (
+                        <>
+                          {/* Imagen adjunta */}
+                          {isImage && (
+                            <div className="px-3 pt-2">
+                              {imageErrors[m.id || i] ? (
+                                <div className="p-3 bg-black/10 rounded-xl border border-black/10 flex items-center justify-between gap-2 max-w-sm">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <ImageIcon size={18} className="text-[#FF6B00] shrink-0" />
+                                    <span className="text-[10px] text-slate-300 font-bold truncate">Foto adjunta</span>
+                                  </div>
+                                  <a
+                                    href={media.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[10px] font-black text-[#FF6B00] hover:underline shrink-0"
+                                  >
+                                    Abrir foto ↗
+                                  </a>
+                                </div>
+                              ) : (
+                                <img
+                                  src={media.url}
+                                  alt="imagen adjunta"
+                                  loading="lazy"
+                                  onError={() => setImageErrors(prev => ({ ...prev, [m.id || i]: true }))}
+                                  className="w-full max-w-sm rounded-xl object-cover cursor-pointer hover:opacity-95 transition-opacity max-h-72 border border-black/10 shadow-xs"
+                                  onClick={() => window.open(media.url, '_blank')}
+                                />
+                              )}
+                            </div>
+                          )}
 
-                    {/* Documento adjunto */}
-                    {m.mediaUrl && m.mediaType === 'document' && (
-                      <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 px-4 py-3 hover:opacity-90 transition-opacity bg-black/10">
-                        <FileText size={20} className="text-[#FF6B00] shrink-0" />
-                        <span className="underline break-all font-bold">{m.text || 'Descargar Documento PDF'}</span>
-                      </a>
-                    )}
+                          {/* Video adjunto */}
+                          {isVideo && (
+                            <div className="px-3 pt-2">
+                              <video src={media.url} controls className="w-full max-w-sm rounded-xl max-h-72 border border-black/10" />
+                            </div>
+                          )}
 
-                    {/* Texto del mensaje */}
-                    {m.text && m.mediaType !== 'document' && (
-                      <p className="px-4 py-2.5 whitespace-pre-wrap leading-relaxed">
-                        {m.text}
-                      </p>
-                    )}
+                          {/* Audio adjunto */}
+                          {isAudio && (
+                            <div className="px-3 pt-2">
+                              <audio src={media.url} controls className="w-full max-w-sm" />
+                            </div>
+                          )}
+
+                          {/* Documento adjunto */}
+                          {isDoc && (
+                            <a href={media.url} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 px-4 py-3 hover:opacity-90 transition-opacity bg-black/10">
+                              <FileText size={20} className="text-[#FF6B00] shrink-0" />
+                              <span className="underline break-all font-bold">{media.text || 'Descargar Documento PDF'}</span>
+                            </a>
+                          )}
+
+                          {/* Texto del mensaje */}
+                          {media.text && !isDoc && (
+                            <p className="px-4 py-2.5 whitespace-pre-wrap leading-relaxed">
+                              {media.text}
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {/* Timestamp */}
                     <p className={`px-4 pb-2 text-[8px] font-bold uppercase tracking-widest ${isClient ? 'text-slate-400' : 'text-slate-400'}`}>
@@ -662,10 +945,28 @@ export default function ViewConversaciones({
               type="button"
               onClick={() => setShowCatalogModal(true)}
               title="Mandar producto o ficha técnica del catálogo de WhatsApp"
-              className="px-3 py-2 bg-orange-50 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shrink-0 border border-orange-200 active:scale-95 shadow-xs"
+              className="px-3 py-2 bg-orange-50 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shrink-0 border border-orange-200 active:scale-95 shadow-xs cursor-pointer"
             >
               <ShoppingBag size={15} />
               <span className="hidden sm:inline">Catálogo</span>
+            </button>
+
+            {/* BOTÓN: COTIZADOR RÁPIDO */}
+            <button
+              type="button"
+              onClick={() => {
+                if (showRightPanel && rightPanelTab === 'cotizador') {
+                  setShowRightPanel(false);
+                } else {
+                  setRightPanelTab('cotizador');
+                  setShowRightPanel(true);
+                }
+              }}
+              title="Abrir cotizador rápido (armar paquete, calcular descuentos, PDF y WhatsApp)"
+              className="px-3 py-2 bg-slate-900 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer"
+            >
+              <Sparkles size={15} />
+              <span className="hidden sm:inline">Cotizar</span>
             </button>
 
             {/* BOTÓN: ADJUNTAR ARCHIVO / PDF */}
@@ -833,67 +1134,185 @@ export default function ViewConversaciones({
         </div>
       )}
 
-      {/* Lead sidebar (chat view) */}
-      {showSidebar && (
-        <div className="w-80 border-l border-slate-100 p-6 space-y-8 animate-in slide-in-from-right-4 duration-500 bg-white overflow-y-auto no-scrollbar">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Perfil del Lead</h3>
-            <button onClick={() => setShowSidebar(false)} className="text-slate-400 hover:text-slate-800"><X size={16} /></button>
+      {/* Panel lateral unificado (Cotizador Rápido / Ficha del Lead) */}
+      {showRightPanel && (
+        <div className="w-full sm:w-[410px] border-l border-slate-200 bg-white flex flex-col h-full overflow-hidden shrink-0 z-30 animate-in slide-in-from-right-4 duration-300 fixed md:relative right-0 top-0 bottom-0 shadow-2xl md:shadow-none">
+          {/* Header con switcher de pestañas */}
+          <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white shrink-0">
+            <div className="flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setRightPanelTab('cotizador')}
+                className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                  rightPanelTab === 'cotizador'
+                    ? 'bg-[#FF6B00] text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sparkles size={13} />
+                <span>Cotizador</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightPanelTab('perfil')}
+                className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                  rightPanelTab === 'perfil'
+                    ? 'bg-[#FF6B00] text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <UserPlus size={13} />
+                <span>Ficha Lead</span>
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRightPanel(false)}
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              title="Cerrar panel lateral"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <div className="space-y-6">
-            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-center space-y-3">
-              <div className="h-16 w-16 bg-slate-900 text-[#FF6B00] rounded-2xl flex items-center justify-center font-black text-xl italic mx-auto border-2 border-white shadow-xl">{selectedLead.nombre?.[0] || '?'}</div>
-              <div>
-                <h4 className="font-black text-slate-800 uppercase italic">{selectedLead.nombre}</h4>
-                <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{selectedLead.phone}</p>
-              </div>
-              {selectedLead.phone && (
-                <button
-                  onClick={() => downloadVCard(selectedLead)}
-                  className="w-full py-2.5 px-3 bg-white hover:bg-orange-50 text-slate-700 hover:text-[#FF6B00] rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border border-slate-200 shadow-xs active:scale-95"
-                  title="Descargar vCard para guardar con 1 toque en tu teléfono"
-                >
-                  <UserPlus size={13} className="text-[#FF6B00]" />
-                  <span>Guardar en Mi Celular</span>
-                </button>
-              )}
-            </div>
-            <div className="space-y-3">
-              {[
-                { l: 'Estado', v: selectedLead.estado, i: Tag, c: 'text-emerald-500' },
-                { l: 'Score', v: `${selectedLead.score || 0}%`, i: Zap, c: 'text-amber-500' },
-                { l: 'Prioridad', v: selectedLead.priority, i: AlertTriangle, c: selectedLead.priority === 'urgent' ? 'text-red-500' : 'text-slate-400' }
-              ].map((item, i) => (
-                <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div className="flex items-center space-x-3">
-                    <item.i size={14} className={item.c} />
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.l}</span>
+
+          {/* Contenido según pestaña activa */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {rightPanelTab === 'cotizador' ? (
+              <QuickQuoteDrawer
+                key={selectedChatId || selectedLead?.id || 'quote'}
+                selectedLead={selectedLead}
+                products={products}
+                onClose={() => setShowRightPanel(false)}
+                onSendMessage={(a, b) => onSendMessage(selectedChatId, b || a)}
+                onInsertText={handleInsertQuoteText}
+                onSavePedido={onSavePedido}
+                hideHeader={true}
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex-1 p-6 space-y-6 overflow-y-auto no-scrollbar">
+                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-center space-y-3">
+                  <div className="h-16 w-16 bg-slate-900 text-[#FF6B00] rounded-2xl flex items-center justify-center font-black text-xl italic mx-auto border-2 border-white shadow-xl">
+                    {selectedLead.nombre?.[0] || '?'}
                   </div>
-                  <span className="text-[10px] font-black text-slate-800 uppercase">{item.v || '—'}</span>
+                  <div>
+                    <h4 className="font-black text-slate-800 uppercase italic">{selectedLead.nombre}</h4>
+                    <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{selectedLead.phone}</p>
+                  </div>
+                  {selectedLead.phone && (
+                    <button
+                      onClick={() => downloadVCard(selectedLead)}
+                      className="w-full py-2.5 px-3 bg-white hover:bg-orange-50 text-slate-700 hover:text-[#FF6B00] rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border border-slate-200 shadow-xs active:scale-95 cursor-pointer"
+                      title="Descargar vCard para guardar con 1 toque en tu teléfono"
+                    >
+                      <UserPlus size={13} className="text-[#FF6B00]" />
+                      <span>Guardar en Mi Celular</span>
+                    </button>
+                  )}
                 </div>
-              ))}
-            </div>
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Datos Capturados</h4>
-              <div className="space-y-2.5">
-                {[
-                  { label: 'Nombre', key: 'nombre' },
-                  { label: 'Dirección', key: 'direccion' },
-                  { label: 'NIT', key: 'nit' },
-                  { label: 'Motor', key: 'motor' },
-                  { label: 'Falla', key: 'falla' },
-                  { label: 'Zona', key: 'zona' },
-                  { label: 'Notas', key: 'notas' },
-                ].map(({ label, key }) => (
-                  <div key={key} className="space-y-1">
-                    <p className="text-[8px] font-black text-slate-300 uppercase ml-2">{label}</p>
-                    <div className={`p-2.5 rounded-xl border text-[10px] font-bold truncate italic ${selectedLead[key] ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                      {selectedLead[key] || '—'}
-                    </div>
+
+                {/* 🎯 SECCIÓN: MOVER ETAPA / RESULTADO */}
+                <div className="space-y-2.5 bg-slate-50/90 p-4 rounded-3xl border border-slate-200">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                    Mover Etapa del Cliente:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Opción 1: En Seguimiento */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatus('En Seguimiento')}
+                      className={`py-2 px-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border cursor-pointer active:scale-95 ${
+                        selectedLead.estado === 'En Seguimiento' || selectedLead.estado === 'Interesado'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-200'
+                          : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                      }`}
+                    >
+                      <CheckCheck size={13} />
+                      <span>En Seguimiento</span>
+                    </button>
+
+                    {/* Opción 2: Cerró Venta */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatus('Venta')}
+                      className={`py-2 px-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border cursor-pointer active:scale-95 ${
+                        selectedLead.estado === 'Venta'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-200'
+                          : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <Trophy size={13} />
+                      <span>Cerró Venta ✓</span>
+                    </button>
+
+                    {/* Opción 3: Cita Agendada */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatus('Cita Agendada')}
+                      className={`py-2 px-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border cursor-pointer active:scale-95 ${
+                        selectedLead.estado === 'Cita Agendada'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200'
+                          : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                      }`}
+                    >
+                      <Clock size={13} />
+                      <span>Cita / Visita</span>
+                    </button>
+
+                    {/* Opción 4: No Compró */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatus('Perdido')}
+                      className={`py-2 px-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all border cursor-pointer active:scale-95 ${
+                        selectedLead.estado === 'Perdido'
+                          ? 'bg-slate-700 text-white border-slate-700 shadow-md'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+                      }`}
+                    >
+                      <XCircle size={13} />
+                      <span>No Compró</span>
+                    </button>
                   </div>
-                ))}
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    { l: 'Estado', v: selectedLead.estado, i: Tag, c: 'text-emerald-500' },
+                    { l: 'Score', v: `${selectedLead.score || 0}%`, i: Zap, c: 'text-amber-500' },
+                    { l: 'Prioridad', v: selectedLead.priority, i: AlertTriangle, c: selectedLead.priority === 'urgent' ? 'text-red-500' : 'text-slate-400' }
+                  ].map((item, i) => (
+                    <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex items-center space-x-3">
+                        <item.i size={14} className={item.c} />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.l}</span>
+                      </div>
+                      <span className="text-[10px] font-black text-slate-800 uppercase">{item.v || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Datos Capturados</h4>
+                  <div className="space-y-2.5">
+                    {[
+                      { label: 'Nombre', key: 'nombre' },
+                      { label: 'Dirección', key: 'direccion' },
+                      { label: 'NIT', key: 'nit' },
+                      { label: 'Motor', key: 'motor' },
+                      { label: 'Falla', key: 'falla' },
+                      { label: 'Zona', key: 'zona' },
+                      { label: 'Notas', key: 'notas' },
+                    ].map(({ label, key }) => (
+                      <div key={key} className="space-y-1">
+                        <p className="text-[8px] font-black text-slate-300 uppercase ml-2">{label}</p>
+                        <div className={`p-2.5 rounded-xl border text-[10px] font-bold truncate italic ${selectedLead[key] ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                          {selectedLead[key] || '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

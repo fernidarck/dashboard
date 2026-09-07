@@ -438,6 +438,8 @@ export default function App() {
                 onSendMessage={sendMessage}
                 onSendDocument={sendDocument}
                 onToggleBot={handleToggleBot}
+                onSavePedido={savePedido}
+                onUpdateLead={updateLead}
                 messagesContainerRef={messagesContainerRef}
                 messagesEndRef={messagesEndRef}
               />

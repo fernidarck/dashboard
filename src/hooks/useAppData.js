@@ -456,41 +456,67 @@ export function useAppData(apiBase, authToken) {
 
   const updateLead = useCallback(async (lead) => {
     try {
+      // Actualización optimista inmediata en memoria
+      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, ...lead } : l));
       await apiFetch(`${apiBase}/api/leads/${lead.id}`, {
         method: 'PUT',
         body: JSON.stringify(lead)
       });
       fetchLeads();
       notify('✅ Lead actualizado correctamente');
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      fetchLeads();
+    }
   }, [apiFetch, apiBase, fetchLeads, notify]);
 
   const sendMessage = useCallback(async (leadId, text) => {
     try {
+      // Actualización optimista: mover chat al tope inmediatamente
+      setLeads(prev => prev.map(l => l.id === leadId ? {
+        ...l,
+        lastMessage: text,
+        lastMessageTime: 'Ahora',
+        lastMessageSender: 'agent',
+        lastMsgId: Date.now()
+      } : l));
+
       const res = await apiFetch(`${apiBase}/api/messages/send`, {
         method: 'POST',
         body: JSON.stringify({ leadId, text, sender: 'agent' })
       });
-      if (!res.ok) { notify('❌ Error al enviar: ' + res.status); return false; }
+      if (!res.ok) { notify('❌ Error al enviar: ' + res.status); fetchLeads(); return false; }
       await Promise.all([fetchMessages(leadId), fetchLeads()]);
       notify('✅ Mensaje enviado', 2000);
       return true;
-    } catch { notify('❌ Error de red'); return false; }
+    } catch { notify('❌ Error de red'); fetchLeads(); return false; }
   }, [apiFetch, apiBase, fetchMessages, fetchLeads, notify]);
 
   const sendDocument = useCallback(async (leadId, file, caption = '') => {
     try {
+      const isImg = file?.type?.startsWith('image/');
+      const snippet = caption || (isImg ? '📷 Foto' : `📄 ${file?.name || 'Documento'}`);
+
+      // Actualización optimista: mover chat al tope inmediatamente
+      setLeads(prev => prev.map(l => l.id === leadId ? {
+        ...l,
+        lastMessage: snippet,
+        lastMessageTime: 'Ahora',
+        lastMessageSender: 'agent',
+        lastMsgId: Date.now()
+      } : l));
+
       const fd = new FormData();
       fd.append('leadId', leadId);
       fd.append('file', file);
       if (caption) fd.append('caption', caption);
-      notify('⏳ Enviando documento...', 1500);
+      notify('⏳ Enviando archivo...', 1500);
       const res = await apiFetch(`${apiBase}/api/messages/send-document`, { method: 'POST', body: fd });
-      if (!res.ok) { notify('❌ Error al enviar documento: ' + res.status); return false; }
+      if (!res.ok) { notify('❌ Error al enviar archivo: ' + res.status); fetchLeads(); return false; }
       await Promise.all([fetchMessages(leadId), fetchLeads()]);
-      notify('✅ Documento enviado', 2000);
+      notify('✅ Archivo enviado', 2000);
       return true;
-    } catch { notify('❌ Error de red'); return false; }
+    } catch { notify('❌ Error de red'); fetchLeads(); return false; }
   }, [apiFetch, apiBase, fetchMessages, fetchLeads, notify]);
 
   const updatePedidoEstado = useCallback(async (id, estado) => {
