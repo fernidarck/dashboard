@@ -66,3 +66,6 @@ backups/
 *.txt
 build_log.txt
 DEPURACION-ERRORES-CLIENTES.md
+
+# Handoff local (contiene secretos — NUNCA commitear)
+ESTADO-HANDOFF.md
