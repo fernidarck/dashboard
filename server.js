@@ -559,7 +559,12 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
     const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
     const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
 
-    console.log(`📸 Enviando imagen por YCloud desde ${cleanFrom} a ${cleanTo}: ${imageUrl}`);
+    let link = imageUrl;
+    if (!link.includes('localhost') && !link.includes('127.0.0.1')) {
+      link = String(link).replace(/^http:\/\//i, 'https://');
+    }
+
+    console.log(`📸 Enviando imagen por YCloud desde ${cleanFrom} a ${cleanTo}: ${link}`);
     const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
@@ -568,7 +573,7 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
         to: cleanTo,
         type: 'image',
         image: {
-          link: imageUrl,
+          link,
           ...(caption ? { caption } : {})
         }
       })
@@ -594,7 +599,10 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
 
     const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
     const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
-    const link = String(docUrl || '').replace(/^http:\/\//, 'https://'); // WhatsApp requiere https
+    let link = String(docUrl || '');
+    if (!link.includes('localhost') && !link.includes('127.0.0.1')) {
+      link = link.replace(/^http:\/\//i, 'https://');
+    }
 
     const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
@@ -627,7 +635,10 @@ async function sendVideoViaYCloud(toPhone, videoUrl, caption = '', channelPhone 
 
     const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
     const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
-    const link = String(videoUrl || '').replace(/^http:\/\//, 'https://');
+    let link = String(videoUrl || '');
+    if (!link.includes('localhost') && !link.includes('127.0.0.1')) {
+      link = link.replace(/^http:\/\//i, 'https://');
+    }
 
     const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
@@ -909,7 +920,17 @@ app.get('/api/leads', async (req, res) => {
     
     let query = `
       SELECT l.*,
-        (SELECT text FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessage,
+        (SELECT 
+          CASE 
+            WHEN (text IS NOT NULL AND TRIM(text) != '') THEN text
+            WHEN mediaType = 'image' THEN '📷 Foto'
+            WHEN mediaType = 'video' THEN '🎥 Video'
+            WHEN mediaType = 'audio' THEN '🎵 Audio'
+            WHEN mediaType = 'document' THEN '📄 Documento'
+            WHEN mediaUrl IS NOT NULL THEN '📷 Archivo adjunto'
+            ELSE ''
+          END
+        FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessage,
         (SELECT timestamp FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageTime,
         (SELECT sender FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageSender,
         (SELECT id FROM messages m WHERE m.lead_id = l.id AND m.sender = 'client' ORDER BY id DESC LIMIT 1) as lastClientMsgId,
@@ -957,7 +978,12 @@ app.get('/api/leads', async (req, res) => {
       }
     }
 
-    query += ` ORDER BY (CASE WHEN l.priority = 'urgent' THEN 1 ELSE 0 END) DESC, COALESCE((SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1), 0) DESC, l.id DESC`;
+    if (req.query.priority_first === 'true') {
+      query += ` ORDER BY (CASE WHEN l.priority = 'urgent' THEN 1 ELSE 0 END) DESC, COALESCE((SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1), 0) DESC, l.id DESC`;
+    } else {
+      // Orden tipo WhatsApp: última conversación activa arriba
+      query += ` ORDER BY COALESCE((SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1), 0) DESC, l.id DESC`;
+    }
 
     const rows = await db.all(query, ...params);
     res.json(rows);
@@ -989,15 +1015,26 @@ app.post('/api/leads', async (req, res) => {
 // Actualizar Lead completo
 app.put('/api/leads/:id', async (req, res) => {
   try {
-    const { nombre, phone, email, motor, falla, zona, direccion, notas, nit, etiquetas, estado, score, priority, botActive } = req.body;
-    await db.run(
-      `UPDATE leads SET 
-        nombre=?, phone=?, email=?, motor=?, falla=?, zona=?, direccion=?, 
-        notas=?, nit=?, etiquetas=?, estado=?, score=?, priority=?, botActive=? 
-      WHERE id=?`,
-      nombre, phone, email, motor, falla, zona, direccion, 
-      notas, nit, etiquetas, estado, score, priority, botActive, req.params.id
-    );
+    const { nombre, phone, email, motor, falla, zona, direccion, notas, nit, etiquetas, estado, score, priority, botActive, handoff_reason } = req.body;
+    if (handoff_reason !== undefined) {
+      await db.run(
+        `UPDATE leads SET 
+          nombre=?, phone=?, email=?, motor=?, falla=?, zona=?, direccion=?, 
+          notas=?, nit=?, etiquetas=?, estado=?, score=?, priority=?, botActive=?, handoff_reason=?
+        WHERE id=?`,
+        nombre, phone, email, motor, falla, zona, direccion, 
+        notas, nit, etiquetas, estado, score, priority, botActive, handoff_reason || null, req.params.id
+      );
+    } else {
+      await db.run(
+        `UPDATE leads SET 
+          nombre=?, phone=?, email=?, motor=?, falla=?, zona=?, direccion=?, 
+          notas=?, nit=?, etiquetas=?, estado=?, score=?, priority=?, botActive=? 
+        WHERE id=?`,
+        nombre, phone, email, motor, falla, zona, direccion, 
+        notas, nit, etiquetas, estado, score, priority, botActive, req.params.id
+      );
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1039,18 +1076,56 @@ function parseWebhookPayload(data) {
     channelPhoneRaw = data.channel_phone || data.business_phone || data.to || yMsg.to;
   }
 
+  // Extraer caption de medios adjuntos
+  const caption = yMsg.image?.caption || yMsg.document?.caption || yMsg.video?.caption || 
+    data.data?.message?.imageMessage?.caption || data.message?.imageMessage?.caption ||
+    data.caption || '';
+
   // Extraer texto
-  const mensajePrincipal = data.mensaje || data.message || data.text || data.body || data.texto || 
+  const rawText = data.mensaje || data.message || data.text || data.body || data.texto || 
     data.client_message || data.agent_message || data.respuesta_cliente || data.mensaje_cliente || 
     data.texto_cliente || yMsg.text?.body || data.data?.message?.conversation || 
     data.data?.message?.extendedTextMessage?.text || '';
 
+  const mensajePrincipal = (typeof rawText === 'string' && rawText.trim()) 
+    ? rawText.trim() 
+    : (typeof caption === 'string' ? caption.trim() : '');
+
   const mensajeSecundario = data.respuesta_bot || data.texto_limpio || data.bot_response || data.output || '';
 
-  // Extraer media
-  const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.file_url || 
-    yMsg.image?.link || yMsg.document?.link || yMsg.video?.link || yMsg.audio?.link || null;
-  const mediaType = data.media_type || data.mediaType || yMsg.type || (mediaUrl ? 'image' : null);
+  // Extraer media de todas las fuentes posibles (WhatsApp Cloud API, YCloud, n8n, Evolution, Baileys)
+  const mediaUrl = data.media_url || data.mediaUrl || data.image_url || data.imageUrl || 
+    data.file_url || data.fileUrl || data.url || data.image || data.photo || data.attachment ||
+    data.attachment_url || data.attachments?.[0]?.url || data.attachments?.[0]?.payload?.url ||
+    data.data?.message?.imageMessage?.url || data.message?.imageMessage?.url ||
+    yMsg.image?.link || yMsg.image?.url || 
+    yMsg.document?.link || yMsg.document?.url || 
+    yMsg.video?.link || yMsg.video?.url || 
+    yMsg.audio?.link || yMsg.audio?.url || null;
+
+  const rawType = data.media_type || data.mediaType || yMsg.type || data.attachments?.[0]?.type || null;
+  let mediaType = null;
+  if (rawType) {
+    const mt = String(rawType).toLowerCase();
+    if (mt.includes('image') || mt.includes('foto') || mt.includes('photo') || mt.endsWith('.jpg') || mt.endsWith('.jpeg') || mt.endsWith('.png') || mt.endsWith('.webp')) {
+      mediaType = 'image';
+    } else if (mt.includes('video') || mt.endsWith('.mp4') || mt.endsWith('.mov')) {
+      mediaType = 'video';
+    } else if (mt.includes('audio') || mt.includes('voice') || mt.endsWith('.mp3') || mt.endsWith('.ogg')) {
+      mediaType = 'audio';
+    } else if (mt.includes('document') || mt.includes('pdf') || mt.includes('file')) {
+      mediaType = 'document';
+    } else {
+      mediaType = 'image';
+    }
+  } else if (mediaUrl) {
+    const urlLower = String(mediaUrl).toLowerCase();
+    if (/\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(urlLower)) mediaType = 'image';
+    else if (/\.(mp4|mov|avi|webm)(\?.*)?$/i.test(urlLower)) mediaType = 'video';
+    else if (/\.(mp3|ogg|wav|m4a)(\?.*)?$/i.test(urlLower)) mediaType = 'audio';
+    else if (/\.(pdf|docx?|xlsx?|txt)(\?.*)?$/i.test(urlLower)) mediaType = 'document';
+    else mediaType = 'image';
+  }
 
   const sender = isEcho ? 'agent' : (data.sender || 'client');
   const nombre = data.nombre || data.name || yMsg.customer?.name || null;
@@ -1568,6 +1643,42 @@ app.delete('/api/leads/:id', async (req, res) => {
     await db.run("DELETE FROM messages WHERE lead_id = ?", req.params.id);
     await db.run("DELETE FROM leads WHERE id = ?", req.params.id);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Fusionar leads duplicados: mueve los mensajes de los duplicados al lead principal
+// (sin perder historial) y borra los duplicados. Body: { primaryId, duplicateIds: [] }.
+app.post('/api/leads/merge', async (req, res) => {
+  try {
+    const primaryId = Number(req.body.primaryId);
+    const duplicateIds = (req.body.duplicateIds || []).map(Number).filter(id => id && id !== primaryId);
+    if (!primaryId || duplicateIds.length === 0) return res.status(400).json({ error: "Falta primaryId o duplicateIds" });
+    const primary = await db.get("SELECT * FROM leads WHERE id = ?", primaryId);
+    if (!primary) return res.status(404).json({ error: "Lead principal no existe" });
+
+    let movedMsgs = 0;
+    for (const dupId of duplicateIds) {
+      const r = await db.run("UPDATE messages SET lead_id = ? WHERE lead_id = ?", primaryId, dupId);
+      movedMsgs += (r.changes || 0);
+    }
+    // Rellenar campos vacíos del principal con datos de los duplicados (no pisar lo que ya tiene).
+    const dups = await db.all(`SELECT * FROM leads WHERE id IN (${duplicateIds.map(() => '?').join(',')})`, ...duplicateIds);
+    const fillable = ['nombre', 'email', 'direccion', 'zona', 'nit', 'motor', 'falla', 'whatsapp_id', 'ctwa_clid', 'ad_source_id', 'ad_source_url'];
+    const updates = [], params = [];
+    const GENERIC = ['', 'cliente', 'cliente nuevo', 'cliente whatsapp', 'agente', 'n/a', null, undefined];
+    for (const f of fillable) {
+      const cur = String(primary[f] ?? '').trim();
+      const curGeneric = GENERIC.includes(cur.toLowerCase());
+      if (!cur || curGeneric) {
+        const donor = dups.map(d => String(d[f] ?? '').trim()).find(v => v && !GENERIC.includes(v.toLowerCase()));
+        if (donor) { updates.push(`${f} = ?`); params.push(donor); }
+      }
+    }
+    if (updates.length) { params.push(primaryId); await db.run(`UPDATE leads SET ${updates.join(', ')} WHERE id = ?`, ...params); }
+
+    await db.run(`DELETE FROM leads WHERE id IN (${duplicateIds.map(() => '?').join(',')})`, ...duplicateIds);
+    console.log(`🔀 Merge: ${duplicateIds.join(',')} → ${primaryId} (${movedMsgs} mensajes movidos)`);
+    res.json({ success: true, primaryId, merged: duplicateIds, movedMessages: movedMsgs, filled: updates.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2251,7 +2362,11 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
       leadId
     );
     const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
-    const docUrl = `https://${req.get('host')}/uploads/${req.file.filename}`;
+    const host = req.get('host') || 'localhost:3002';
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const protoHeader = req.headers['x-forwarded-proto'];
+    const protocol = isLocal ? 'http' : (protoHeader ? String(protoHeader).split(',')[0].trim() : (req.protocol || 'https'));
+    const docUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     const time = horaGuate();
     // Según el tipo: imagen → FOTO, video → VIDEO, resto → documento (tipos WhatsApp/Meta).
     const mime = String(req.file.mimetype || '');
