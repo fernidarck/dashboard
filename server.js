@@ -277,6 +277,7 @@ async function setup() {
         precio TEXT,
         notas TEXT,
         estado TEXT DEFAULT 'Nuevo',
+        fecha_entrega TEXT,
         timestamp TEXT
       );
 
@@ -432,6 +433,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE leads ADD COLUMN whatsapp_id TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"); } catch(e){}
     try { await db.exec("ALTER TABLE agenda ADD COLUMN notas TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE pedidos ADD COLUMN fecha_entrega TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
@@ -1811,7 +1813,7 @@ app.post('/api/system-alert/clear', async (_req, res) => {
 
 app.post('/api/pedidos', async (req, res) => {
   try {
-    const { cliente, phone, producto, cantidad, precio, notas } = req.body;
+    const { cliente, phone, producto, cantidad, precio, notas, fecha_entrega } = req.body;
     if (!producto) return res.status(400).json({ error: 'Falta el producto' });
     const now = new Date();
     const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
@@ -1821,10 +1823,10 @@ app.post('/api/pedidos', async (req, res) => {
       String(guateTime.getUTCHours()).padStart(2,'0') + ':' + 
       String(guateTime.getUTCMinutes()).padStart(2,'0');
     const result = await db.run(
-      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, timestamp) VALUES (?,?,?,?,?,?,'Nuevo',?)`,
-      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', timestamp
+      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, timestamp) VALUES (?,?,?,?,?,?,'Nuevo',?,?)`,
+      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', fecha_entrega || '', timestamp
     );
-    console.log(`🛒 Nuevo pedido #${result.lastID}: ${producto} — ${cliente}`);
+    console.log(`🛒 Nuevo pedido #${result.lastID}: ${producto} — ${cliente} (Entrega/Visita: ${fecha_entrega || 'Sin fecha'})`);
 
     // Buscar canal del lead
     let channelPhone = null;
@@ -1835,7 +1837,7 @@ app.post('/api/pedidos', async (req, res) => {
     }
 
     // Notificar al dueño por WhatsApp
-    const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
+    const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${fecha_entrega ? '\n🗓️ *Visita / Entrega:* ' + fecha_entrega : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
     await notificarDueno(msg, channelPhone);
     res.json({ success: true, id: result.lastID });
   } catch(err) {
@@ -1846,7 +1848,7 @@ app.post('/api/pedidos', async (req, res) => {
 
 app.get('/api/pedidos', async (req, res) => {
   try {
-    if (req.user.channel_phone) {
+    if (req.user?.channel_phone) {
       const cleanChan = String(req.user.channel_phone).replace(/\D/g, '');
       const rows = await db.all(
         `SELECT p.* FROM pedidos p
@@ -1866,7 +1868,7 @@ app.get('/api/pedidos', async (req, res) => {
 app.put('/api/pedidos/:id/estado', async (req, res) => {
   try {
     const { estado } = req.body;
-    const validStates = ['Nuevo', 'En Proceso', 'Completado', 'Cancelado'];
+    const validStates = ['Nuevo', 'Visita Programada', 'En Proceso', 'Completado', 'Cancelado'];
     if (!validStates.includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
     await db.run('UPDATE pedidos SET estado = ? WHERE id = ?', estado, req.params.id);
     res.json({ success: true });
@@ -1877,7 +1879,7 @@ app.put('/api/pedidos/:id/estado', async (req, res) => {
 app.post('/api/pedidos/status', async (req, res) => {
   try {
     const { id, estado } = req.body;
-    const validStates = ['Nuevo', 'En Proceso', 'Completado', 'Cancelado'];
+    const validStates = ['Nuevo', 'Visita Programada', 'En Proceso', 'Completado', 'Cancelado'];
     if (!id) return res.status(400).json({ error: 'Falta id' });
     if (!validStates.includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
     await db.run('UPDATE pedidos SET estado = ? WHERE id = ?', estado, id);
@@ -1887,10 +1889,10 @@ app.post('/api/pedidos/status', async (req, res) => {
 
 app.put('/api/pedidos/:id', async (req, res) => {
   try {
-    const { cliente, phone, producto, cantidad, precio, notas, estado } = req.body;
+    const { cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega } = req.body;
     await db.run(
-      'UPDATE pedidos SET cliente=?, phone=?, producto=?, cantidad=?, precio=?, notas=?, estado=? WHERE id=?',
-      cliente, phone, producto, cantidad || '1', precio || '', notas || '', estado, req.params.id
+      'UPDATE pedidos SET cliente=?, phone=?, producto=?, cantidad=?, precio=?, notas=?, estado=?, fecha_entrega=? WHERE id=?',
+      cliente, phone, producto, cantidad || '1', precio || '', notas || '', estado, fecha_entrega || '', req.params.id
     );
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }

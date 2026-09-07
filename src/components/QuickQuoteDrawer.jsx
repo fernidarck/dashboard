@@ -233,6 +233,7 @@ export default function QuickQuoteDrawer({
         cantidad: '1',
         precio: `Q${fmtQ(total)}`,
         notas: `Cotizado desde chat. Subtotal: Q${fmtQ(subtotal)}, Descuento: Q${fmtQ(discountAmount)}. ${customNotes || ''}`,
+        fecha_entrega: '',
         estado: 'Nuevo'
       });
       setTimeout(() => setSavedOrder(false), 3000);
