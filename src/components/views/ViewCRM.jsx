@@ -62,10 +62,14 @@ function ClientSidebarPanel({
 
   return (
     <div className="fixed inset-0 z-50 w-full md:relative md:inset-auto md:z-20 md:w-96 border-l border-slate-100 bg-white flex flex-col shrink-0 animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar shadow-2xl">
-      <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
-        <div>
-          <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Ficha del Lead</h3>
-          <p className="text-[10px] font-bold text-slate-400">Detalles & Control de Cierre</p>
+      <div className="p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+        <div className="flex items-center gap-3">
+          <img src="/logo-onecontrol.png" alt="OneControl" className="h-7 w-auto object-contain shrink-0" />
+          <div className="h-5 w-px bg-slate-200" />
+          <div>
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest italic">Ficha del Lead</h3>
+            <p className="text-[10px] font-bold text-slate-400">Detalles & Control de Cierre</p>
+          </div>
         </div>
         <button onClick={onClose} className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-slate-600 transition-colors">
           <X size={18} />
@@ -514,16 +518,20 @@ export default function ViewCRM({
       {/* Header & KPI Summary Cards */}
       <div className="space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center space-x-3">
-              <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Leads</h2>
-              <span className="px-3 py-1 bg-slate-900 text-[#FF6B00] rounded-full text-xs font-black tracking-widest shadow-sm">
-                {totalCount} Total
-              </span>
+          <div className="flex items-center gap-3.5">
+            <img src="/logo-onecontrol.png" alt="OneControl" className="h-10 w-auto object-contain shrink-0 drop-shadow-xs" />
+            <div className="h-8 w-px bg-slate-200 hidden sm:block shrink-0" />
+            <div>
+              <div className="flex items-center space-x-3">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tighter italic leading-none">Leads</h2>
+                <span className="px-3 py-1 bg-slate-900 text-[#FF6B00] rounded-full text-xs font-black tracking-widest shadow-sm">
+                  {totalCount} Total
+                </span>
+              </div>
+              <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1.5 italic">
+                Embudo de Ventas: Por Hablarles → En Seguimiento → Cerrados / Ventas
+              </p>
             </div>
-            <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1.5 italic">
-              Embudo de Ventas: Por Hablarles → En Seguimiento → Cerrados / Ventas
-            </p>
           </div>
 
           {/* Quick Search */}

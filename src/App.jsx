@@ -440,6 +440,10 @@ export default function App() {
                 onToggleBot={handleToggleBot}
                 onSavePedido={savePedido}
                 onUpdateLead={updateLead}
+                onOpenLeads={(leadId) => {
+                  if (leadId) setSelectedChatId(leadId);
+                  setActiveTab('crm');
+                }}
                 messagesContainerRef={messagesContainerRef}
                 messagesEndRef={messagesEndRef}
               />

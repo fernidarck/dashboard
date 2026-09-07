@@ -5,7 +5,7 @@ import {
   ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon,
   UserPlus, Phone, Download, RefreshCw, UploadCloud,
   CheckCheck, Trophy, XCircle, Clock, MapPin, ChevronDown, ListFilter,
-  UserCircle
+  UserCircle, Users
 } from 'lucide-react';
 import QuickQuoteDrawer from '../QuickQuoteDrawer.jsx';
 

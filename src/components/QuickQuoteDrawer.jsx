@@ -292,10 +292,11 @@ export default function QuickQuoteDrawer({
 <body>
   <div class="header">
     <div class="company">
+      <img src="${window.location.origin}/logo-onecontrol.png" alt="OneControl" style="height: 48px; width: auto; object-fit: contain; margin-bottom: 8px; display: block;" onerror="this.style.display='none'" />
       <h1>ONE<span>CONTROL</span></h1>
-      <p>Automatización de Portones y Control de Acceso</p>
+      <p>Automatización de Portones y Control de Acceso Inteligente</p>
       <p>PBX / WhatsApp: +502 5965-8803 | Guatemala</p>
-      <p>www.onecontrol.com</p>
+      <p>www.onecontrol.shop</p>
     </div>
     <div class="meta">
       <h2>COTIZACIÓN</h2>
@@ -474,9 +475,7 @@ export default function QuickQuoteDrawer({
       {!hideHeader ? (
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white shrink-0">
           <div className="flex items-center space-x-2.5">
-            <div className="h-8 w-8 rounded-xl bg-[#FF6B00] text-white flex items-center justify-center font-black shadow-sm">
-              <Sparkles size={16} />
-            </div>
+            <img src="/logo-onecontrol.png" alt="OneControl" className="h-8 w-auto object-contain bg-white rounded-lg p-1 shrink-0 shadow-xs" />
             <div>
               <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
                 Cotizador Rápido
@@ -510,7 +509,7 @@ export default function QuickQuoteDrawer({
       ) : (
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-slate-600 shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
-            <span className="h-2 w-2 rounded-full bg-[#FF6B00] shrink-0 animate-pulse" />
+            <img src="/logo-onecontrol.png" alt="OneControl" className="h-4 w-auto object-contain shrink-0" />
             <p className="text-[11px] text-slate-700 font-bold truncate">
               {selectedLead?.nombre ? `Cotizando a: ${selectedLead.nombre}` : 'Cotización para el chat'}
             </p>

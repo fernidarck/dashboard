@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { ONE_CONTROL_LOGO_BASE64 } from '../assets/logoBase64.js';
 
 const fmtQ = (n) => new Intl.NumberFormat('es-GT', {
   minimumFractionDigits: 2,
@@ -30,54 +31,63 @@ export function generateQuotePdf({
 
   // 1. Barra superior naranja (#FF6B00)
   doc.setFillColor(255, 107, 0);
-  doc.rect(40, 32, 532, 4, 'F');
+  doc.rect(40, 26, 532, 4, 'F');
 
-  // 2. Encabezado: Logotipo / Nombre de la empresa
-  let y = 56;
+  // 2. Encabezado: Logotipo oficial de OneControl
+  try {
+    // Logo 1024x682 (ratio 1.5). Ancho: 82 pt, Alto: 54.7 pt
+    doc.addImage(ONE_CONTROL_LOGO_BASE64, 'PNG', 40, 34, 82, 54.7);
+  } catch (err) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.setTextColor(15, 23, 42);
+    doc.text('ONE', 40, 56);
+    doc.setTextColor(255, 107, 0);
+    doc.text('CONTROL', 90, 56);
+  }
+
+  // Información de la empresa
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(15, 23, 42); // #0F172A
-  doc.text('ONE', 40, y);
-  doc.setTextColor(255, 107, 0); // #FF6B00
-  doc.text('CONTROL', 90, y);
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Automatización de Portones y Control de Acceso', 132, 50);
 
-  y += 14;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(100, 116, 139); // #64748B
-  doc.text('Automatización de Portones y Control de Acceso Inteligente', 40, y);
-  y += 11;
-  doc.text('PBX / WhatsApp: +502 5965-8803  |  Guatemala  |  www.onecontrol.shop', 40, y);
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('PBX / WhatsApp: +502 5965-8803  •  Guatemala  •  www.onecontrol.shop', 132, 62);
+  doc.text('Soluciones Inteligentes Residenciales y Comerciales', 132, 73);
+  doc.text('Garantía Oficial de 1 Año en Motores y Equipos', 132, 84);
 
   // 3. Metadatos de la Cotización (a la derecha)
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setTextColor(15, 23, 42);
-  doc.text('COTIZACIÓN FORMAL', 572, 56, { align: 'right' });
+  doc.text('COTIZACIÓN FORMAL', 572, 48, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(100, 116, 139);
-  doc.text(`Nº: ${quoteNum}`, 572, 69, { align: 'right' });
-  doc.text(`Fecha: ${dateStr}`, 572, 81, { align: 'right' });
+  doc.text(`Nº: ${quoteNum}`, 572, 61, { align: 'right' });
+  doc.text(`Fecha: ${dateStr}`, 572, 73, { align: 'right' });
 
   // Badge de validez
   doc.setFillColor(254, 243, 199);
   doc.setDrawColor(245, 158, 11);
-  doc.roundedRect(476, 88, 96, 14, 3, 3, 'FD');
+  doc.roundedRect(476, 80, 96, 14, 3, 3, 'FD');
   doc.setTextColor(180, 83, 9);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.text('VÁLIDA POR 15 DÍAS', 524, 98, { align: 'center' });
+  doc.text('VÁLIDA POR 15 DÍAS', 524, 90, { align: 'center' });
 
   // 4. Línea divisoria
-  y = 108;
+  let y = 98;
   doc.setDrawColor(241, 245, 249);
   doc.setLineWidth(1);
   doc.line(40, y, 572, y);
 
   // 5. Tarjeta de Datos del Cliente
-  y = 116;
+  y = 106;
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(40, y, 532, 50, 5, 5, 'FD');

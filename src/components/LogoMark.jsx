@@ -1,8 +1,14 @@
-export default function LogoMark({ size = 40 }) {
-  const w = Math.round(size * 0.56);
+export default function LogoMark({ size = 40, className = '' }) {
   return (
-    <svg width={w} height={size} viewBox="0 0 28 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4" y="4" width="20" height="42" rx="10" stroke="#FF6B00" strokeWidth="6.5" />
-    </svg>
+    <img
+      src="/logo-onecontrol.png"
+      alt="OneControl"
+      style={{ height: size }}
+      className={`w-auto object-contain shrink-0 ${className}`}
+      onError={(e) => {
+        e.target.style.display = 'none';
+      }}
+    />
   );
 }
+
