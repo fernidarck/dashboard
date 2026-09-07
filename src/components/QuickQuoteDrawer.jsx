@@ -3,8 +3,10 @@ import {
   X, Plus, Minus, Trash2, Printer, Copy, SendHorizontal,
   ShoppingBag, Search, Sparkles, Check, DollarSign,
   Percent, FileText, ChevronDown, ChevronUp, Package,
-  RotateCcw, ShieldCheck, Truck, Clock, CheckCircle2
+  RotateCcw, ShieldCheck, Truck, Clock, CheckCircle2,
+  RefreshCw, Download
 } from 'lucide-react';
+import { generateQuotePdf } from '../utils/quotePdfGenerator.js';
 
 const fmtQ = (n) => new Intl.NumberFormat('es-GT', {
   minimumFractionDigits: 2,
@@ -16,6 +18,7 @@ export default function QuickQuoteDrawer({
   products = [],
   onClose,
   onSendMessage,
+  onSendDocument,
   onInsertText,
   onSavePedido,
   hideHeader = false,
@@ -29,6 +32,8 @@ export default function QuickQuoteDrawer({
   const [customNotes, setCustomNotes] = useState('');
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendingPdf, setSendingPdf] = useState(false);
+  const [pdfSentSuccess, setPdfSentSuccess] = useState(false);
   const [savedOrder, setSavedOrder] = useState(false);
 
   // Notas predeterminadas tipo checklist
@@ -384,6 +389,73 @@ export default function QuickQuoteDrawer({
     if (win) {
       win.document.write(printHtml);
       win.document.close();
+    }
+  };
+
+  // Acción: Generar PDF formal y enviarlo directamente por WhatsApp al cliente
+  const handleSendPdfWhatsApp = async () => {
+    if (items.length === 0) return;
+    if (!selectedLead || !selectedLead.id) {
+      alert('Selecciona un chat o cliente para enviar la cotización.');
+      return;
+    }
+    setSendingPdf(true);
+    try {
+      const { file, quoteNum } = generateQuotePdf({
+        selectedLead,
+        items,
+        subtotal,
+        discountAmount,
+        total,
+        presetNotes,
+        customNotes
+      });
+
+      const caption = `📄 *Cotización Formal ONE CONTROL (${quoteNum})*\nHola ${selectedLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
+
+      if (onSendDocument) {
+        await onSendDocument(selectedLead.id, file, caption);
+        setPdfSentSuccess(true);
+        setTimeout(() => setPdfSentSuccess(false), 4000);
+      } else {
+        // Fallback: descarga directa si no hay callback
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Error generando/enviando PDF:', err);
+      alert('Error al generar el PDF: ' + err.message);
+    } finally {
+      setSendingPdf(false);
+    }
+  };
+
+  // Acción: Descargar archivo PDF generado
+  const handleDownloadPdf = () => {
+    if (items.length === 0) return;
+    try {
+      const { file } = generateQuotePdf({
+        selectedLead,
+        items,
+        subtotal,
+        discountAmount,
+        total,
+        presetNotes,
+        customNotes
+      });
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error descargando PDF:', err);
+      handlePrintPdf();
     }
   };
 
@@ -746,19 +818,60 @@ export default function QuickQuoteDrawer({
       {/* FOOTER CON BOTONES DE ACCIÓN RÁPIDA */}
       {items.length > 0 && (
         <div className="p-4 border-t border-slate-100 bg-white space-y-2 shrink-0">
-          {/* Botón principal: Enviar por WhatsApp */}
+          {/* BOTÓN 1: ENVIAR COTIZACIÓN PDF POR WHATSAPP */}
+          <button
+            type="button"
+            onClick={handleSendPdfWhatsApp}
+            disabled={sendingPdf || sending}
+            className={`w-full py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-2 transition-all shadow-md active:scale-98 cursor-pointer disabled:opacity-50 ${
+              pdfSentSuccess
+                ? 'bg-emerald-600 text-white shadow-emerald-200'
+                : 'bg-slate-900 hover:bg-slate-800 text-white'
+            }`}
+            title="Genera el archivo PDF membretado formal y lo envía al chat de WhatsApp"
+          >
+            {pdfSentSuccess ? (
+              <>
+                <Check size={14} className="stroke-[3] text-emerald-300" />
+                <span>¡Cotización PDF Enviada por WhatsApp!</span>
+              </>
+            ) : sendingPdf ? (
+              <>
+                <RefreshCw size={14} className="animate-spin text-[#FF6B00]" />
+                <span>Generando y enviando PDF...</span>
+              </>
+            ) : (
+              <>
+                <FileText size={14} className="text-[#FF6B00]" />
+                <span>Enviar Cotización PDF por WhatsApp</span>
+              </>
+            )}
+          </button>
+
+          {/* BOTÓN 2: ENVIAR RESUMEN TEXTO POR WHATSAPP */}
           <button
             type="button"
             onClick={handleSendDirect}
-            disabled={sending}
-            className="w-full py-2.5 px-3 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-2 transition-all shadow-md active:scale-98 cursor-pointer disabled:opacity-50"
+            disabled={sending || sendingPdf}
+            className="w-full py-2 px-3 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center space-x-2 transition-all shadow-xs active:scale-98 cursor-pointer disabled:opacity-50"
+            title="Enviar cotización como mensaje de texto en WhatsApp"
           >
-            <SendHorizontal size={14} />
-            <span>{sending ? 'Enviando a WhatsApp...' : 'Enviar por WhatsApp'}</span>
+            <SendHorizontal size={13} />
+            <span>{sending ? 'Enviando texto a WhatsApp...' : 'Enviar por WhatsApp (Texto)'}</span>
           </button>
 
-          {/* Botones secundarios: Pegar en Chat + Imprimir PDF */}
+          {/* Botones secundarios: Descargar/Imprimir PDF + Pegar en Chat */}
           <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              title="Descargar archivo PDF membretado en tu computadora"
+              className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+            >
+              <Download size={13} className="text-[#FF6B00]" />
+              <span>Descargar PDF</span>
+            </button>
+
             <button
               type="button"
               onClick={handleInsertIntoChat}
@@ -767,16 +880,6 @@ export default function QuickQuoteDrawer({
             >
               {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
               <span>{copied ? '¡Pegado!' : 'Pegar en Chat'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePrintPdf}
-              title="Generar e imprimir cotización formal membretada en PDF"
-              className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
-            >
-              <Printer size={13} className="text-slate-600" />
-              <span>Imprimir PDF</span>
             </button>
           </div>
 

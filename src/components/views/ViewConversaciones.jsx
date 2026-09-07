@@ -4,9 +4,44 @@ import {
   MoreVertical, SendHorizontal, Tag, Zap, ArrowLeft, Paperclip, FileText,
   ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon,
   UserPlus, Phone, Download, RefreshCw, UploadCloud,
-  CheckCheck, Trophy, XCircle, Clock, MapPin
+  CheckCheck, Trophy, XCircle, Clock, MapPin, ChevronDown, ListFilter
 } from 'lucide-react';
 import QuickQuoteDrawer from '../QuickQuoteDrawer.jsx';
+
+// Etiquetas estilo WhatsApp Business con colores y estados
+export const WHATSAPP_LABELS = [
+  { id: 'En Seguimiento', label: 'En seguimiento', color: '#EAB308', dotBg: 'bg-amber-400' },
+  { id: 'Nuevo', label: 'Nuevo cliente', color: '#38BDF8', dotBg: 'bg-sky-400' },
+  { id: 'Pago Pendiente', label: 'Pago pendiente', color: '#C084FC', dotBg: 'bg-purple-400' },
+  { id: 'Venta', label: 'A Pedido / Venta', color: '#2DD4BF', dotBg: 'bg-teal-400' },
+  { id: 'Cita Agendada', label: 'Cita / Visita agendada', color: '#6366F1', dotBg: 'bg-indigo-500' },
+  { id: 'Trabajo Pendiente', label: 'Trabajo pendiente', color: '#A3E635', dotBg: 'bg-lime-400' },
+  { id: 'Perdido', label: 'Venta no concluida / No compró', color: '#F43F5E', dotBg: 'bg-rose-500' },
+];
+
+export function getLeadLabel(lead) {
+  if (!lead) return WHATSAPP_LABELS[1];
+  const estado = lead.estado || 'Nuevo';
+  if (estado === 'En Seguimiento' || estado === 'Interesado' || (lead.etiquetas && String(lead.etiquetas).toLowerCase().includes('seguimiento'))) {
+    return WHATSAPP_LABELS[0];
+  }
+  if (estado === 'Venta' || estado === 'Cerrado') {
+    return WHATSAPP_LABELS[3];
+  }
+  if (estado === 'Cita Agendada' || estado === 'Cita') {
+    return WHATSAPP_LABELS[4];
+  }
+  if (estado === 'Perdido' || estado === 'Descartado') {
+    return WHATSAPP_LABELS[6];
+  }
+  if (estado === 'Pago Pendiente' || estado === 'Cotizado') {
+    return WHATSAPP_LABELS[2];
+  }
+  if (estado === 'Trabajo Pendiente') {
+    return WHATSAPP_LABELS[5];
+  }
+  return WHATSAPP_LABELS[1]; // Nuevo cliente
+}
 
 function ChannelBadge({ origen, size = 'sm' }) {
   const orig = String(origen || '').toLowerCase();
@@ -132,8 +167,28 @@ export default function ViewConversaciones({
   const [catalogSearch, setCatalogSearch] = useState('');
   const [chatSearch, setChatSearch] = useState('');
   const [channelTab, setChannelTab] = useState('todos');
+  const [showLabelDropdown, setShowLabelDropdown] = useState(false);
+  const [stageFilter, setStageFilter] = useState('todos'); // 'todos' | 'En Seguimiento' | 'Venta' | 'Perdido' etc.
+  const labelDropdownRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Cerrar dropdown de etiquetas al hacer clic afuera
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (labelDropdownRef.current && !labelDropdownRef.current.contains(e.target)) {
+        setShowLabelDropdown(false);
+      }
+    }
+    if (showLabelDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showLabelDropdown]);
+
+  const activeLabel = useMemo(() => {
+    return getLeadLabel(selectedLead);
+  }, [selectedLead]);
 
   // Acción rápida para mover etapa / estado del cliente (como en ViewCRM)
   const handleQuickStatus = async (targetEstado) => {
@@ -323,6 +378,14 @@ export default function ViewConversaciones({
   const filteredLeads = useMemo(() => {
     let list = [...leads];
     
+    // Filtrar por etiqueta de WhatsApp / etapa (Todos, En seguimiento, Ventas, No compró)
+    if (stageFilter && stageFilter !== 'todos') {
+      list = list.filter(l => {
+        const lbl = getLeadLabel(l);
+        return lbl.id === stageFilter;
+      });
+    }
+
     // Filtrar por pestaña de canal
     if (channelTab === 'onecontrol') {
       list = list.filter(l => String(l.channel_phone || '').includes('59658803') || (!l.channel_phone && !String(l.origen).toLowerCase().includes('instagram') && !String(l.origen).toLowerCase().includes('facebook') && !String(l.origen).toLowerCase().includes('web')));
@@ -363,7 +426,7 @@ export default function ViewConversaciones({
       if (aMsg !== bMsg) return bMsg - aMsg;
       return (b.id || 0) - (a.id || 0);
     });
-  }, [leads, chatSearch, channelTab, sortMode]);
+  }, [leads, chatSearch, channelTab, sortMode, stageFilter]);
 
   // Filtrado de productos para enviar desde el catálogo
   const filteredProducts = useMemo(() => {
@@ -408,6 +471,57 @@ export default function ViewConversaciones({
                 <X size={12} />
               </button>
             )}
+          </div>
+
+          {/* Filtros estilo WhatsApp: Todos, En seguimiento, Ventas, No compró */}
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            <button
+              type="button"
+              onClick={() => setStageFilter('todos')}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase transition-all shrink-0 cursor-pointer ${
+                stageFilter === 'todos'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              onClick={() => setStageFilter('En Seguimiento')}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                stageFilter === 'En Seguimiento'
+                  ? 'bg-amber-400 text-slate-900 shadow-xs'
+                  : 'bg-amber-50 text-amber-800 border border-amber-200/60 hover:bg-amber-100'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+              <span>En seguimiento</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStageFilter('Venta')}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                stageFilter === 'Venta'
+                  ? 'bg-teal-500 text-white shadow-xs'
+                  : 'bg-teal-50 text-teal-800 border border-teal-200/60 hover:bg-teal-100'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-teal-400 shrink-0" />
+              <span>Venta</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStageFilter('Perdido')}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                stageFilter === 'Perdido'
+                  ? 'bg-rose-500 text-white shadow-xs'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200/60 hover:bg-rose-100'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+              <span>No compró</span>
+            </button>
           </div>
 
           {/* Selector de orden: Más recientes (WhatsApp) vs Urgentes */}
@@ -471,6 +585,7 @@ export default function ViewConversaciones({
             </div>
           ) : filteredLeads.map(lead => {
             const badgeInfo = getChannelBadge(lead);
+            const leadLabel = getLeadLabel(lead);
             return (
               <button
                 key={lead.id}
@@ -498,7 +613,16 @@ export default function ViewConversaciones({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline">
-                      <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
+                        {leadLabel && (
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0 inline-block"
+                            style={{ backgroundColor: leadLabel.color }}
+                            title={leadLabel.label}
+                          />
+                        )}
+                      </div>
                       {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums shrink-0 ml-1">{lead.lastMessageTime}</span>}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
@@ -610,6 +734,98 @@ export default function ViewConversaciones({
             </div>
           </div>
           <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
+            {/* PILL ETIQUETAS / ESTADO ESTILO WHATSAPP BUSINESS */}
+            {selectedLead?.id && (
+              <div className="relative" ref={labelDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowLabelDropdown(prev => !prev)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200/90 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0"
+                  title="Etiquetas y estado al estilo WhatsApp"
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: activeLabel.color }}
+                  />
+                  <span className="truncate max-w-[90px] sm:max-w-[140px] text-slate-800 font-bold">{activeLabel.label}</span>
+                  <ChevronDown size={14} className={`text-slate-400 transition-transform duration-150 ${showLabelDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Popover flotante idéntico a WhatsApp Web */}
+                {showLabelDropdown && (
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-[300] animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-4 py-1.5 border-b border-slate-50 flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Etiquetas / Estado</span>
+                      <span className="text-[9px] text-slate-400 font-bold">WhatsApp</span>
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto py-1">
+                      {WHATSAPP_LABELS.map(lbl => {
+                        const isSelected = activeLabel.id === lbl.id;
+                        return (
+                          <button
+                            key={lbl.id}
+                            type="button"
+                            onClick={async () => {
+                              await handleQuickStatus(lbl.id);
+                              setShowLabelDropdown(false);
+                            }}
+                            className={`w-full px-4 py-2.5 flex items-center justify-between gap-3 text-left hover:bg-slate-50 transition-colors cursor-pointer group ${
+                              isSelected ? 'bg-orange-50/50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className="w-3 h-3 rounded-full shrink-0"
+                                style={{ backgroundColor: lbl.color }}
+                              />
+                              <span className={`text-xs truncate ${isSelected ? 'font-black text-slate-900' : 'font-medium text-slate-700'}`}>
+                                {lbl.label}
+                              </span>
+                            </div>
+
+                            {/* Checkbox cuadrado de WhatsApp Web */}
+                            <div
+                              className={`w-4 h-4 rounded flex items-center justify-center transition-all ${
+                                isSelected
+                                  ? 'bg-slate-900 text-white border border-slate-900'
+                                  : 'border border-slate-300 bg-white group-hover:border-slate-400'
+                              }`}
+                            >
+                              {isSelected && <Check size={11} className="stroke-[3]" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="h-px bg-slate-100 my-1" />
+
+                    <div className="px-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowLabelDropdown(false);
+                          const tag = window.prompt('Escribe una nueva etiqueta para este lead:');
+                          if (tag && tag.trim()) {
+                            const currentTags = selectedLead.etiquetas ? selectedLead.etiquetas.split(',').map(t => t.trim()) : [];
+                            if (!currentTags.includes(tag.trim())) {
+                              currentTags.push(tag.trim());
+                              onUpdateLead({ ...selectedLead, etiquetas: currentTags.join(', ') });
+                            }
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-xl text-left text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <span className="text-sm font-bold text-slate-400 leading-none">+</span>
+                        <span>Nueva etiqueta...</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {selectedLead.phone && (!selectedLead.origen || selectedLead.origen.toLowerCase().includes('whatsapp')) && (
               <button
                 onClick={() => downloadVCard(selectedLead)}
@@ -617,7 +833,7 @@ export default function ViewConversaciones({
                 title="Guardar contacto en la agenda del teléfono / WhatsApp (.vcf)"
               >
                 <UserPlus size={14} className="text-[#FF6B00]" />
-                <span className="hidden sm:inline">Guardar Contacto</span>
+                <span className="hidden lg:inline">Guardar</span>
               </button>
             )}
             {selectedLead.id && (
@@ -630,7 +846,7 @@ export default function ViewConversaciones({
                 }`}
               >
                 <Power size={14} />
-                <span className="hidden sm:inline">{selectedLead.botActive ? 'Desactivar IA' : 'Activar IA'}</span>
+                <span className="hidden md:inline">{selectedLead.botActive ? 'Desactivar IA' : 'Activar IA'}</span>
               </button>
             )}
             {/* BOTÓN HEADER: COTIZADOR RÁPIDO */}
@@ -677,94 +893,6 @@ export default function ViewConversaciones({
             </button>
           </div>
         </div>
-
-        {/* Barra de Acciones Rápidas del Lead (Seguimiento, Pedido, No Compró) */}
-        {selectedLead?.id && (
-          <div className="px-4 md:px-8 py-2 bg-slate-50/95 border-b border-slate-100 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shrink-0">
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
-                <Tag size={11} className="text-[#FF6B00]" /> Etapa:
-              </span>
-
-              {/* Botón 1: En Seguimiento */}
-              <button
-                type="button"
-                onClick={() => handleQuickStatus('En Seguimiento')}
-                className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
-                  selectedLead.estado === 'En Seguimiento' || selectedLead.estado === 'Interesado'
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-blue-100'
-                    : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
-                }`}
-                title="Marcar como atendido y pasar a En Seguimiento"
-              >
-                <CheckCheck size={12} />
-                <span>En Seguimiento</span>
-              </button>
-
-              {/* Botón 2: Pasar a Pedido / Cerró Venta */}
-              <button
-                type="button"
-                onClick={() => handleQuickStatus('Venta')}
-                className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
-                  selectedLead.estado === 'Venta'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-100'
-                    : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
-                }`}
-                title="Marcar como Venta Cerrada / A Pedido"
-              >
-                <Trophy size={12} />
-                <span>A Pedido / Venta</span>
-              </button>
-
-              {/* Botón 3: Cita Agendada */}
-              <button
-                type="button"
-                onClick={() => handleQuickStatus('Cita Agendada')}
-                className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
-                  selectedLead.estado === 'Cita Agendada'
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-100'
-                    : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
-                }`}
-                title="Marcar como Cita o Visita técnica agendada"
-              >
-                <Clock size={12} />
-                <span className="hidden sm:inline">Cita / Visita</span>
-              </button>
-
-              {/* Botón 4: No Compró */}
-              <button
-                type="button"
-                onClick={() => handleQuickStatus('Perdido')}
-                className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer active:scale-95 shrink-0 ${
-                  selectedLead.estado === 'Perdido'
-                    ? 'bg-slate-700 text-white border-slate-700 shadow-xs'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
-                }`}
-                title="Marcar que no compró (descartar)"
-              >
-                <XCircle size={12} />
-                <span>No Compró</span>
-              </button>
-            </div>
-
-            {/* Selector dropdown de todas las etapas */}
-            <div className="flex items-center gap-2 shrink-0">
-              <select
-                value={selectedLead.estado || 'Nuevo'}
-                onChange={(e) => handleQuickStatus(e.target.value)}
-                className="px-2.5 py-1 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-wider text-slate-700 outline-none cursor-pointer hover:border-[#FF6B00] transition-all shadow-xs"
-                title="Cambiar etapa del lead"
-              >
-                <option value="Nuevo">Etapa: 1. Nuevo</option>
-                <option value="En Seguimiento">Etapa: 2. En Seguimiento</option>
-                <option value="Cita Agendada">Etapa: 3. Cita Agendada</option>
-                <option value="Venta">Etapa: 4. Cerró Venta</option>
-                <option value="Post-Venta">Etapa: 5. Post-Venta</option>
-                <option value="Perdido">Etapa: 6. No Compró</option>
-              </select>
-            </div>
-          </div>
-        )}
 
         {/* Mensajes */}
         <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 no-scrollbar">
@@ -1184,6 +1312,7 @@ export default function ViewConversaciones({
                 products={products}
                 onClose={() => setShowRightPanel(false)}
                 onSendMessage={(a, b) => onSendMessage(selectedChatId, b || a)}
+                onSendDocument={(leadId, file, caption) => onSendDocument?.(leadId || selectedChatId, file, caption)}
                 onInsertText={handleInsertQuoteText}
                 onSavePedido={onSavePedido}
                 hideHeader={true}
