@@ -63,6 +63,8 @@ backups/
 !tsconfig.json
 !workflow_onecontrol.json
 !workflow_reachportones.json
+!public/manifest.json
+!dist/manifest.json
 *.txt
 build_log.txt
 DEPURACION-ERRORES-CLIENTES.md

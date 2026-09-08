@@ -19,6 +19,7 @@ import ViewComentarios from './components/views/ViewComentarios.jsx';
 import ViewArchivos from './components/views/ViewArchivos.jsx';
 import ViewEntrenamiento from './components/views/ViewEntrenamiento.jsx';
 import ViewWebChat from './components/views/ViewWebChat.jsx';
+import { registerServiceWorker, enablePush, pushSupported, pushPermission } from './push.js';
 
 const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 const CURRENT_USER_ID = 'fer';
@@ -27,6 +28,17 @@ export default function App() {
   const savedToken = localStorage.getItem('dashboard_token');
   const [authToken, setAuthToken] = useState(savedToken || null);
   const [sysAlert, setSysAlert] = useState(null); // alerta "bot caído" (banner)
+  const [pushState, setPushState] = useState(() => pushSupported() ? pushPermission() : 'unsupported'); // granted | default | denied | unsupported
+
+  // Registrar el service worker al cargar (para recibir push aunque la app esté cerrada).
+  useEffect(() => { registerServiceWorker(); }, []);
+
+  const handleEnablePush = async () => {
+    const r = await enablePush(API_BASE_URL, authToken);
+    if (r.ok) { setPushState('granted'); }
+    else if (r.reason === 'permiso-denegado') { setPushState('denied'); alert('Bloqueaste las notificaciones. Actívalas desde los ajustes del navegador/teléfono para este sitio.'); }
+    else { alert('No se pudieron activar las notificaciones: ' + (r.reason || 'error')); }
+  };
 
   const {
     currentUser, users,
@@ -317,6 +329,15 @@ export default function App() {
             <Power size={14} />
             <span>IA {activeChannelBotEnabled ? 'Encendida' : 'Manual'}</span>
           </button>
+          {pushState !== 'unsupported' && (
+            <button
+              onClick={handleEnablePush}
+              disabled={pushState === 'granted'}
+              className={`w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors flex items-center justify-center space-x-1 mt-1 ${pushState === 'granted' ? 'text-emerald-500' : 'text-slate-400 hover:text-[#FF6B00]'}`}
+            >
+              <Bell size={12} /><span>{pushState === 'granted' ? 'Notificaciones activas' : 'Activar notificaciones'}</span>
+            </button>
+          )}
           {currentUser?.role === 'admin' && (
             <button
               onClick={() => { setShowChangePwd(true); setNewPwd(''); setConfirmPwd(''); setChangePwdError(''); setChangePwdOk(false); }}

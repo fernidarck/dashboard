@@ -389,6 +389,13 @@ async function setup() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        endpoint TEXT UNIQUE NOT NULL,
+        subscription TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE INDEX IF NOT EXISTS idx_messages_lead_id_id ON messages(lead_id, id DESC);
       CREATE INDEX IF NOT EXISTS idx_messages_lead_client ON messages(lead_id, sender, id DESC);
       CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
@@ -1724,7 +1731,76 @@ app.post('/api/handoff/triggers', async (req, res) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── NOTIFICACIONES PUSH (Web Push / PWA) ──────────────────────────────────────
+let _webpush = null, _webpushTried = false;
+async function getWebpush() {
+  if (_webpushTried) return _webpush;
+  _webpushTried = true;
+  try { _webpush = (await import('web-push')).default; }
+  catch (e) { console.warn('⚠️ web-push no disponible, push deshabilitado:', e.message); }
+  return _webpush;
+}
+let _vapidReady = false;
+async function ensureVapid() {
+  const wp = await getWebpush();
+  if (!wp) return null;
+  if (_vapidReady) return wp;
+  const pub = await getDynamicSetting('vapid_public', process.env.VAPID_PUBLIC);
+  const priv = await getDynamicSetting('vapid_private', process.env.VAPID_PRIVATE);
+  if (pub && priv) {
+    try { wp.setVapidDetails('mailto:onecontrol29@gmail.com', pub, priv); _vapidReady = true; return wp; }
+    catch (e) { console.error('VAPID config error:', e.message); }
+  }
+  return null;
+}
+// Envía una notificación push a todos los dispositivos suscritos.
+// mensaje = texto (1ra línea = título, resto = cuerpo). Best-effort, nunca lanza.
+async function sendPush(mensaje, url = '/') {
+  try {
+    const wp = await ensureVapid();
+    if (!wp) return;
+    const subs = await db.all("SELECT id, subscription FROM push_subscriptions");
+    if (!subs.length) return;
+    const lines = String(mensaje || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const title = (lines[0] || 'OneControl').replace(/[*_]/g, '').slice(0, 60);
+    const body = (lines.slice(1).join(' ') || '').replace(/[*_]/g, '').slice(0, 180);
+    const payload = JSON.stringify({ title, body, url });
+    await Promise.all(subs.map(async row => {
+      try { await wp.sendNotification(JSON.parse(row.subscription), payload); }
+      catch (e) { if (e.statusCode === 404 || e.statusCode === 410) await db.run("DELETE FROM push_subscriptions WHERE id = ?", row.id); }
+    }));
+  } catch (e) { console.error('sendPush:', e.message); }
+}
+
+// Endpoints de suscripción push (la app del teléfono los usa)
+app.get('/api/push/public-key', async (_req, res) => {
+  const pub = await getDynamicSetting('vapid_public', process.env.VAPID_PUBLIC);
+  res.json({ publicKey: pub || null });
+});
+app.post('/api/push/subscribe', async (req, res) => {
+  try {
+    const sub = req.body?.subscription || req.body;
+    if (!sub?.endpoint) return res.status(400).json({ error: 'Falta subscription' });
+    await db.run("INSERT INTO push_subscriptions (endpoint, subscription) VALUES (?, ?) ON CONFLICT(endpoint) DO UPDATE SET subscription = excluded.subscription", sub.endpoint, JSON.stringify(sub));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/push/unsubscribe', async (req, res) => {
+  try {
+    const endpoint = req.body?.endpoint || req.body?.subscription?.endpoint;
+    if (endpoint) await db.run("DELETE FROM push_subscriptions WHERE endpoint = ?", endpoint);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/push/test', async (_req, res) => {
+  await sendPush('🔔 Prueba OneControl\nSi ves esto, las notificaciones funcionan.');
+  res.json({ success: true });
+});
+
 async function notificarDueno(mensaje, channelPhone = null) {
+  // Además del WhatsApp, mandar push al teléfono (confiable aunque la app esté cerrada
+  // o fuera de la ventana de 24h de WhatsApp). Best-effort, no bloquea.
+  sendPush(mensaje).catch(() => {});
   try {
     const channel = await getChannelConfig(channelPhone);
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
