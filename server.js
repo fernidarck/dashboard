@@ -1282,6 +1282,16 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
         if (data.etiqueta) {
           updates.push("estado = ?");
           params.push(data.etiqueta);
+        } else {
+          // Intención de compra clara: marcar como "Interesado" para que caiga en "Por Hablar"
+          // aunque el cliente todavía no dé dirección/zona (ej: "sí lo quiero, mañana confirmo").
+          // NO pisa estados mejores (Venta, Cita, Seguimiento, pedido, intervención, ya interesado).
+          const BUY_INTENT = /(lo quiero|la quiero|los quiero|las quiero|me lo llevo|me la llevo|lo compro|la compro|lo kiero|la kiero|dame uno|quiero comprar|me interesa comprar|cu[aá]ndo me lo|ap[aá]rt|res[eé]rv)/i;
+          const KEEP = ['Venta', 'Cita Agendada', 'En Seguimiento', 'PEDIDO_LISTO', 'Intervención Requerida', 'Interesado'];
+          if (parsed.mensajePrincipal && BUY_INTENT.test(parsed.mensajePrincipal) && !KEEP.includes(existingLead.estado)) {
+            updates.push("estado = 'Interesado'");
+            console.log(`🔥 [Intención de compra] Lead ${leadId} → Interesado: "${String(parsed.mensajePrincipal).slice(0, 60)}"`);
+          }
         }
       }
 

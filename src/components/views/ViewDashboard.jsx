@@ -131,7 +131,7 @@ export default function ViewDashboard({
     if (l.archived || isFollowedUp(l)) return false;
     if (hizoPedido(l)) return true;
     if (String(l.nombre || '').trim().toLowerCase() === 'agente') return false;
-    return esProspecto(l) || !!l.handoff_reason;
+    return esProspecto(l) || !!l.handoff_reason || l.estado === 'Interesado';
   };
 
   const activeLeads = useMemo(() => leads.filter(l => !l.archived), [leads]);
