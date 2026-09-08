@@ -1236,6 +1236,18 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
     }
 
     const cleanPhone = String(parsed.clientPhoneRaw).replace(/\D/g, '');
+
+    // NÚMEROS IGNORADOS: números propios / de análisis (ej: el número que usás para
+    // Hermes) que NO son clientes. No creamos lead ni disparamos avisos por ellos.
+    try {
+      const ignoredRaw = await getDynamicSetting('ignored_phones', process.env.IGNORED_PHONES);
+      const ignored = String(ignoredRaw || '').split(/[,;\s]+/).map(p => p.replace(/\D/g, '')).filter(Boolean);
+      if (ignored.some(ig => ig && (cleanPhone === ig || cleanPhone.endsWith(ig) || ig.endsWith(cleanPhone)))) {
+        console.log(`🚫 [${sourceName}] Número ignorado (${cleanPhone}) — no se crea lead ni se avisa.`);
+        return res.json({ success: true, ignored: true });
+      }
+    } catch (e) { /* si falla, seguimos normal */ }
+
     let cleanChannelPhone = null;
     if (parsed.channelPhoneRaw) {
       cleanChannelPhone = String(parsed.channelPhoneRaw).replace(/\D/g, '');
