@@ -447,6 +447,9 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN whatsapp_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN reglas_bot TEXT"); } catch(e){}
+    // created_at real en mensajes (para el seguimiento automático de 12h) y flag por lead.
+    try { await db.exec("ALTER TABLE messages ADD COLUMN created_at TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN seguimiento_enviado INTEGER DEFAULT 0"); } catch(e){}
     // ad_ids: IDs de anuncios de Meta (separados por coma) que muestran ESTE producto.
     // Sirve para que, cuando un lead venga de ese anuncio y diga "la del anuncio",
     // el bot sepa exactamente qué producto/foto mandar.
@@ -845,11 +848,16 @@ async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null
     return;
   }
 
-  // 1. Guardar mensaje
+  // 1. Guardar mensaje (created_at = fecha/hora real UTC, para el seguimiento automático)
   await db.run(
-    "INSERT INTO messages (lead_id, sender, text, timestamp, mediaUrl, mediaType) VALUES (?, ?, ?, ?, ?, ?)",
-    leadId, sender, cleanT, timestamp, mediaUrl, mediaType
+    "INSERT INTO messages (lead_id, sender, text, timestamp, mediaUrl, mediaType, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    leadId, sender, cleanT, timestamp, mediaUrl, mediaType, new Date().toISOString()
   );
+  // Si el cliente responde, se reinicia el flag de seguimiento (para poder nudgearlo
+  // de nuevo si vuelve a quedarse callado más adelante).
+  if (sender === 'client') {
+    db.run("UPDATE leads SET seguimiento_enviado = 0 WHERE id = ?", leadId).catch(() => {});
+  }
 
   // Si el bot respondió con éxito, limpiar la alerta de "bot caído" (auto-recuperación).
   // Fire-and-forget con catch: nunca puede afectar el guardado del mensaje.
@@ -5099,6 +5107,46 @@ app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'dist/index.html'));
 });
 
+
+// ── SEGUIMIENTO AUTOMÁTICO ────────────────────────────────────────────────────
+// A los leads "Interesado" que llevan ~12h callados (y todavía dentro de la ventana
+// de 24h de WhatsApp, así el mensaje va GRATIS), les manda UN recordatorio preguntando
+// si siguen interesados. Solo si el bot sigue activo, no lo tomó un humano, y no se
+// envió antes. El flag se reinicia cuando el cliente vuelve a responder.
+async function runSeguimientoAutomatico() {
+  try {
+    const HORAS_SILENCIO = 12, HORAS_VENTANA = 24;
+    const leads = await db.all(
+      "SELECT * FROM leads WHERE estado = 'Interesado' AND botActive = 1 AND (seguimiento_enviado IS NULL OR seguimiento_enviado = 0) AND (archived IS NULL OR archived = 0)"
+    );
+    if (!leads || !leads.length) return;
+    const now = Date.now();
+    let enviados = 0;
+    for (const lead of leads) {
+      const lastClient = await db.get(
+        "SELECT created_at FROM messages WHERE lead_id = ? AND sender = 'client' AND created_at IS NOT NULL ORDER BY id DESC LIMIT 1",
+        lead.id
+      );
+      if (!lastClient || !lastClient.created_at) continue;
+      const diffH = (now - new Date(lastClient.created_at).getTime()) / 3600000;
+      if (diffH < HORAS_SILENCIO || diffH >= HORAS_VENTANA) continue; // muy pronto, o ventana ya cerrada
+      const lastMsg = await db.get("SELECT sender FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1", lead.id);
+      if (lastMsg && lastMsg.sender === 'agent') continue; // un humano ya lo está atendiendo
+      const nombre = (lead.nombre && !/cliente/i.test(lead.nombre)) ? String(lead.nombre).split(' ')[0] : '';
+      const prod = (lead.motor && lead.motor !== 'N/A') ? ` con ${lead.motor}` : '';
+      const msg = `¡Hola${nombre ? ' ' + nombre : ''}! 😊 Le escribo de OneControl para saber si todavía está interesado${prod}. ¿Le ayudo a concretar o le quedó alguna duda?`;
+      try {
+        await sendTextViaYCloud(lead.phone, msg, lead.channel_phone);
+        await saveSmartMessage(lead.id, 'bot', msg, horaGuate());
+        await db.run("UPDATE leads SET seguimiento_enviado = 1 WHERE id = ?", lead.id);
+        enviados++;
+      } catch (e) { console.error('seguimiento envío lead ' + lead.id + ':', e.message); }
+      if (enviados >= 25) break; // tope por ciclo (anti-spam)
+    }
+    if (enviados) console.log(`📨 Seguimiento automático: ${enviados} recordatorio(s) enviado(s).`);
+  } catch (e) { console.error('runSeguimientoAutomatico:', e.message); }
+}
+setInterval(runSeguimientoAutomatico, 30 * 60 * 1000); // revisa cada 30 minutos
 
 // Iniciar servidor inmediatamente para que EasyPanel vea el servicio activo
 const server = app.listen(port, '0.0.0.0', () => {
