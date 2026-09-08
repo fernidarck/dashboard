@@ -75,6 +75,40 @@ export default function ViewPedidos({
     );
   }, [pedidos, searchQuery]);
 
+  // ── CALENDARIO DE ENTREGAS (colapsable, no invasivo) ──────────────────────
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calOffset, setCalOffset] = useState(0); // meses respecto al actual
+  // Parsear la fecha_entrega (texto libre, ej "Miércoles (09/09)") a una fecha real.
+  const deliveryEvents = useMemo(() => (pedidos || []).map(p => {
+    const m = String(p.fecha_entrega || '').match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if (!m) return null;
+    const dd = parseInt(m[1], 10), mm = parseInt(m[2], 10);
+    if (!dd || !mm || mm > 12 || dd > 31) return null;
+    const now = new Date();
+    let date = new Date(now.getFullYear(), mm - 1, dd);
+    // Si la fecha ya pasó hace más de un mes, se asume el próximo año.
+    if (date < new Date(now.getFullYear(), now.getMonth(), now.getDate() - 31)) date = new Date(now.getFullYear() + 1, mm - 1, dd);
+    return { date, pedido: p };
+  }).filter(Boolean), [pedidos]);
+  const calBase = useMemo(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth() + calOffset, 1); }, [calOffset]);
+  const monthLabel = calBase.toLocaleDateString('es-GT', { month: 'long', year: 'numeric' });
+  const monthEvents = useMemo(() => deliveryEvents
+    .filter(ev => ev.date.getMonth() === calBase.getMonth() && ev.date.getFullYear() === calBase.getFullYear())
+    .sort((a, b) => a.date - b.date), [deliveryEvents, calBase]);
+  const calCells = useMemo(() => {
+    const firstDow = calBase.getDay();
+    const daysInMonth = new Date(calBase.getFullYear(), calBase.getMonth() + 1, 0).getDate();
+    const today = new Date();
+    const cells = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const count = monthEvents.filter(ev => ev.date.getDate() === d).length;
+      const isToday = today.getDate() === d && today.getMonth() === calBase.getMonth() && today.getFullYear() === calBase.getFullYear();
+      cells.push({ day: d, count, isToday });
+    }
+    return cells;
+  }, [calBase, monthEvents]);
+
   const countNuevos = pedidos.filter(p => p.estado === 'Nuevo').length;
   const countVisitas = pedidos.filter(p => p.estado === 'Visita Programada').length;
   const countProceso = pedidos.filter(p => p.estado === 'En Proceso').length;
@@ -202,6 +236,46 @@ export default function ViewPedidos({
           <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 text-xs font-bold px-2 cursor-pointer">
             Limpiar
           </button>
+        )}
+      </div>
+
+      {/* CALENDARIO DE ENTREGAS (colapsable, no invasivo — cerrado por defecto) */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+        <button onClick={() => setShowCalendar(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
+          <span className="flex items-center gap-2 text-xs font-black text-slate-700 uppercase tracking-widest">
+            <CalendarClock size={16} className="text-amber-600" /> Calendario de entregas
+            {deliveryEvents.length > 0 && <span className="text-[10px] font-black text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">{deliveryEvents.length}</span>}
+          </span>
+          <ChevronRight size={16} className={`text-slate-400 transition-transform ${showCalendar ? 'rotate-90' : ''}`} />
+        </button>
+        {showCalendar && (
+          <div className="border-t border-slate-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={() => setCalOffset(o => o - 1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"><ChevronLeft size={16} /></button>
+              <span className="text-xs font-black text-slate-800 capitalize">{monthLabel}</span>
+              <button onClick={() => setCalOffset(o => o + 1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"><ChevronRight size={16} /></button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => <div key={i} className="text-[9px] font-black text-slate-400 py-1">{d}</div>)}
+              {calCells.map((cell, i) => cell ? (
+                <div key={i} className={`aspect-square rounded-lg flex flex-col items-center justify-center text-[11px] ${cell.count > 0 ? 'bg-amber-50 border border-amber-200 font-black text-amber-800' : 'text-slate-500'} ${cell.isToday ? 'ring-1 ring-[#FF6B00]' : ''}`}>
+                  <span>{cell.day}</span>
+                  {cell.count > 0 && <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B00] mt-0.5" />}
+                </div>
+              ) : <div key={i} />)}
+            </div>
+            <div className="mt-4 space-y-1.5">
+              {monthEvents.length === 0 ? (
+                <p className="text-[11px] text-slate-400 text-center py-2">Sin entregas programadas este mes.</p>
+              ) : monthEvents.map(ev => (
+                <div key={ev.pedido.id} className="flex items-center gap-2 text-[11px] bg-slate-50 rounded-xl px-3 py-2">
+                  <span className="font-black text-amber-700 shrink-0 tabular-nums">{ev.date.getDate()}/{ev.date.getMonth() + 1}</span>
+                  <span className="font-bold text-slate-800 truncate">{ev.pedido.cliente || 'Cliente'}</span>
+                  <span className="text-slate-400 truncate">· {ev.pedido.producto}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
