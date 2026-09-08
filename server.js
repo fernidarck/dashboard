@@ -1766,7 +1766,7 @@ async function sendPush(mensaje, url = '/') {
     const body = (lines.slice(1).join(' ') || '').replace(/[*_]/g, '').slice(0, 180);
     const payload = JSON.stringify({ title, body, url });
     await Promise.all(subs.map(async row => {
-      try { await wp.sendNotification(JSON.parse(row.subscription), payload); }
+      try { await wp.sendNotification(JSON.parse(row.subscription), payload, { urgency: 'high', TTL: 86400 }); }
       catch (e) { if (e.statusCode === 404 || e.statusCode === 410) await db.run("DELETE FROM push_subscriptions WHERE id = ?", row.id); }
     }));
   } catch (e) { console.error('sendPush:', e.message); }
