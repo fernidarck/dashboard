@@ -139,6 +139,9 @@ export default function ViewDashboard({
     const pa = (a.priority === 'urgent' ? 2 : 0) + (hizoPedido(a) ? 1 : 0);
     const pb = (b.priority === 'urgent' ? 2 : 0) + (hizoPedido(b) ? 1 : 0);
     if (pa !== pb) return pb - pa;
+    // Por FECHA: lo más reciente primero (lastMsgId es un contador creciente = orden cronológico).
+    const da = Number(a.lastMsgId) || 0, db = Number(b.lastMsgId) || 0;
+    if (da !== db) return db - da;
     return (Number(b.score) || 0) - (Number(a.score) || 0);
   }), [activeLeads]); // eslint-disable-line react-hooks/exhaustive-deps
   const enSeguimiento = useMemo(() => activeLeads.filter(isEnSeguimiento), [activeLeads]); // eslint-disable-line react-hooks/exhaustive-deps
