@@ -1293,9 +1293,10 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
           // Intención de compra clara: marcar como "Interesado" para que caiga en "Por Hablar"
           // aunque el cliente todavía no dé dirección/zona (ej: "sí lo quiero, mañana confirmo").
           // NO pisa estados mejores (Venta, Cita, Seguimiento, pedido, intervención, ya interesado).
-          // Señales de prospecto: intención de compra directa, preguntar PRECIO de un
-          // producto, o interés/seguimiento (mandar foto para confirmar, "me interesa", etc.).
-          const BUY_INTENT = /(lo quiero|la quiero|los quiero|las quiero|me lo llevo|me la llevo|lo compro|la compro|lo kiero|la kiero|dame uno|quiero comprar|me interesa|cu[aá]ndo me lo|ap[aá]rt|res[eé]rv|\bprecio\b|cu[aá]nto (cuesta|vale|sale|es)|qu[eé] precio|q precio|cu[aá]nto me|mando.*foto|mandar[eé].*foto|env[ií]o.*foto|foto del motor|lo llevo)/i;
+          // Señales de PROSPECTO real (NO un simple "precio?"): intención de compra directa,
+          // o que la conversación sigue viva y el cliente va a volver (defer / mandar foto).
+          // Ej real: "le hablaré más tarde", "le mando foto del motor", "me interesa".
+          const BUY_INTENT = /(lo quiero|la quiero|los quiero|las quiero|me lo llevo|me la llevo|lo compro|la compro|lo kiero|la kiero|dame uno|quiero comprar|me interesa|ap[aá]rt|res[eé]rv|lo llevo|le confirmo|le hablar[eé]|le hablo m[aá]s tarde|le aviso|le escribo|le digo despu[eé]s|m[aá]s tarde|cuando llegue|cuando est[eé] en casa|mando.*foto|mandar[eé].*foto|env[ií]o.*foto|le mando.*foto|foto del motor)/i;
           const KEEP = ['Venta', 'Cita Agendada', 'En Seguimiento', 'PEDIDO_LISTO', 'Intervención Requerida', 'Interesado'];
           if (parsed.mensajePrincipal && BUY_INTENT.test(parsed.mensajePrincipal) && !KEEP.includes(existingLead.estado)) {
             updates.push("estado = 'Interesado'");
