@@ -13,8 +13,10 @@ self.addEventListener('push', (event) => {
     icon: '/logo-onecontrol.png',
     badge: '/logo-onecontrol.png',
     data: { url: data.url || '/' },
-    vibrate: [120, 60, 120],
+    vibrate: [300, 120, 300, 120, 300],
     renotify: true,
+    requireInteraction: true, // se queda en pantalla hasta que la toques (no desaparece sola)
+    silent: false,            // que suene/vibre (no silenciosa)
     tag: 'onecontrol-' + Date.now()
   };
   event.waitUntil(self.registration.showNotification(title, options));
