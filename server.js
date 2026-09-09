@@ -1034,7 +1034,13 @@ app.post('/api/leads', async (req, res) => {
 // Actualizar Lead completo
 app.put('/api/leads/:id', async (req, res) => {
   try {
-    const { nombre, phone, email, motor, falla, zona, direccion, notas, nit, etiquetas, estado, score, priority, botActive, handoff_reason } = req.body;
+    const { nombre, phone, email, motor, falla, zona, direccion, notas, nit, etiquetas, estado, score, priority, botActive, handoff_reason, channel_phone } = req.body;
+    // Permite re-asignar un lead a otro canal (ej: un lead viejo quedó pegado a un
+    // número que ya no se usa y debe aparecer en el canal principal).
+    if (channel_phone !== undefined) {
+      const cleanCh = String(channel_phone || '').replace(/\D/g, '');
+      await db.run("UPDATE leads SET channel_phone = ? WHERE id = ?", cleanCh, req.params.id);
+    }
     if (handoff_reason !== undefined) {
       await db.run(
         `UPDATE leads SET 
