@@ -1320,7 +1320,13 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
           // Ej real: "le hablaré más tarde", "le mando foto del motor", "me interesa".
           const BUY_INTENT = /(lo quiero|la quiero|los quiero|las quiero|me lo llevo|me la llevo|lo compro|la compro|lo kiero|la kiero|dame uno|quiero comprar|me interesa|ap[aá]rt|res[eé]rv|lo llevo|le confirmo|le hablar[eé]|le hablo m[aá]s tarde|le aviso|le escribo|le digo despu[eé]s|m[aá]s tarde|cuando llegue|cuando est[eé] en casa|mando.*foto|mandar[eé].*foto|env[ií]o.*foto|le mando.*foto|foto del motor)/i;
           const KEEP = ['Venta', 'Cita Agendada', 'En Seguimiento', 'PEDIDO_LISTO', 'Intervención Requerida', 'Interesado'];
-          if (parsed.mensajePrincipal && BUY_INTENT.test(parsed.mensajePrincipal) && !KEEP.includes(existingLead.estado)) {
+          if (existingLead.estado === 'Perdido') {
+            // Un cliente marcado "Perdido" que VUELVE a escribir (aunque sea un "hola")
+            // se reactiva como "Interesado" para que resurja en "Por Hablar" y no pase
+            // desapercibido. (Opción A pedida por el dueño.)
+            updates.push("estado = 'Interesado'");
+            console.log(`♻️ [Cliente Perdido reactivado] Lead ${leadId} volvió a escribir → Interesado`);
+          } else if (parsed.mensajePrincipal && BUY_INTENT.test(parsed.mensajePrincipal) && !KEEP.includes(existingLead.estado)) {
             updates.push("estado = 'Interesado'");
             console.log(`🔥 [Intención de compra] Lead ${leadId} → Interesado: "${String(parsed.mensajePrincipal).slice(0, 60)}"`);
           }
