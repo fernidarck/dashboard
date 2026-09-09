@@ -2475,8 +2475,8 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     const fileName = (req.file.originalname || 'documento.pdf').replace(/\s+/g, '_');
     const host = req.get('host') || 'localhost:3002';
     const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
-    const protoHeader = req.headers['x-forwarded-proto'];
-    const protocol = isLocal ? 'http' : (protoHeader ? String(protoHeader).split(',')[0].trim() : (req.protocol || 'https'));
+    // WhatsApp RECHAZA media http:// → siempre https salvo en local.
+    const protocol = isLocal ? 'http' : 'https';
     const docUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     const time = horaGuate();
     // Según el tipo: imagen → FOTO, video → VIDEO, resto → documento (tipos WhatsApp/Meta).
@@ -2996,9 +2996,10 @@ app.post('/api/products/upload-image', productImagesUpload.single('image'), asyn
     } catch (e) {
       console.error('⚠️ No se pudo comprimir la imagen (se usa la original):', e.message);
     }
+    // SIEMPRE https: WhatsApp/Meta RECHAZA media con URL http:// (la foto no se
+    // entrega). Detrás del proxy, req.protocol da 'http', así que forzamos https.
     const host = req.get('host');
-    const protocol = req.protocol;
-    const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    const imageUrl = `https://${host}/uploads/${req.file.filename}`;
     res.json({ success: true, imageUrl });
   } catch (err) {
     res.status(500).json({ error: err.message });
