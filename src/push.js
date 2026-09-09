@@ -17,6 +17,40 @@ export function pushPermission() {
   return (typeof Notification !== 'undefined') ? Notification.permission : 'denied';
 }
 
+// Sincroniza la suscripción existente con el backend sin volver a pedir permiso
+export async function syncPushSubscription(apiBase, authToken) {
+  try {
+    if (!pushSupported()) return false;
+    if (pushPermission() !== 'granted') return false;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+
+    // Si aún no está suscrito a nivel navegador, suscribirse usando la clave VAPID
+    if (!sub) {
+      const keyRes = await fetch(`${apiBase}/api/push/public-key`, { headers: { Authorization: `Bearer ${authToken}` } });
+      if (!keyRes.ok) return false;
+      const { publicKey } = await keyRes.json();
+      if (!publicKey) return false;
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+    }
+
+    if (sub) {
+      await fetch(`${apiBase}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ subscription: sub })
+      });
+      return true;
+    }
+  } catch (e) {
+    console.warn('syncPushSubscription:', e.message);
+  }
+  return false;
+}
+
 // Registra el SW, pide permiso, se suscribe y manda la suscripción al backend.
 // Devuelve { ok, reason }.
 export async function enablePush(apiBase, authToken) {

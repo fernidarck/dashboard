@@ -1373,6 +1373,24 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       console.log(`💾 [${sourceName}] Mensaje guardado para lead ${leadId} (sender: ${parsed.sender}): "${parsed.mensajePrincipal?.slice?.(0, 60)}"`);
     }
 
+    // 🔔 Notificación Push al teléfono si es un cliente escribiendo en canal/lead MANUAL (donde el bot no responderá)
+    if (parsed.sender === 'client' && !parsed.isEcho) {
+      try {
+        const chanConf = await getChannelConfig(cleanChannelPhone);
+        const isChanManual = chanConf && Number(chanConf.bot_active) === 0;
+        const currentLeadRow = await db.get("SELECT botActive FROM leads WHERE id = ?", leadId);
+        const isLeadManual = currentLeadRow && Number(currentLeadRow.botActive) === 0;
+
+        if (isChanManual || isLeadManual) {
+          const pushTitle = `💬 ${chanConf?.name || 'Mensaje Nuevo'}`;
+          const pushBody = `${parsed.nombre || 'Cliente'}: ${parsed.mensajePrincipal || (clientMedia ? '📷 Archivo adjunto' : 'Nuevo mensaje')}`;
+          sendPush(`${pushTitle}\n${pushBody}`).catch(() => {});
+        }
+      } catch (pushErr) {
+        console.warn("Error enviando push de mensaje manual:", pushErr.message);
+      }
+    }
+
     // Guardar respuesta del bot si viene en el payload
     if (isBotReport) {
       const { cleanText: cleanBot, imageUrl: botImageUrl } = parseImageFromText(parsed.mensajeSecundario || '');
@@ -1855,11 +1873,30 @@ async function notificarDueno(mensaje, channelPhone = null) {
 
     await Promise.all(targetPhones.map(async (toPhone) => {
       try {
+        let sendFrom = fromNum;
+        let sendApiKey = apiKey;
+
+        // WhatsApp no permite que un número se envíe mensajes a sí mismo.
+        // Si el remitente es igual al destinatario (ej. Reach 35154362 avisando a Ferni 35154362),
+        // buscamos un canal alternativo activo (ej. OneControl) para enviar la alerta.
+        const cleanFrom = String(sendFrom || '').replace(/\D/g, '');
+        const cleanTo = String(toPhone || '').replace(/\D/g, '');
+        if (cleanFrom && cleanTo && (cleanFrom === cleanTo || cleanFrom.endsWith(cleanTo) || cleanTo.endsWith(cleanFrom))) {
+          const altChan = await db.get(
+            "SELECT phone, api_key FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') != ? AND active = 1 ORDER BY id ASC LIMIT 1",
+            cleanFrom
+          );
+          if (altChan && altChan.phone) {
+            sendFrom = altChan.phone;
+            sendApiKey = altChan.api_key || sendApiKey;
+          }
+        }
+
         const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': sendApiKey },
           body: JSON.stringify({
-            from: fromNum,
+            from: sendFrom,
             to: toPhone,
             type: 'text',
             text: { body: mensaje }

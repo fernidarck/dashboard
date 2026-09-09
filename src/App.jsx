@@ -19,7 +19,7 @@ import ViewComentarios from './components/views/ViewComentarios.jsx';
 import ViewArchivos from './components/views/ViewArchivos.jsx';
 import ViewEntrenamiento from './components/views/ViewEntrenamiento.jsx';
 import ViewWebChat from './components/views/ViewWebChat.jsx';
-import { registerServiceWorker, enablePush, pushSupported, pushPermission } from './push.js';
+import { registerServiceWorker, enablePush, syncPushSubscription, pushSupported, pushPermission } from './push.js';
 
 const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : '';
 const CURRENT_USER_ID = 'fer';
@@ -30,12 +30,35 @@ export default function App() {
   const [sysAlert, setSysAlert] = useState(null); // alerta "bot caído" (banner)
   const [pushState, setPushState] = useState(() => pushSupported() ? pushPermission() : 'unsupported'); // granted | default | denied | unsupported
 
-  // Registrar el service worker al cargar (para recibir push aunque la app esté cerrada).
-  useEffect(() => { registerServiceWorker(); }, []);
+  // Registrar el service worker al cargar y auto-sincronizar la suscripción con el servidor si ya está autorizado
+  useEffect(() => {
+    registerServiceWorker();
+    if (authToken && pushSupported() && pushPermission() === 'granted') {
+      syncPushSubscription(API_BASE_URL, authToken);
+    }
+  }, [authToken]);
 
   const handleEnablePush = async () => {
+    if (pushState === 'granted') {
+      // Re-sincronizar y mandar notificación de prueba directa al teléfono
+      await syncPushSubscription(API_BASE_URL, authToken);
+      try {
+        const testRes = await fetch(`${API_BASE_URL}/api/push/test`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${authToken}` }
+        });
+        if (testRes.ok) {
+          alert('🔔 Notificación de prueba enviada a tu teléfono. Si tu celular tiene la app instalada/bloqueada, revisa la pantalla.');
+        } else {
+          alert('Error enviando prueba: ' + testRes.status);
+        }
+      } catch (e) {
+        alert('Error enviando prueba: ' + e.message);
+      }
+      return;
+    }
     const r = await enablePush(API_BASE_URL, authToken);
-    if (r.ok) { setPushState('granted'); }
+    if (r.ok) { setPushState('granted'); alert('✅ Notificaciones activadas y teléfono registrado.'); }
     else if (r.reason === 'permiso-denegado') { setPushState('denied'); alert('Bloqueaste las notificaciones. Actívalas desde los ajustes del navegador/teléfono para este sitio.'); }
     else { alert('No se pudieron activar las notificaciones: ' + (r.reason || 'error')); }
   };
@@ -332,10 +355,10 @@ export default function App() {
           {pushState !== 'unsupported' && (
             <button
               onClick={handleEnablePush}
-              disabled={pushState === 'granted'}
-              className={`w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors flex items-center justify-center space-x-1 mt-1 ${pushState === 'granted' ? 'text-emerald-500' : 'text-slate-400 hover:text-[#FF6B00]'}`}
+              className={`w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors flex items-center justify-center space-x-1 mt-1 ${pushState === 'granted' ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-400 hover:text-[#FF6B00]'}`}
+              title={pushState === 'granted' ? 'Tocar para enviar una prueba a tu teléfono' : 'Activar notificaciones en este dispositivo'}
             >
-              <Bell size={12} /><span>{pushState === 'granted' ? 'Notificaciones activas' : 'Activar notificaciones'}</span>
+              <Bell size={12} /><span>{pushState === 'granted' ? 'Notificaciones activas (Probar)' : 'Activar notificaciones'}</span>
             </button>
           )}
           {currentUser?.role === 'admin' && (
