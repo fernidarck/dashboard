@@ -5103,7 +5103,15 @@ app.delete('/api/media/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.use('/uploads', express.static(join(__dirname, 'uploads')));
+app.use('/uploads', express.static(join(__dirname, 'uploads'), {
+  // WhatsApp exige content-type de imagen. express.static sirve .jfif y otros como
+  // application/octet-stream → WhatsApp los rechaza. Forzamos el tipo correcto.
+  setHeaders: (res, filePath) => {
+    const ext = String(filePath).toLowerCase().split('.').pop();
+    const map = { jfif: 'image/jpeg', jpe: 'image/jpeg', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
+    if (map[ext]) res.setHeader('Content-Type', map[ext]);
+  }
+}));
 app.use(express.static(join(__dirname, 'dist'), { setHeaders: (res, path) => { if (path.endsWith('.html')) { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } } }));
 
 // Manejador de errores global
