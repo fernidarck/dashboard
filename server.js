@@ -1206,7 +1206,7 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
       String(guateTime.getUTCMinutes()).padStart(2,'0');
 
     const result = await db.run(
-      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, timestamp) VALUES (?,?,?,?,?,'Nuevo',?)`,
+      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, timestamp) VALUES (?,?,?,?,?,?,'Nuevo',?)`,
       clientName || 'Cliente WhatsApp', clientPhone || '', productName, '1', productPrice, notas, timestamp
     );
 
