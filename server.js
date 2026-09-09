@@ -1183,6 +1183,26 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
     const cleanPh = String(clientPhone || '').replace(/\D/g, '');
     if (!cleanPh) return null;
 
+    // OPCIÓN A: las COTIZACIONES de motor / visita técnica NO son pedidos de compra
+    // (son casos para el técnico, requieren visita + cotización). Si el contexto de la
+    // conversación es de motor/portón/cotización/instalación y NO se trata de un
+    // producto directo (mesa, control, botonera), NO creamos pedido: dejamos el lead
+    // "En Seguimiento" para que lo tome el técnico, sin ensuciar la lista de Pedidos.
+    try {
+      const recientes = await db.all(
+        "SELECT text FROM messages WHERE lead_id = ? AND text IS NOT NULL AND text != '' ORDER BY id DESC LIMIT 15",
+        leadId
+      );
+      const convText = recientes.map(r => String(r.text || '')).join(' ').toLowerCase();
+      const ES_COTIZACION = /cotiza|t[eé]cnico|visita|instalaci|\bmotor\b|port[oó]n|sitio donde|del sitio|arma la cotiz/i;
+      const ES_PRODUCTO_DIRECTO = /mesa de noche|mesa|control|botonera|remoto|mueble|modelo\s*\d/i;
+      if (ES_COTIZACION.test(convText) && !ES_PRODUCTO_DIRECTO.test(convText)) {
+        console.log(`📋 [No es pedido] Lead ${leadId} es COTIZACIÓN / servicio técnico (motor/portón) → NO se crea pedido.`);
+        await db.run("UPDATE leads SET estado = 'En Seguimiento' WHERE id = ? AND estado = 'PEDIDO_LISTO'", leadId);
+        return null;
+      }
+    } catch (e) { /* si falla la detección, seguimos con la lógica normal */ }
+
     // Evitar crear pedidos duplicados para el mismo teléfono en las últimas 6 horas
     const existingRecent = await db.get(
       "SELECT id FROM pedidos WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND estado = 'Nuevo' ORDER BY id DESC LIMIT 1",
@@ -1201,8 +1221,8 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
       }
     }
 
-    const productName = matchedProduct ? matchedProduct.nombre : 'Mesa de Noche OneControl';
-    const productPrice = matchedProduct ? `Q${matchedProduct.precio}` : 'Q550';
+    const productName = matchedProduct ? matchedProduct.nombre : 'Producto por confirmar';
+    const productPrice = matchedProduct ? `Q${matchedProduct.precio}` : '';
     const notas = clientMsg ? `Detectado por IA: "${clientMsg.slice(0, 150)}"` : 'Pedido automático';
 
     const now = new Date();
