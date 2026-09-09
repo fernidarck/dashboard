@@ -542,6 +542,19 @@ export default function ViewConversaciones({
     setShowCatalogModal(false);
   };
 
+  // Ventana de 24h de WhatsApp: se abre cuando el CLIENTE escribe y dura 24h desde su
+  // último mensaje. Fuera de esa ventana WhatsApp NO entrega mensajes libres (solo
+  // plantillas aprobadas), así que avisamos para que el usuario no crea que "no se envió".
+  const windowStatus = useMemo(() => {
+    const clientMsgs = (messages || []).filter(m => m.sender === 'client');
+    if (clientMsgs.length === 0) return { open: false, everWrote: false };
+    const times = clientMsgs.map(m => m.created_at).filter(Boolean)
+      .map(d => new Date(d).getTime()).filter(t => !isNaN(t));
+    if (times.length === 0) return { open: null, everWrote: true }; // sin fecha confiable → no avisamos
+    const hours = (Date.now() - Math.max(...times)) / 3600000;
+    return { open: hours < 24, everWrote: true, hours };
+  }, [messages]);
+
   return (
     <div className="flex h-full animate-in fade-in duration-500 bg-white border-t border-slate-100 relative">
       {/* Lead list */}
@@ -1096,6 +1109,17 @@ export default function ViewConversaciones({
 
         {/* Input Bar */}
         <div className="p-3 md:p-6 bg-white border-t border-slate-100">
+          {/* AVISO: ventana de 24h de WhatsApp cerrada → los mensajes pueden no entregarse */}
+          {selectedChatId && windowStatus.open === false && (
+            <div className="mb-3 p-3 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-2.5 animate-in slide-in-from-bottom-2 duration-200">
+              <span className="text-lg leading-none shrink-0">⚠️</span>
+              <p className="text-[11px] text-amber-800 font-semibold leading-snug">
+                {windowStatus.everWrote
+                  ? 'Pasaron más de 24h desde el último mensaje del cliente. WhatsApp puede NO entregar tu mensaje hasta que el cliente vuelva a escribir.'
+                  : 'Este cliente aún no te ha escrito. WhatsApp puede bloquear tu mensaje hasta que el cliente escriba primero (mándale un saludo corto y espera su respuesta).'}
+              </p>
+            </div>
+          )}
           {/* Tarjeta de Archivo Adjunto (Staged File Preview) */}
           {stagedFile && (
             <div className="mb-3 p-3.5 bg-orange-50/90 border border-orange-200/90 rounded-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2 duration-200 shadow-xs">
