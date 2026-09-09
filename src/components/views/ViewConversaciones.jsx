@@ -222,9 +222,14 @@ export default function ViewConversaciones({
   };
 
   // Al navegar desde Leads/Dashboard/notificación (cambia openChatNonce), abrir el chat
-  // específico también en móvil (no quedarse en la lista general).
+  // específico también en móvil y limpiar filtros para que el lead sea visible de inmediato.
   useEffect(() => {
-    if (openChatNonce) setMobileShowChat(true);
+    if (openChatNonce) {
+      setChannelTab('todos');
+      setStageFilter('todos');
+      setChatSearch('');
+      setMobileShowChat(true);
+    }
   }, [openChatNonce]);
 
   const handleStageFile = (file) => {

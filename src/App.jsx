@@ -119,10 +119,38 @@ export default function App() {
   // El nonce fuerza que en móvil se muestre el chat, no la lista general.
   const openConversation = (id) => {
     if (!id) return;
+    const numId = !isNaN(Number(id)) ? Number(id) : id;
     setActiveTab('conversaciones');
-    setSelectedChatId(id);
+    setSelectedChatId(numId);
     setOpenChatNonce(n => n + 1);
   };
+
+  // Abrir chat automáticamente si viene en los parámetros de la URL (ej. notificación push: /?chat=123)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetChat = params.get('chat') || params.get('chatId') || params.get('leadId');
+    if (targetChat) {
+      openConversation(targetChat);
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, []);
+
+  // Escuchar mensaje del Service Worker cuando se hace clic en una notificación con la app ya abierta
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    const handleSwMessage = (e) => {
+      if (e.data && (e.data.type === 'OPEN_CHAT' || e.data.chatId)) {
+        const id = e.data.chatId || e.data.id;
+        if (id) {
+          openConversation(id);
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+  }, []);
+
   const [botEnabled,     setBotEnabled]     = useState(true);
   const [showChangePwd,  setShowChangePwd]  = useState(false);
   const [newPwd,         setNewPwd]         = useState('');
@@ -178,7 +206,7 @@ export default function App() {
   useEffect(() => {
     if (!selectedChatId) return;
     fetchMessages(selectedChatId);
-    const lead = leads.find(l => l.id === selectedChatId);
+    const lead = leads.find(l => String(l.id) === String(selectedChatId));
     if (lead) setSelectedLead(lead);
   }, [selectedChatId, leads]); // eslint-disable-line react-hooks/exhaustive-deps
 

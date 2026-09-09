@@ -1216,7 +1216,7 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
 
     // Notificar al dueño
     const alerta = `🛒 *NUEVO PEDIDO DETECTADO POR IA #${result.lastID}*\n\n👤 Cliente: ${clientName || 'Cliente'}\n📱 Tel: ${clientPhone}\n📦 Producto: ${productName}\n💰 Precio: ${productPrice}\n📝 Notas: ${notas}\n\n✅ Revisalo en el Dashboard (sección Pedidos IA).`;
-    await notificarDueno(alerta, channelPhone);
+    await notificarDueno(alerta, channelPhone, leadId);
 
     return result.lastID;
   } catch (err) {
@@ -1381,10 +1381,16 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
         const currentLeadRow = await db.get("SELECT botActive FROM leads WHERE id = ?", leadId);
         const isLeadManual = currentLeadRow && Number(currentLeadRow.botActive) === 0;
 
-        if (isChanManual || isLeadManual) {
+        // FILTRO DE CANAL: Excluir explícitamente el canal 35154362 (Reach Portones)
+        // El usuario solo gestiona el canal OneControl (59658803 / Web / Redes)
+        const isReachChannel = String(cleanChannelPhone || '').includes('35154362') ||
+                               String(chanConf?.phone || '').includes('35154362');
+
+        if (!isReachChannel && (isChanManual || isLeadManual)) {
           const pushTitle = `💬 ${chanConf?.name || 'Mensaje Nuevo'}`;
           const pushBody = `${parsed.nombre || 'Cliente'}: ${parsed.mensajePrincipal || (clientMedia ? '📷 Archivo adjunto' : 'Nuevo mensaje')}`;
-          sendPush(`${pushTitle}\n${pushBody}`).catch(() => {});
+          const targetUrl = `/?chat=${leadId}`;
+          sendPush(`${pushTitle}\n${pushBody}`, targetUrl, leadId).catch(() => {});
         }
       } catch (pushErr) {
         console.warn("Error enviando push de mensaje manual:", pushErr.message);
@@ -1410,7 +1416,7 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       try {
         const l = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", leadId);
         const alerta = `🙋 *SOLICITUD DE AYUDA*\n\nUn cliente necesita que le respondas.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ${l?.phone || cleanPhone}\n📝 ${handoffReason}${parsed.mensajePrincipal ? `\n💬 "${String(parsed.mensajePrincipal).slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
-        await notificarDueno(alerta, l?.channel_phone || cleanChannelPhone);
+        await notificarDueno(alerta, l?.channel_phone || cleanChannelPhone, leadId);
       } catch (e) { console.error('⚠️ Error notificando handoff:', e.message); }
       console.log(`🚨 [${sourceName}] Handoff activado para lead ${leadId}`);
     }
@@ -1523,7 +1529,7 @@ app.post('/api/leads/handoff', async (req, res) => {
     try {
       const l = await db.get("SELECT nombre, phone, channel_phone FROM leads WHERE id = ?", id);
       const alerta = `🙋 *SOLICITUD DE AYUDA*\n\nUn cliente necesita que le respondas.\n\n👤 ${l?.nombre || 'Cliente'}\n📱 ${l?.phone || phone || 'Sin teléfono'}\n📝 Motivo: ${handoffReason}${mensaje ? `\n💬 "${String(mensaje).slice(0, 120)}"` : ''}\n\n👉 Entrá al dashboard para responderle.`;
-      await notificarDueno(alerta, l?.channel_phone || null);
+      await notificarDueno(alerta, l?.channel_phone || null, id);
     } catch (e) { console.error('⚠️ No se pudo notificar el handoff al dueño:', e.message); }
 
     res.json({ success: true, leadId: id, reason: handoffReason });
@@ -1804,7 +1810,7 @@ async function ensureVapid() {
 }
 // Envía una notificación push a todos los dispositivos suscritos.
 // mensaje = texto (1ra línea = título, resto = cuerpo). Best-effort, nunca lanza.
-async function sendPush(mensaje, url = '/') {
+async function sendPush(mensaje, url = '/', targetChatId = null) {
   try {
     const wp = await ensureVapid();
     if (!wp) return;
@@ -1813,7 +1819,8 @@ async function sendPush(mensaje, url = '/') {
     const lines = String(mensaje || '').split('\n').map(s => s.trim()).filter(Boolean);
     const title = (lines[0] || 'OneControl').replace(/[*_]/g, '').slice(0, 60);
     const body = (lines.slice(1).join(' ') || '').replace(/[*_]/g, '').slice(0, 180);
-    const payload = JSON.stringify({ title, body, url });
+    const chatId = targetChatId || (url && url.includes('chat=') ? (new URL(url, 'http://localhost')).searchParams.get('chat') : null);
+    const payload = JSON.stringify({ title, body, url, chatId });
     await Promise.all(subs.map(async row => {
       try { await wp.sendNotification(JSON.parse(row.subscription), payload, { urgency: 'high', TTL: 86400 }); }
       catch (e) { if (e.statusCode === 404 || e.statusCode === 410) await db.run("DELETE FROM push_subscriptions WHERE id = ?", row.id); }
@@ -1846,10 +1853,19 @@ app.post('/api/push/test', async (_req, res) => {
   res.json({ success: true });
 });
 
-async function notificarDueno(mensaje, channelPhone = null) {
+async function notificarDueno(mensaje, channelPhone = null, targetLeadId = null) {
+  // FILTRO: No enviar alertas al dueño si provienen del canal 35154362 (Reach Portones).
+  // El dueño solo gestiona el canal OneControl (59658803 / Web / Redes)
+  const isReach = String(channelPhone || '').includes('35154362');
+  if (isReach) {
+    console.log(`ℹ️ [notificarDueno] Omitiendo notificación del canal Reach (${channelPhone}) para el dueño.`);
+    return;
+  }
+
   // Además del WhatsApp, mandar push al teléfono (confiable aunque la app esté cerrada
-  // o fuera de la ventana de 24h de WhatsApp). Best-effort, no bloquea.
-  sendPush(mensaje).catch(() => {});
+  // o fuera de la ventana de 24h de WhatsApp). Abre directamente el chat si se provee leadId.
+  const pushUrl = targetLeadId ? `/?chat=${targetLeadId}` : '/';
+  sendPush(mensaje, pushUrl, targetLeadId).catch(() => {});
   try {
     const channel = await getChannelConfig(channelPhone);
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
@@ -1982,17 +1998,19 @@ app.post('/api/pedidos', async (req, res) => {
     );
     console.log(`🛒 Nuevo pedido #${result.lastID}: ${producto} — ${cliente} (Entrega/Visita: ${fecha_entrega || 'Sin fecha'})`);
 
-    // Buscar canal del lead
+    // Buscar canal y lead del cliente
     let channelPhone = null;
+    let targetLeadId = null;
     const cleanPhone = String(phone || '').replace(/\D/g, '');
     if (cleanPhone) {
-      const lead = await db.get("SELECT channel_phone FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? LIMIT 1", cleanPhone);
+      const lead = await db.get("SELECT id, channel_phone FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? LIMIT 1", cleanPhone);
       channelPhone = lead?.channel_phone || null;
+      targetLeadId = lead?.id || null;
     }
 
-    // Notificar al dueño por WhatsApp
+    // Notificar al dueño por WhatsApp y Push
     const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${fecha_entrega ? '\n🗓️ *Visita / Entrega:* ' + fecha_entrega : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
-    await notificarDueno(msg, channelPhone);
+    await notificarDueno(msg, channelPhone, targetLeadId);
     res.json({ success: true, id: result.lastID });
   } catch(err) {
     console.error('❌ Error creando pedido:', err);
@@ -3230,7 +3248,7 @@ app.post('/api/leads/update-contact', async (req, res) => {
       if (tieneNombre && tieneUbicacion && !l.lead_alertado) {
         await db.run("UPDATE leads SET lead_alertado = 1 WHERE id = ?", id);
         const alerta = `🔔 *LEAD LISTO PARA CONTACTAR*\n\n👤 ${l.nombre}\n📱 ${l.phone || ''}\n📍 ${l.zona || l.direccion}${l.motor && l.motor !== 'N/A' ? `\n⚙️ ${l.motor}` : ''}${l.falla && l.falla !== 'N/A' ? `\n🔧 ${l.falla}` : ''}\n\n👉 Ya tenés sus datos. Entrá al dashboard y contactalo con la cotización.`;
-        await notificarDueno(alerta, l.channel_phone || null);
+        await notificarDueno(alerta, l.channel_phone || null, id);
         console.log(`🔔 Lead ${id} calificado — alerta enviada al dueño`);
       }
     } catch (e) { console.error('⚠️ No se pudo evaluar/avisar lead calificado:', e.message); }
