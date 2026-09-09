@@ -519,9 +519,25 @@ export default function ViewConversaciones({
     );
   }, [products, catalogSearch]);
 
-  // Acción rápida: Enviar producto del catálogo al cliente por WhatsApp
+  // Acción rápida: Enviar producto del catálogo al cliente por WhatsApp (texto + FOTO)
   const handleSendProduct = async (product) => {
-    const msg = `✨ *${product.nombre}*\n💰 Precio: Q${product.precio}\n${product.descripcion ? `📝 ${product.descripcion}\n` : ''}🚚 Entrega armada y lista para usar.`;
+    const p = product;
+    // Misma lógica que la miniatura: primera imagen disponible del producto.
+    const metaImgs = Array.isArray(p.imagenes_meta) && p.imagenes_meta.length > 0
+      ? p.imagenes_meta
+      : Array.isArray(p.imagenes) && p.imagenes.length > 0
+      ? p.imagenes.map(u => typeof u === 'string' ? { url: u, desc: '' } : u)
+      : p.imagen ? [{ url: p.imagen, desc: '' }] : [];
+    let img = metaImgs[0]?.url || '';
+    // El backend exige URL absoluta https para mandar la imagen (marcador ENVIAR_IMAGEN).
+    if (img && !/^https?:\/\//i.test(img)) {
+      img = window.location.origin + (img.startsWith('/') ? '' : '/') + img;
+    }
+    if (img) img = img.replace(/^http:\/\//i, 'https://');
+
+    let msg = `✨ *${p.nombre}*\n💰 Precio: Q${p.precio}\n${p.descripcion ? `📝 ${p.descripcion}\n` : ''}🚚 Entrega armada y lista para usar.`;
+    // Adjuntar la foto: el backend la extrae y la manda como imagen con el texto de caption.
+    if (img) msg += `\nENVIAR_IMAGEN:${img}`;
     await onSendMessage(selectedChatId, msg);
     setShowCatalogModal(false);
   };
