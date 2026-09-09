@@ -1275,13 +1275,37 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       mediaUrl: parsed.mediaUrl
     });
 
-    // Buscar lead existente SOLO por teléfono (ignorar el canal). Así un mismo cliente
-    // NO se duplica aunque escriba/se le escriba por otro canal, y el estado (bot on/off,
-    // "modo manual") queda SIEMPRE en el mismo lead que ves en el dashboard.
-    let existingLead = await db.get(
-      "SELECT id, nombre, estado, score, botActive FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1",
-      cleanPhone
-    );
+    // Buscar lead existente por TELÉFONO + CANAL (empresa). Cada canal es una empresa
+    // distinta (OneControl / Reach Portones): un mismo número que escribe a las dos NO
+    // se junta en un solo lead — cada empresa lleva su propio lead. Dentro de la MISMA
+    // empresa (mismo canal) no se duplica. Es la misma lógica que usa /api/bot/status,
+    // así el registro y la decisión del bot quedan siempre consistentes.
+    const LEAD_COLS = "SELECT id, nombre, estado, score, botActive FROM leads";
+    let existingLead = null;
+    if (cleanChannelPhone) {
+      existingLead = await db.get(
+        `${LEAD_COLS} WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND REPLACE(REPLACE(REPLACE(channel_phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1`,
+        cleanPhone, cleanChannelPhone
+      );
+      // Legacy: lead viejo SIN canal asignado (NULL/vacío) → se reutiliza y se le
+      // rellena el canal actual, para no crear un duplicado.
+      if (!existingLead) {
+        existingLead = await db.get(
+          `${LEAD_COLS} WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND (channel_phone IS NULL OR channel_phone = '') ORDER BY id ASC LIMIT 1`,
+          cleanPhone
+        );
+        if (existingLead) {
+          await db.run("UPDATE leads SET channel_phone = ? WHERE id = ?", cleanChannelPhone, existingLead.id);
+          console.log(`🔧 [${sourceName}] Backfill channel_phone=${cleanChannelPhone} en lead legacy ${existingLead.id}`);
+        }
+      }
+    } else {
+      // Sin canal detectado → fallback al comportamiento por teléfono.
+      existingLead = await db.get(
+        `${LEAD_COLS} WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? ORDER BY id ASC LIMIT 1`,
+        cleanPhone
+      );
+    }
 
     let leadId;
     if (existingLead) {
