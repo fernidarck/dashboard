@@ -148,55 +148,100 @@ export function generateQuotePdf({
   // Filas de productos
   items.forEach((it, idx) => {
     const isEven = idx % 2 === 0;
-    const descLines = it.description ? doc.splitTextToSize(it.description, 270) : [];
-    const rowHeight = Math.max(22, 16 + (descLines.length * 9));
+
+    // Medir líneas de nombre y descripción ajustadas a la columna (máx 265 pt)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    const nameLines = it.name ? doc.splitTextToSize(String(it.name), 265) : ['Producto'];
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    const descLines = (it.description && String(it.description).trim())
+      ? doc.splitTextToSize(String(it.description).trim(), 265)
+      : [];
+
+    const nameLineH = 11;
+    const descLineH = 9.5;
+    const nameHeight = nameLines.length * nameLineH;
+    const descHeight = descLines.length > 0 ? (descLines.length * descLineH + 2) : 0;
+    const totalContentHeight = nameHeight + descHeight;
+    const rowHeight = Math.max(24, 10 + totalContentHeight + 6);
+
+    // Salto de página automático si se acerca al pie
+    if (y + rowHeight > 710) {
+      doc.addPage('letter');
+      y = 40;
+      doc.setFillColor(15, 23, 42);
+      doc.rect(40, y, 532, 20, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text('DESCRIPCIÓN / EQUIPO', 50, y + 13);
+      doc.text('CANT.', 345, y + 13, { align: 'center' });
+      doc.text('PRECIO UNIT.', 455, y + 13, { align: 'right' });
+      doc.text('SUBTOTAL', 562, y + 13, { align: 'right' });
+      y += 20;
+    }
 
     // Fondo fila
     doc.setFillColor(isEven ? 255 : 250, isEven ? 255 : 251, isEven ? 255 : 252);
     doc.rect(40, y, 532, rowHeight, 'F');
 
-    // Línea inferior
+    // Línea inferior separadora
     doc.setDrawColor(241, 245, 249);
     doc.setLineWidth(0.8);
     doc.line(40, y + rowHeight, 572, y + rowHeight);
 
-    // Nombre producto
+    // Renderizar Nombre de Producto (multilínea, no se desborda)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(it.name || 'Producto', 50, y + 12);
+    let textY = y + 12;
+    nameLines.forEach((line) => {
+      doc.text(line, 50, textY);
+      textY += nameLineH;
+    });
 
-    // Descripción debajo si existe
+    // Renderizar Descripción si existe (multilínea debajo del nombre)
     if (descLines.length > 0) {
+      textY += 1;
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text(descLines, 50, y + 21);
+      descLines.forEach((line) => {
+        doc.text(line, 50, textY);
+        textY += descLineH;
+      });
     }
 
-    // Cantidad (centrado)
+    // Cantidad (centrado, alineado con la primera línea)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(String(it.qty), 345, y + 13, { align: 'center' });
+    doc.text(String(it.qty), 345, y + 12, { align: 'center' });
 
-    // Precio Unitario (derecha)
+    // Precio Unitario (derecha, alineado con la primera línea)
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Q${fmtQ(it.unit_price)}`, 455, y + 13, { align: 'right' });
+    doc.text(`Q${fmtQ(it.unit_price)}`, 455, y + 12, { align: 'right' });
 
-    // Subtotal (derecha)
+    // Subtotal (derecha, alineado con la primera línea)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
-    doc.text(`Q${fmtQ(it.qty * it.unit_price)}`, 562, y + 13, { align: 'right' });
+    doc.text(`Q${fmtQ(it.qty * it.unit_price)}`, 562, y + 12, { align: 'right' });
 
     y += rowHeight;
   });
 
   // 7. Totales (Alineados a la derecha)
-  y += 10;
+  if (y + 60 > 710) {
+    doc.addPage('letter');
+    y = 40;
+  } else {
+    y += 10;
+  }
   const totalsLeft = 360;
 
   // Subtotal
@@ -234,11 +279,30 @@ export function generateQuotePdf({
   doc.setTextColor(255, 107, 0); // #FF6B00
   doc.text(`Q${fmtQ(total)}`, 562, y, { align: 'right' });
 
-  // 8. Términos y Garantías (Caja inferior con diseño)
+  // 8. Términos y Garantías (Caja inferior con diseño y ajuste de texto)
   if (activePresets.length > 0 || (customNotes && customNotes.trim())) {
-    y += 24;
-    const termsCount = activePresets.length + (customNotes && customNotes.trim() ? 1 : 0);
-    const boxH = 26 + (termsCount * 13);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+
+    const allTermsLines = [];
+    activePresets.forEach(preset => {
+      const wrapped = doc.splitTextToSize(`•  ${preset}`, 505);
+      allTermsLines.push(...wrapped);
+    });
+
+    if (customNotes && customNotes.trim()) {
+      const wrapped = doc.splitTextToSize(`•  ${customNotes.trim()}`, 505);
+      allTermsLines.push(...wrapped);
+    }
+
+    const boxH = 24 + (allTermsLines.length * 11.5) + 6;
+
+    if (y + boxH > 730) {
+      doc.addPage('letter');
+      y = 40;
+    } else {
+      y += 18;
+    }
 
     doc.setFillColor(255, 251, 245);
     doc.setDrawColor(254, 215, 170);
@@ -255,29 +319,31 @@ export function generateQuotePdf({
     doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
 
-    activePresets.forEach(preset => {
-      doc.text(`•  ${preset}`, 54, ty);
-      ty += 12;
+    allTermsLines.forEach(line => {
+      doc.text(line, 54, ty);
+      ty += 11.5;
     });
-
-    if (customNotes && customNotes.trim()) {
-      doc.text(`•  ${customNotes.trim()}`, 54, ty);
-      ty += 12;
-    }
 
     y += boxH;
   }
 
-  // 9. Pie de página formal
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    'OneControl Guatemala  •  PBX / WhatsApp: +502 5965-8803  •  ¡Gracias por su preferencia!',
-    306,
-    765,
-    { align: 'center' }
-  );
+  // 9. Pie de página formal en todas las páginas generadas
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      'OneControl Guatemala  •  PBX / WhatsApp: +502 5965-8803  •  ¡Gracias por su preferencia!',
+      306,
+      765,
+      { align: 'center' }
+    );
+    if (totalPages > 1) {
+      doc.text(`Página ${i} de ${totalPages}`, 562, 765, { align: 'right' });
+    }
+  }
 
   const blob = doc.output('blob');
   const file = new File([blob], filename, { type: 'application/pdf' });

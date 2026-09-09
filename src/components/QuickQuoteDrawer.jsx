@@ -655,22 +655,43 @@ export default function QuickQuoteDrawer({
                   className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 relative group hover:border-[#FF6B00]/40 transition-all"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <input
-                      type="text"
+                    <textarea
                       value={it.name}
                       onChange={e => handleUpdateItem(idx, 'name', e.target.value)}
-                      placeholder="Nombre del ítem..."
-                      className="font-bold text-xs text-slate-800 bg-transparent flex-1 outline-none border-b border-transparent focus:border-slate-300"
+                      placeholder="Nombre del ítem o servicio..."
+                      rows={it.name && it.name.length > 40 ? 2 : 1}
+                      className="font-bold text-xs text-slate-800 bg-transparent flex-1 outline-none border-b border-transparent focus:border-slate-300 resize-none leading-relaxed"
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveItem(idx)}
-                      className="text-slate-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                      className="text-slate-400 hover:text-red-500 transition-colors p-1 cursor-pointer shrink-0"
                       title="Eliminar ítem"
                     >
                       <Trash2 size={13} />
                     </button>
                   </div>
+
+                  {/* Descripción o detalle opcional */}
+                  {it.showDesc || (it.description && it.description.trim()) ? (
+                    <div className="pt-0.5">
+                      <textarea
+                        value={it.description || ''}
+                        onChange={e => handleUpdateItem(idx, 'description', e.target.value)}
+                        placeholder="Descripción o especificación adicional..."
+                        rows={2}
+                        className="w-full text-[11px] text-slate-600 bg-white/80 border border-slate-200 rounded-lg p-2 outline-none focus:border-[#FF6B00] resize-none leading-relaxed"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateItem(idx, 'showDesc', true)}
+                      className="text-[10px] text-slate-400 hover:text-[#FF6B00] font-medium transition-colors cursor-pointer text-left block"
+                    >
+                      + Detalle / especificación
+                    </button>
+                  )}
 
                   {/* CANTIDAD, PRECIO Y SUBTOTAL */}
                   <div className="flex items-center justify-between pt-1 text-xs">
