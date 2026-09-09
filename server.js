@@ -853,11 +853,13 @@ async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null
     "INSERT INTO messages (lead_id, sender, text, timestamp, mediaUrl, mediaType, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     leadId, sender, cleanT, timestamp, mediaUrl, mediaType, new Date().toISOString()
   );
-  // Si el cliente responde, se reinicia el flag de seguimiento (para poder nudgearlo
-  // de nuevo si vuelve a quedarse callado más adelante).
-  if (sender === 'client') {
-    db.run("UPDATE leads SET seguimiento_enviado = 0 WHERE id = ?", leadId).catch(() => {});
-  }
+  // POLÍTICA ACTUAL: un solo seguimiento automático por lead, para siempre.
+  // (Antes se reiniciaba la marca cuando el cliente respondía; se desactivó a
+  // pedido del dueño para evitar recordatorios repetidos. Para reactivar ese
+  // comportamiento, descomentar el bloque de abajo.)
+  // if (sender === 'client') {
+  //   db.run("UPDATE leads SET seguimiento_enviado = 0 WHERE id = ?", leadId).catch(() => {});
+  // }
 
   // Si el bot respondió con éxito, limpiar la alerta de "bot caído" (auto-recuperación).
   // Fire-and-forget con catch: nunca puede afectar el guardado del mensaje.
