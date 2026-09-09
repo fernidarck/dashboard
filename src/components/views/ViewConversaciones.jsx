@@ -5,7 +5,7 @@ import {
   ShoppingBag, Sparkles, Check, ExternalLink, Image as ImageIcon,
   UserPlus, Phone, Download, RefreshCw, UploadCloud,
   CheckCheck, Trophy, XCircle, Clock, MapPin, ChevronDown, ListFilter,
-  UserCircle, Users
+  UserCircle, Users, ThumbsUp, Copy, HeartHandshake
 } from 'lucide-react';
 import QuickQuoteDrawer from '../QuickQuoteDrawer.jsx';
 
@@ -174,23 +174,29 @@ export default function ViewConversaciones({
   const [chatSearch, setChatSearch] = useState('');
   const [channelTab, setChannelTab] = useState('todos');
   const [showLabelDropdown, setShowLabelDropdown] = useState(false);
+  const [showLikeTemplates, setShowLikeTemplates] = useState(false);
+  const [copiedTemplateIdx, setCopiedTemplateIdx] = useState(null);
   const [stageFilter, setStageFilter] = useState('todos'); // 'todos' | 'En Seguimiento' | 'Venta' | 'Perdido' etc.
   const labelDropdownRef = useRef(null);
+  const likeTemplatesRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Cerrar dropdown de etiquetas al hacer clic afuera
+  // Cerrar dropdown de etiquetas y de plantillas al hacer clic afuera
   useEffect(() => {
     function handleClickOutside(e) {
       if (labelDropdownRef.current && !labelDropdownRef.current.contains(e.target)) {
         setShowLabelDropdown(false);
       }
+      if (likeTemplatesRef.current && !likeTemplatesRef.current.contains(e.target)) {
+        setShowLikeTemplates(false);
+      }
     }
-    if (showLabelDropdown) {
+    if (showLabelDropdown || showLikeTemplates) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showLabelDropdown]);
+  }, [showLabelDropdown, showLikeTemplates]);
 
   const activeLabel = useMemo(() => {
     return getLeadLabel(selectedLead);
@@ -252,6 +258,68 @@ export default function ViewConversaciones({
     setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
+  };
+
+  const clientFirstName = useMemo(() => {
+    return selectedLead?.nombre?.trim()?.split(' ')?.[0] || '';
+  }, [selectedLead?.nombre]);
+
+  const LIKE_TEMPLATES = useMemo(() => [
+    {
+      id: 'oficial',
+      badge: '⭐ Compra & Redes',
+      title: 'Agradecimiento Oficial + Enlaces',
+      text: `¡Muchas gracias por su preferencia${clientFirstName ? `, estimado/a ${clientFirstName}` : ''}! 🤝✨\n\nNos alegra mucho haberle servido en *OneControl*. Su satisfacción y seguridad son lo más importante para nosotros.\n\nLe invitamos cordialmente a dejarnos su *Like* 👍 y seguirnos en nuestras páginas oficiales para enterarse de promociones, nuevos equipos y soporte:\n\n👍 *Facebook:* https://facebook.com/1059922890527747\n📸 *Instagram:* https://instagram.com/0ne_control\n🌐 *Sitio Web:* https://onecontrol.shop\n\n¡Quedamos siempre a su entera disposición ante cualquier duda o consulta! 🚪⚡`
+    },
+    {
+      id: 'corto',
+      badge: '💬 Amigable & Rápido',
+      title: 'Mensaje Directo Post-Compra',
+      text: `¡Muchas gracias por su compra${clientFirstName ? `, ${clientFirstName}` : ''}! 🙌 Esperamos que su equipo funcione a la perfección.\n\n¿Nos apoyaría regalándonos un *Like* en nuestras páginas? Nos ayuda muchísimo a seguir creciendo:\n👍 *Facebook:* https://facebook.com/1059922890527747\n📸 *Instagram:* https://instagram.com/0ne_control\n\n¡Cualquier apoyo o consulta de garantía estamos a un mensaje de distancia! 😊`
+    },
+    {
+      id: 'servicio',
+      badge: '🛠️ Instalación / Servicio',
+      title: 'Servicio Técnico o Mantenimiento',
+      text: `¡Muchas gracias por confiar en nuestro servicio técnico y de automatización${clientFirstName ? `, ${clientFirstName}` : ''}! 🛠️✨\n\nEsperamos que el trabajo haya sido 100% de su agrado. Si le gustó nuestra atención, le agradeceríamos mucho un *Like* y recomendación en nuestras redes oficiales:\n👍 *Facebook:* https://facebook.com/1059922890527747\n📸 *Instagram:* https://instagram.com/0ne_control\n\n¡Gracias por ser parte de los clientes satisfechos de *OneControl*! 🚪🔑`
+    }
+  ], [clientFirstName]);
+
+  const handleInsertTemplate = (text) => {
+    setMessageText(prev => prev ? `${prev}\n\n${text}` : text);
+    setShowLikeTemplates(false);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 80);
+  };
+
+  const handleSendTemplateDirect = async (text) => {
+    if (!selectedChatId) return;
+    setShowLikeTemplates(false);
+    try {
+      if (stagedFile) {
+        const fileToSend = stagedFile;
+        handleClearStagedFile();
+        setMessageText('');
+        setSendingDoc(true);
+        await onSendDocument?.(selectedChatId, fileToSend, text);
+        setSendingDoc(false);
+      } else {
+        await onSendMessage?.(selectedChatId, text);
+      }
+    } catch (err) {
+      console.error('Error enviando plantilla de agradecimiento:', err);
+    }
+  };
+
+  const handleCopyTemplate = async (idx, text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTemplateIdx(idx);
+      setTimeout(() => setCopiedTemplateIdx(null), 2000);
+    } catch {
+      handleInsertTemplate(text);
+    }
   };
 
   const handleSend = async () => {
@@ -1090,10 +1158,124 @@ export default function ViewConversaciones({
               onClick={() => fileInputRef.current?.click()}
               disabled={sendingDoc}
               title="Adjuntar documento o cotización en PDF"
-              className="p-2.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-all shrink-0 disabled:opacity-50"
+              className="p-2.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-all shrink-0 disabled:opacity-50 cursor-pointer"
             >
               <Paperclip size={18} className={sendingDoc ? 'animate-pulse text-[#FF6B00]' : ''} />
             </button>
+
+            {/* BOTÓN: PLANTILLAS DE GRACIAS Y LIKE */}
+            <div className="relative" ref={likeTemplatesRef}>
+              <button
+                type="button"
+                onClick={() => setShowLikeTemplates(prev => !prev)}
+                title="Plantillas de Agradecimiento por Compra y Solicitar Like"
+                className={`p-2.5 rounded-xl transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  showLikeTemplates
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+                    : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'
+                }`}
+              >
+                <ThumbsUp size={18} />
+                <span className="hidden xl:inline text-[11px] font-black uppercase tracking-wider">Gracias & Like</span>
+              </button>
+
+              {/* POPUP FLOTANTE DE PLANTILLAS */}
+              {showLikeTemplates && (
+                <div className="absolute bottom-full right-0 mb-3 w-[330px] sm:w-[420px] max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-2xl border border-slate-200/90 p-4 z-[200] animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[75vh] overflow-hidden">
+                  {/* Encabezado del Popover */}
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                        <ThumbsUp size={16} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight flex items-center gap-1.5">
+                          Agradecimiento & Like
+                          <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md">Plantilla</span>
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-medium">Agradece la compra e invita a seguir las redes oficiales</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowLikeTemplates(false)}
+                      className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  {/* Lista de plantillas */}
+                  <div className="flex-1 overflow-y-auto space-y-3 py-3 pr-0.5 no-scrollbar">
+                    {LIKE_TEMPLATES.map((tmpl, idx) => (
+                      <div
+                        key={tmpl.id}
+                        className="p-3 bg-slate-50 hover:bg-blue-50/40 border border-slate-200/80 hover:border-blue-300 rounded-2xl transition-all group space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+                              {tmpl.badge}
+                            </span>
+                            <span className="text-xs font-bold text-slate-800">{tmpl.title}</span>
+                          </div>
+                        </div>
+
+                        {/* Caja con vista previa del texto */}
+                        <div
+                          onClick={() => handleInsertTemplate(tmpl.text)}
+                          title="Clic para escribir en el chat"
+                          className="p-2.5 bg-white rounded-xl border border-slate-200/60 text-[11px] text-slate-600 font-normal whitespace-pre-wrap leading-relaxed max-h-28 overflow-y-auto no-scrollbar cursor-pointer hover:border-blue-400 transition-colors shadow-2xs"
+                        >
+                          {tmpl.text}
+                        </div>
+
+                        {/* Botones de acción rápida */}
+                        <div className="flex items-center justify-between pt-1 text-xs">
+                          <span className="text-[9px] text-slate-400 font-medium italic">
+                            Clic en el texto para insertar
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyTemplate(idx, tmpl.text)}
+                              title="Copiar texto al portapapeles"
+                              className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-600 rounded-lg text-[10px] font-bold border border-slate-200 transition-all flex items-center gap-1 cursor-pointer"
+                            >
+                              {copiedTemplateIdx === idx ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                              <span>{copiedTemplateIdx === idx ? 'Copiado' : 'Copiar'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleInsertTemplate(tmpl.text)}
+                              title="Pegar en el chat para editar o revisar"
+                              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                            >
+                              Insertar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSendTemplateDirect(tmpl.text)}
+                              title="Enviar directamente por WhatsApp"
+                              className="px-2.5 py-1 bg-[#FF6B00] hover:bg-[#e05e00] text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                            >
+                              <SendHorizontal size={11} />
+                              <span>Enviar</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Pie del modal */}
+                  <div className="pt-2 border-t border-slate-100 text-[10px] text-slate-400 flex items-center justify-between shrink-0">
+                    <span>💡 Puedes editar el mensaje tras insertarlo.</span>
+                    <span className="font-bold text-slate-600">OneControl Oficial</span>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* BOTÓN: ENVIAR MENSAJE */}
             <button
