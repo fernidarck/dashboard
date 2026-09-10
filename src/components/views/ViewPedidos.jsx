@@ -13,6 +13,17 @@ function getCleanWhatsAppUrl(phone) {
   return `https://wa.me/${clean}`;
 }
 
+const fmtQ = (n) => new Intl.NumberFormat('es-GT', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+}).format(parseFloat(n) || 0);
+
+const parseMoney = (val) => {
+  if (!val) return 0;
+  const clean = String(val).replace(/[^0-9.]/g, '');
+  return parseFloat(clean) || 0;
+};
+
 export default function ViewPedidos({
   pedidos = [],
   products = [],
@@ -25,6 +36,59 @@ export default function ViewPedidos({
   const [editingPedido, setEditingPedido] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const totalVendido = useMemo(() => {
+    return (pedidos || [])
+      .filter(p => p.estado !== 'Cancelado')
+      .reduce((sum, p) => sum + parseMoney(p.precio), 0);
+  }, [pedidos]);
+
+  const totalCompletados = useMemo(() => {
+    return (pedidos || [])
+      .filter(p => p.estado === 'Completado')
+      .reduce((sum, p) => sum + parseMoney(p.precio), 0);
+  }, [pedidos]);
+
+  const totalPorCobrar = useMemo(() => {
+    return (pedidos || [])
+      .filter(p => p.estado !== 'Cancelado' && p.estado !== 'Completado')
+      .reduce((sum, p) => sum + parseMoney(p.precio), 0);
+  }, [pedidos]);
+
+  const applyDiaToFecha = (dia) => {
+    setEditingPedido(prev => {
+      if (!prev) return prev;
+      const current = (prev.fecha_entrega || '').trim();
+      const timeMatch = current.match(/(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))/i);
+      const nextFecha = timeMatch ? `${dia} · ${timeMatch[1]}` : dia;
+      return {
+        ...prev,
+        fecha_entrega: nextFecha,
+        estado: prev.estado === 'Nuevo' ? 'Visita Programada' : prev.estado
+      };
+    });
+  };
+
+  const applyHoraToFecha = (horaStr) => {
+    setEditingPedido(prev => {
+      if (!prev) return prev;
+      const current = (prev.fecha_entrega || '').trim();
+      const timeRegex = /(?:\s*·\s*)?(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))/i;
+      let nextFecha = '';
+      if (!current) {
+        nextFecha = horaStr;
+      } else if (timeRegex.test(current)) {
+        nextFecha = current.replace(timeRegex, ` · ${horaStr}`);
+      } else {
+        nextFecha = `${current} · ${horaStr}`;
+      }
+      return {
+        ...prev,
+        fecha_entrega: nextFecha,
+        estado: prev.estado === 'Nuevo' ? 'Visita Programada' : prev.estado
+      };
+    });
+  };
 
   const handleSave = async (e) => {
     if (e) e.preventDefault();
@@ -171,6 +235,44 @@ export default function ViewPedidos({
             <Plus size={16} />
             <span>+ Nuevo Pedido</span>
           </button>
+        </div>
+      </div>
+
+      {/* BANNER FINANCIERO: TOTAL VENDIDO / INGRESOS ACUMULADOS */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-slate-700/80 rounded-3xl p-5 text-white shadow-xl shadow-slate-900/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-4">
+          <div className="h-12 w-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl font-black shrink-0 shadow-inner">
+            Q
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                Facturación en Pedidos
+              </span>
+              <span className="text-[11px] text-slate-400">Total acumulado</span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <h3 className="text-3xl font-black tracking-tight text-white">
+                Q{fmtQ(totalVendido)}
+              </h3>
+              <span className="text-xs text-slate-400 font-bold">
+                en {pedidos.filter(p => p.estado !== 'Cancelado').length} pedidos
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap pt-2 md:pt-0 border-t md:border-t-0 border-slate-700/60">
+          <div className="bg-slate-800/80 border border-slate-700 rounded-2xl px-4 py-2.5 text-left">
+            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 block">Cobrado / Entregado</span>
+            <span className="text-base font-black text-white">Q{fmtQ(totalCompletados)}</span>
+            <span className="text-[10px] text-slate-400 block font-medium">{countCompletados} entregados</span>
+          </div>
+          <div className="bg-slate-800/80 border border-slate-700 rounded-2xl px-4 py-2.5 text-left">
+            <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 block">Por Cobrar / En Proceso</span>
+            <span className="text-base font-black text-white">Q{fmtQ(totalPorCobrar)}</span>
+            <span className="text-[10px] text-slate-400 block font-medium">{countNuevos + countVisitas + countProceso} en camino</span>
+          </div>
         </div>
       </div>
 
@@ -637,20 +739,58 @@ export default function ViewPedidos({
                       <button
                         key={day}
                         type="button"
-                        onClick={() => {
-                          setEditingPedido(prev => ({
-                            ...prev,
-                            fecha_entrega: day,
-                            estado: prev.estado === 'Nuevo' ? 'Visita Programada' : prev.estado
-                          }));
-                        }}
+                        onClick={() => applyDiaToFecha(day)}
                         className={`text-[11px] font-black px-3 py-1 rounded-xl border transition-all cursor-pointer ${
-                          editingPedido.fecha_entrega === day
+                          String(editingPedido.fecha_entrega || '').includes(day)
                             ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
                             : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-100/60'
                         }`}
                       >
                         {day === 'Miércoles' ? '⭐ Miércoles' : day}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Selector y presets rápidos de HORA de visita */}
+                <div className="pt-2.5 border-t border-amber-200/70 mt-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock size={13} className="text-amber-700" />
+                      Hora de la Visita:
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-amber-800 font-bold">Personalizada:</span>
+                      <input
+                        type="time"
+                        onChange={e => {
+                          if (e.target.value) {
+                            const [hh, mm] = e.target.value.split(':');
+                            const h = parseInt(hh, 10);
+                            const ampm = h >= 12 ? 'PM' : 'AM';
+                            const h12 = h % 12 || 12;
+                            const formattedHora = `${String(h12).padStart(2, '0')}:${mm} ${ampm}`;
+                            applyHoraToFecha(formattedHora);
+                          }
+                        }}
+                        className="px-2 py-1 rounded-lg border border-amber-300 bg-white text-xs font-bold text-slate-800 cursor-pointer outline-none focus:ring-1 focus:ring-amber-500"
+                        title="Elegir hora exacta"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '02:00 PM', '03:00 PM', '04:00 PM'].map(hr => (
+                      <button
+                        key={hr}
+                        type="button"
+                        onClick={() => applyHoraToFecha(hr)}
+                        className={`text-[10.5px] font-black px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                          String(editingPedido.fecha_entrega || '').includes(hr)
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100/70'
+                        }`}
+                      >
+                        {hr}
                       </button>
                     ))}
                   </div>

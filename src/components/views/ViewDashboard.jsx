@@ -155,11 +155,29 @@ export default function ViewDashboard({
 
   const botMessages = stats.botMessages || 0;
 
+  const parseMoney = (val) => {
+    if (!val) return 0;
+    const clean = String(val).replace(/[^0-9.]/g, '');
+    return parseFloat(clean) || 0;
+  };
+
+  const totalDineroVendido = useMemo(() => {
+    return (pedidos || [])
+      .filter(p => p.estado !== 'Cancelado')
+      .reduce((sum, p) => sum + parseMoney(p.precio), 0);
+  }, [pedidos]);
+
+  const fmtQ = (n) => new Intl.NumberFormat('es-GT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(parseFloat(n) || 0);
+
   const kpis = [
     { label: 'Por hablar',     value: porHablar.length,     color: 'text-[#FF6B00]', dot: 'bg-[#FF6B00]', onClick: onOpenLeads },
     { label: 'En seguimiento', value: enSeguimiento.length,  color: 'text-blue-500',  dot: 'bg-blue-500',  onClick: onOpenLeads },
     { label: 'Pedidos',        value: pedidosCount,         color: 'text-violet-500',dot: 'bg-violet-500' },
     { label: 'Ventas',         value: ventas.length,        color: 'text-emerald-500',dot: 'bg-emerald-500' },
+    { label: 'Total Vendido',  value: `Q${new Intl.NumberFormat('es-GT', { maximumFractionDigits: 0 }).format(totalDineroVendido)}`, subtitle: `Q${fmtQ(totalDineroVendido)}`, color: 'text-emerald-600', dot: 'bg-emerald-600' },
   ];
 
   const ig = metaInsights?.instagram;
@@ -183,7 +201,7 @@ export default function ViewDashboard({
       </div>
 
       {/* KPIs — Negocio */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {kpis.map((k, i) => (
           <button key={i} onClick={k.onClick}
             className={`bg-white border border-slate-200 rounded-2xl p-5 text-left transition-all ${k.onClick ? 'hover:border-slate-300 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}>
@@ -191,7 +209,10 @@ export default function ViewDashboard({
               <span className={`h-1.5 w-1.5 rounded-full ${k.dot}`} />
               <p className="text-[11px] text-slate-400 uppercase tracking-widest font-black">{k.label}</p>
             </div>
-            <p className={`text-3xl font-black ${k.color} tabular-nums leading-none`}>{k.value}</p>
+            <p className={`text-2xl sm:text-3xl font-black ${k.color} tabular-nums leading-none truncate`}>{k.value}</p>
+            {k.subtitle && (
+              <p className="text-[10px] font-bold text-slate-400 mt-1.5 truncate">{k.subtitle}</p>
+            )}
           </button>
         ))}
       </div>

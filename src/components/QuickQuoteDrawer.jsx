@@ -35,6 +35,8 @@ export default function QuickQuoteDrawer({
   const [sendingPdf, setSendingPdf] = useState(false);
   const [pdfSentSuccess, setPdfSentSuccess] = useState(false);
   const [savedOrder, setSavedOrder] = useState(false);
+  const [scheduledDay, setScheduledDay] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
 
   // Notas predeterminadas tipo checklist
   const [presetNotes, setPresetNotes] = useState({
@@ -226,6 +228,15 @@ export default function QuickQuoteDrawer({
     setSavedOrder(true);
     try {
       const prodSummary = items.map(i => `${i.qty}x ${i.name}`).join(' + ');
+      let fechaEntregaCombined = '';
+      if (scheduledDay && scheduledTime) {
+        fechaEntregaCombined = `${scheduledDay} · ${scheduledTime}`;
+      } else if (scheduledDay) {
+        fechaEntregaCombined = scheduledDay;
+      } else if (scheduledTime) {
+        fechaEntregaCombined = scheduledTime;
+      }
+
       await onSavePedido({
         cliente: selectedLead?.nombre || 'Cliente WhatsApp',
         phone: selectedLead?.phone || '',
@@ -233,8 +244,8 @@ export default function QuickQuoteDrawer({
         cantidad: '1',
         precio: `Q${fmtQ(total)}`,
         notas: `Cotizado desde chat. Subtotal: Q${fmtQ(subtotal)}, Descuento: Q${fmtQ(discountAmount)}. ${customNotes || ''}`,
-        fecha_entrega: '',
-        estado: 'Nuevo'
+        fecha_entrega: fechaEntregaCombined,
+        estado: fechaEntregaCombined ? 'Visita Programada' : 'Nuevo'
       });
       setTimeout(() => setSavedOrder(false), 3000);
     } catch (e) {
@@ -810,6 +821,83 @@ export default function QuickQuoteDrawer({
                 className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-[11px] font-medium text-slate-800 outline-none focus:border-[#FF6B00]"
               />
             </div>
+
+            {/* Agendar Visita / Entrega para el Pedido */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-200/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1">
+                  <Clock size={11} className="text-amber-600" />
+                  Visita / Entrega (para el pedido)
+                </span>
+                {(scheduledDay || scheduledTime) && (
+                  <button
+                    type="button"
+                    onClick={() => { setScheduledDay(''); setScheduledTime(''); }}
+                    className="text-[9px] text-amber-700 hover:text-amber-950 font-bold underline cursor-pointer"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+              
+              {/* Días rápidos */}
+              <div className="flex flex-wrap gap-1">
+                {['Sábado', 'Hoy', 'Mañana', 'Jueves', 'Viernes', 'Lunes'].map(day => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setScheduledDay(day)}
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                      scheduledDay === day
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+
+              {/* Horas rápidas */}
+              <div className="flex items-center gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '02:00 PM', '04:00 PM'].map(hr => (
+                    <button
+                      key={hr}
+                      type="button"
+                      onClick={() => setScheduledTime(hr)}
+                      className={`text-[9.5px] font-black px-1.5 py-0.5 rounded-md border transition-all cursor-pointer ${
+                        scheduledTime === hr
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-amber-50'
+                      }`}
+                    >
+                      {hr}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="time"
+                  onChange={e => {
+                    if (e.target.value) {
+                      const [hh, mm] = e.target.value.split(':');
+                      const h = parseInt(hh, 10);
+                      const ampm = h >= 12 ? 'PM' : 'AM';
+                      const h12 = h % 12 || 12;
+                      setScheduledTime(`${String(h12).padStart(2, '0')}:${mm} ${ampm}`);
+                    }
+                  }}
+                  className="px-1.5 py-0.5 rounded-md border border-slate-200 bg-white text-[10px] font-bold text-slate-700 cursor-pointer outline-none"
+                  title="Hora personalizada"
+                />
+              </div>
+              
+              {(scheduledDay || scheduledTime) && (
+                <p className="text-[9.5px] text-amber-800 font-bold bg-amber-50 px-2 py-1 rounded-md border border-amber-200/60">
+                  Agendado: {[scheduledDay, scheduledTime].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
@@ -914,10 +1002,10 @@ export default function QuickQuoteDrawer({
             >
               {savedOrder ? (
                 <span className="text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 size={12} /> Guardado en pedidos
+                  <CheckCircle2 size={12} /> Guardado en pedidos {(scheduledDay || scheduledTime) ? `(${[scheduledDay, scheduledTime].filter(Boolean).join(' · ')})` : ''}
                 </span>
               ) : (
-                <span>Guardar en pedidos</span>
+                <span>Guardar en pedidos {(scheduledDay || scheduledTime) ? `(${[scheduledDay, scheduledTime].filter(Boolean).join(' · ')})` : ''}</span>
               )}
             </button>
           )}

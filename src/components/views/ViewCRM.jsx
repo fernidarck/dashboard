@@ -382,6 +382,18 @@ export default function ViewCRM({
     return esProspecto(l) || !!l.handoff_reason;
   };
 
+  const parseMoney = (val) => {
+    if (!val) return 0;
+    const clean = String(val).replace(/[^0-9.]/g, '');
+    return parseFloat(clean) || 0;
+  };
+
+  const totalDineroVendido = useMemo(() => {
+    return (pedidos || [])
+      .filter(p => p.estado !== 'Cancelado')
+      .reduce((sum, p) => sum + parseMoney(p.precio), 0);
+  }, [pedidos]);
+
   // Conteos
   const porHablarCount = useMemo(() => leads.filter(l => !l.archived && isPorHablar(l)).length, [leads]);
   const followUpCount = useMemo(() => leads.filter(l => !l.archived && isEnSeguimiento(l)).length, [leads]);
@@ -675,7 +687,7 @@ export default function ViewCRM({
               <span className={`text-[10px] font-bold ${
                 filterTab === 'sales' ? 'text-emerald-100' : 'text-slate-400'
               }`}>
-                ventas cerradas
+                ventas {totalDineroVendido > 0 ? `· Q${new Intl.NumberFormat('es-GT', { maximumFractionDigits: 0 }).format(totalDineroVendido)}` : 'cerradas'}
               </span>
             </div>
           </button>
