@@ -36,6 +36,18 @@ export default function ViewPedidos({
   const [editingPedido, setEditingPedido] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [productCatalogSearch, setProductCatalogSearch] = useState('');
+
+  const filteredCatalogProducts = useMemo(() => {
+    const list = products.filter(p => p.activo !== 0);
+    if (!productCatalogSearch.trim()) return list;
+    const q = productCatalogSearch.toLowerCase().trim();
+    return list.filter(p =>
+      (p.nombre || '').toLowerCase().includes(q) ||
+      (p.categoria || '').toLowerCase().includes(q) ||
+      (p.descripcion || '').toLowerCase().includes(q)
+    );
+  }, [products, productCatalogSearch]);
 
   const totalVendido = useMemo(() => {
     return (pedidos || [])
@@ -645,26 +657,108 @@ export default function ViewPedidos({
 
             <form onSubmit={handleSave} className="space-y-4">
               
-              {/* Selector Rápido de Catálogo si es nuevo */}
+              {/* Buscador y Selector de Catálogo de Productos */}
               {products.length > 0 && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Seleccionar Producto del Catálogo:</label>
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-100">
-                    {products.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleSelectProduct(p)}
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                          editingPedido.producto === p.nombre
-                            ? 'bg-[#FF6B00] text-white border-[#FF6B00]'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-orange-300'
-                        }`}
-                      >
-                        {p.nombre} {p.precio ? `(Q${p.precio})` : ''}
-                      </button>
-                    ))}
+                <div className="space-y-2 p-3 bg-slate-50/90 rounded-2xl border border-slate-200/90">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Search size={12} className="text-[#FF6B00]" />
+                      Buscar y Seleccionar Producto del Catálogo:
+                    </label>
+                    {editingPedido.producto && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 truncate max-w-[200px]">
+                        ✓ {editingPedido.producto}
+                      </span>
+                    )}
                   </div>
+
+                  {/* Barra para escribir y buscar el producto */}
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={productCatalogSearch}
+                      onChange={e => setProductCatalogSearch(e.target.value)}
+                      placeholder="Escribe para buscar (ej: Chamberlain, LiftMaster, Mantenimiento, Control)..."
+                      className="w-full pl-8 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF6B00] shadow-2xs"
+                    />
+                    {productCatalogSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setProductCatalogSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                        title="Limpiar búsqueda"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Lista de productos filtrados */}
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-white rounded-xl border border-slate-200/60 no-scrollbar">
+                    {filteredCatalogProducts.length > 0 ? (
+                      filteredCatalogProducts.map(p => {
+                        const isSelected = editingPedido.producto === p.nombre;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => handleSelectProduct(p)}
+                            className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                              isSelected
+                                ? 'bg-[#FF6B00] text-white border-[#FF6B00] shadow-xs'
+                                : 'bg-slate-50 hover:bg-orange-50/60 text-slate-700 border-slate-200 hover:border-orange-300'
+                            }`}
+                          >
+                            <span>{p.nombre}</span>
+                            {p.precio && (
+                              <span className={`text-[10px] px-1.5 py-0.2 rounded font-black ${
+                                isSelected ? 'bg-black/20 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}>
+                                Q{p.precio}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="text-[11px] text-slate-400 py-2 px-3 italic">
+                        No se encontraron productos con "{productCatalogSearch}".
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Sugerencia inteligente si el lead traía producto identificado por el bot */}
+                  {(() => {
+                    const matchedLead = leads.find(l => 
+                      (l.phone && editingPedido.phone && String(l.phone).replace(/\D/g, '') === String(editingPedido.phone).replace(/\D/g, '')) ||
+                      (l.nombre && editingPedido.cliente && l.nombre.toLowerCase().trim() === editingPedido.cliente.toLowerCase().trim())
+                    );
+                    if (matchedLead && matchedLead.motor && matchedLead.motor !== 'N/A' && matchedLead.motor !== 'null' && matchedLead.motor !== editingPedido.producto) {
+                      return (
+                        <div className="pt-1.5 flex items-center justify-between bg-amber-50 p-2.5 rounded-xl border border-amber-200/80">
+                          <span className="text-[10.5px] text-amber-950 font-bold flex items-center gap-1.5">
+                            <span>🤖</span> El bot jaló para este cliente: <strong className="underline decoration-amber-400">{matchedLead.motor}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const foundProd = products.find(p => p.nombre.toLowerCase().includes(matchedLead.motor.toLowerCase()));
+                              setEditingPedido(prev => ({
+                                ...prev,
+                                producto: matchedLead.motor,
+                                precio: foundProd?.precio ? `Q${foundProd.precio}` : prev.precio
+                              }));
+                            }}
+                            className="text-[10px] font-black text-amber-900 bg-amber-200 hover:bg-amber-300 px-2.5 py-1 rounded-lg cursor-pointer transition-colors shadow-2xs"
+                          >
+                            + Aplicar al pedido
+                          </button>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
 

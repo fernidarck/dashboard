@@ -1380,6 +1380,29 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
             updates.push("estado = 'Interesado'");
             console.log(`🔥 [Intención de compra] Lead ${leadId} → Interesado: "${String(parsed.mensajePrincipal).slice(0, 60)}"`);
           }
+
+          // Auto-detectar si el mensaje menciona un producto o servicio para actualizar motor si está vacío
+          if (!existingLead.motor || existingLead.motor === 'N/A' || existingLead.motor === 'null') {
+            try {
+              const msgLower = String(parsed.mensajePrincipal || '').toLowerCase();
+              if (/mantenimiento|servicio t[eé]cnico|reparaci[oó]n|visita t[eé]cnica/i.test(msgLower)) {
+                updates.push("motor = ?");
+                params.push("Mantenimiento");
+                console.log(`🤖 [Servicio detectado en chat] Lead ${leadId} → motor: "Mantenimiento"`);
+              } else {
+                const prodsList = await db.all("SELECT nombre FROM products WHERE activo = 1");
+                for (const pr of prodsList) {
+                  const prName = String(pr.nombre || '').toLowerCase().trim();
+                  if (prName && prName.length > 3 && msgLower.includes(prName)) {
+                    updates.push("motor = ?");
+                    params.push(pr.nombre);
+                    console.log(`🤖 [Producto detectado en chat] Lead ${leadId} → motor: "${pr.nombre}"`);
+                    break;
+                  }
+                }
+              }
+            } catch (e) {}
+          }
         }
       }
 
@@ -3323,6 +3346,7 @@ app.get('/api/rag/context', async (req, res) => {
     // Si viene el teléfono del cliente, revisamos de qué anuncio llegó y si ese
     // anuncio está conectado a un producto. Así el bot sabe qué es "la del anuncio".
     let adNote = "";
+    let adProdName = "";
     try {
       const phoneRaw = req.query.phone || req.query.from;
       if (phoneRaw) {
@@ -3334,6 +3358,7 @@ app.get('/api/rag/context', async (req, res) => {
         if (lead && lead.ad_source_id) {
           const adProd = await getProductByAdId(lead.ad_source_id);
           if (adProd) {
+            adProdName = adProd.nombre;
             adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO (IMPORTANTE): Este cliente llegó desde un anuncio de Meta que muestra el producto *${adProd.nombre}*. Si dice "la del anuncio", "la que sale en el anuncio", "la de la publicidad", "esa" o algo parecido SIN nombrar otro modelo, se refiere a *${adProd.nombre}*. Enfocate en ESE producto y mandale su foto directo — NO le tires todos los modelos primero.\n\n`;
           }
         }
@@ -3427,6 +3452,21 @@ app.get('/api/rag/context', async (req, res) => {
       sources.push(doc.name);
       if (sources.length >= 6) break;
     }
+
+    // 🤖 AUTO-GUARDADO: Si el bot jaló información de un producto para este cliente (por teléfono),
+    // guardamos automáticamente el producto en leads.motor para que el dashboard y el cotizador
+    // sepan qué producto está jalando el bot.
+    try {
+      const phoneRaw = req.query.phone || req.query.from;
+      const topProduct = adProdName || (sources.length > 0 ? sources[0] : null);
+      if (phoneRaw && topProduct) {
+        const cleanPh = String(phoneRaw).replace(/\D/g, '');
+        db.run(
+          "UPDATE leads SET motor = ? WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND (motor IS NULL OR motor = '' OR motor = 'N/A' OR motor = 'null')",
+          topProduct, cleanPh
+        ).catch(() => {});
+      }
+    } catch (e) {}
 
     res.json({ context: (adNote + context).trim(), found: true, sources });
   } catch (err) { res.status(500).json({ error: err.message }); }

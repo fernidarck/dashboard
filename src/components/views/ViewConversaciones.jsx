@@ -791,44 +791,98 @@ export default function ViewConversaciones({
           </div>
         )}
 
-        <div className="h-20 border-b border-slate-100 px-4 md:px-8 flex items-center justify-between bg-white/80 backdrop-blur-md">
-          <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
-            <button onClick={() => setMobileShowChat(false)} className="md:hidden p-2 -ml-1 text-slate-500 hover:text-slate-800 shrink-0"><ArrowLeft size={20} /></button>
-            <div className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00] shrink-0 relative">
+        <div className="h-16 sm:h-20 border-b border-slate-100 px-3 sm:px-6 md:px-8 flex items-center justify-between bg-white/95 backdrop-blur-md shrink-0 gap-2">
+          {/* Lado izquierdo: Botón volver + Avatar + Info del Contacto (Nombre y Teléfono destacados) */}
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+            <button
+              onClick={() => setMobileShowChat(false)}
+              className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-800 shrink-0 cursor-pointer"
+              title="Volver a chats"
+            >
+              <ArrowLeft size={20} />
+            </button>
+
+            <div
+              onClick={() => {
+                setRightPanelTab('perfil');
+                setShowRightPanel(true);
+              }}
+              className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00]/40 shrink-0 relative cursor-pointer hover:border-[#FF6B00] transition-all shadow-xs"
+              title="Ver ficha del lead"
+            >
               {selectedLead.nombre?.[0] || 'OC'}
               <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-200 leading-none">
                 {getChannelIcon(selectedLead.origen)}
               </span>
             </div>
-            <div>
-              <p className="text-sm font-black text-slate-800">{selectedLead.nombre || 'Selecciona un chat'}</p>
-              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                <ChannelBadge origen={selectedLead.origen} size="xs" />
-                <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedLead.botActive ? 'text-emerald-500' : 'text-amber-500'}`}>
-                  {selectedLead.botActive ? 'IA Gestionando' : 'Modo Manual / Humano'}
+
+            <div className="min-w-0 flex-1">
+              {/* Línea 1: Nombre de la persona — GRANDE, EN NEGRITA, LEGIBLE */}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p
+                  onClick={() => {
+                    setRightPanelTab('perfil');
+                    setShowRightPanel(true);
+                  }}
+                  className="text-sm sm:text-base font-black text-slate-900 truncate leading-tight cursor-pointer hover:text-[#FF6B00] transition-colors"
+                  title={selectedLead.nombre || 'Sin nombre'}
+                >
+                  {selectedLead.nombre || 'Selecciona un chat'}
                 </p>
-                {selectedLead.phone && (
-                  <span className="text-[10px] text-slate-400 font-medium">· {selectedLead.phone}</span>
+                {selectedLead.motor && selectedLead.motor !== 'N/A' && selectedLead.motor !== 'null' && (
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-50 border border-orange-200 text-orange-900 text-[10px] font-black shrink-0" title="Producto detectado">
+                    <Tag size={9} className="text-[#FF6B00]" />
+                    <span className="truncate max-w-[120px]">{selectedLead.motor}</span>
+                  </span>
                 )}
+              </div>
+
+              {/* Línea 2: Teléfono visible y con contraste + Estado de Bot + Canal */}
+              <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
+                {selectedLead.phone ? (
+                  <span className="text-xs font-bold text-slate-800 tabular-nums shrink-0 select-all" title="Número de teléfono">
+                    {selectedLead.phone}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-400 font-medium shrink-0">Sin teléfono</span>
+                )}
+                <span className="text-slate-300 text-[10px] shrink-0">·</span>
+                <span
+                  className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider shrink-0 inline-flex items-center gap-1 ${
+                    selectedLead.botActive ? 'text-emerald-600' : 'text-amber-600'
+                  }`}
+                  title={selectedLead.botActive ? 'IA gestionando automáticamente' : 'Modo manual / humano'}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${selectedLead.botActive ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                  <span>{selectedLead.botActive ? 'IA' : 'Humano'}</span>
+                </span>
+                <span className="hidden sm:inline text-slate-300 text-[10px] shrink-0">·</span>
+                <div className="hidden sm:block shrink-0">
+                  <ChannelBadge origen={selectedLead.origen} size="xs" />
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
+
+          {/* Lado derecho: Acciones optimizadas para móvil y escritorio */}
+          <div className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 shrink-0">
             {/* PILL DESPLEGABLE: CONFIGURACIÓN Y ETAPA DEL LEAD */}
             {selectedLead?.id && (
               <div className="relative" ref={labelDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setShowLabelDropdown(prev => !prev)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200/90 bg-slate-50/90 hover:bg-slate-100/90 text-[12px] font-medium text-slate-700 transition-colors cursor-pointer shrink-0"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-full border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] sm:text-[12px] font-semibold text-slate-700 transition-colors cursor-pointer shrink-0"
                   title="Configuración de etapa del lead"
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: activeLabel.color }}
                   />
-                  <span className="truncate max-w-[120px] sm:max-w-[160px] text-slate-700">{activeLabel.shortLabel || activeLabel.label}</span>
-                  <ChevronDown size={13} className={`text-slate-400 transition-transform duration-150 ${showLabelDropdown ? 'rotate-180' : ''}`} />
+                  <span className="truncate max-w-[75px] sm:max-w-[140px] text-slate-700 font-medium">
+                    {activeLabel.shortLabel || activeLabel.label}
+                  </span>
+                  <ChevronDown size={12} className={`text-slate-400 transition-transform duration-150 ${showLabelDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Popover desplegable: estrictamente las configuraciones del lead */}
@@ -908,35 +962,53 @@ export default function ViewConversaciones({
                         <UserCircle size={13} className="text-slate-400" />
                         <span>Ver / Editar ficha y datos del lead</span>
                       </button>
+                      {selectedLead.phone && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowLabelDropdown(false);
+                            downloadVCard(selectedLead);
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <UserPlus size={13} className="text-[#FF6B00]" />
+                          <span>Guardar contacto en teléfono (.vcf)</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
             )}
 
+            {/* BOTÓN VCARD (pantallas medianas y grandes) */}
             {selectedLead.phone && (!selectedLead.origen || selectedLead.origen.toLowerCase().includes('whatsapp')) && (
               <button
                 onClick={() => downloadVCard(selectedLead)}
-                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-50 hover:bg-orange-50 text-slate-700 hover:text-[#FF6B00] transition-all border border-slate-200 shadow-xs"
+                className="hidden sm:flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-50 hover:bg-orange-50 text-slate-700 hover:text-[#FF6B00] transition-all border border-slate-200 shadow-xs cursor-pointer"
                 title="Guardar contacto en la agenda del teléfono / WhatsApp (.vcf)"
               >
                 <UserPlus size={14} className="text-[#FF6B00]" />
                 <span className="hidden lg:inline">Guardar</span>
               </button>
             )}
+
+            {/* BOTÓN TOGGLE IA */}
             {selectedLead.id && (
               <button
                 onClick={() => onToggleBot(selectedLead.id)}
-                className={`flex items-center space-x-2 px-3 md:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                className={`flex items-center justify-center p-2 sm:px-3 md:px-4 sm:py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
                   selectedLead.botActive
                   ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
                   : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
                 }`}
+                title={selectedLead.botActive ? 'Pausar IA en este chat' : 'Activar IA en este chat'}
               >
                 <Power size={14} />
-                <span className="hidden md:inline">{selectedLead.botActive ? 'Desactivar IA' : 'Activar IA'}</span>
+                <span className="hidden md:inline ml-1.5">{selectedLead.botActive ? 'Desactivar IA' : 'Activar IA'}</span>
               </button>
             )}
+
             {/* BOTÓN HEADER: COTIZADOR RÁPIDO */}
             <button
               type="button"
@@ -948,15 +1020,15 @@ export default function ViewConversaciones({
                   setShowRightPanel(true);
                 }
               }}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border shadow-xs cursor-pointer ${
+              className={`flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border shadow-xs cursor-pointer ${
                 showRightPanel && rightPanelTab === 'cotizador'
                   ? 'bg-slate-900 text-[#FF6B00] border-slate-900'
                   : 'bg-orange-50 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white border-orange-200'
               }`}
               title="Abrir cotizador rápido"
             >
-              <Sparkles size={13} />
-              <span className="hidden sm:inline">Cotizar</span>
+              <Sparkles size={14} />
+              <span className="hidden sm:inline ml-1">Cotizar</span>
             </button>
 
             {/* BOTÓN HEADER: FICHA DEL LEAD */}

@@ -542,6 +542,33 @@ export default function QuickQuoteDrawer({
 
       {/* CONTENIDO SCROLLEABLE */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+        {/* Banner: Producto que el bot está jalando */}
+        {selectedLead?.motor && selectedLead.motor !== 'N/A' && selectedLead.motor !== 'null' && (
+          <div className="p-3 bg-orange-50/90 border border-orange-200 rounded-2xl flex items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-base shrink-0">🤖</span>
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-wider text-orange-700">El bot detectó interés en:</p>
+                <p className="text-xs font-black text-slate-900 truncate">{selectedLead.motor}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const prod = products.find(p => (p.nombre || '').toLowerCase().includes(selectedLead.motor.toLowerCase()));
+                if (prod) {
+                  handleAddProduct(prod);
+                } else {
+                  handleAddCustomItem(selectedLead.motor, 0);
+                }
+              }}
+              className="px-3 py-1.5 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer shrink-0 shadow-xs active:scale-95 flex items-center gap-1"
+            >
+              <span>+ Cotizar</span>
+            </button>
+          </div>
+        )}
+
         {/* BUSCADOR DE PRODUCTOS */}
         <div className="relative">
           <div className="relative flex items-center">
