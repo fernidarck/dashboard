@@ -514,6 +514,29 @@ async function setup() {
     const storedToken = await db.get("SELECT value FROM settings WHERE key='dashboard_token'");
     if (storedToken?.value) currentToken = storedToken.value;
 
+    // 🧹 Auto-corrección de leads existentes con clasificación errónea de producto / motor
+    try {
+      const candidates = await db.all(
+        "SELECT id, motor FROM leads WHERE motor LIKE '%fabricaci%' OR motor LIKE '%mueble%' OR motor IS NULL OR motor = '' OR motor = 'N/A' OR motor = 'null' OR motor = 'Consulta general'"
+      );
+      if (candidates.length > 0) {
+        const prods = await db.all("SELECT nombre, categoria FROM products WHERE activo = 1");
+        for (const l of candidates) {
+          const msgs = await db.all("SELECT text FROM messages WHERE lead_id = ? AND sender = 'client' ORDER BY id ASC", l.id);
+          if (msgs.length > 0) {
+            const fullChat = msgs.map(m => m.text || '').join(' ');
+            const fixed = detectLeadNecesidad(fullChat, null, prods);
+            if (fixed && fixed !== l.motor) {
+              await db.run("UPDATE leads SET motor = ? WHERE id = ?", fixed, l.id);
+              console.log(`🧹 [Corrección Lead ${l.id}] Necesidad actualizada de "${l.motor}" a "${fixed}"`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("⚠️ Error en auto-corrección de leads:", e.message);
+    }
+
     console.log("✅ Base de datos inicializada correctamente.");
   } catch (err) {
     console.error("❌ ERROR CRÍTICO EN SETUP DE BD:", err);
@@ -538,6 +561,109 @@ async function getChannelConfig(channelPhone) {
     console.error("❌ Error en getChannelConfig:", e);
     return null;
   }
+}
+
+// Helper: Clasifica con precisión la necesidad del cliente (motor / controles / servicio / marca)
+// para asignarla a leads.motor (columna "¿Qué necesita?" en CRM / Dashboard).
+function detectLeadNecesidad(text, existingMotor = null, products = []) {
+  if (!text || typeof text !== 'string') return existingMotor;
+  const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // 1. Detección de marcas de motores con tolerancia a variantes y typos
+  const isPowertech   = /power\s*tech|powertek|powertch|powertchy|powetech|\bpl600\b|\bpw200\b|\bpw330\b/i.test(t);
+  const isLiftmaster  = /lift\s*master|liftmaste|liftmastre|limaster|\b8365\b|\b8550\b|\b8165\b/i.test(t);
+  const isChamberlain = /chamberlain|chamberlan|shamberlain|chamber/i.test(t);
+  const isBeninca     = /beninca|beninco|benica|\btogo\b|\bto\.go\b|\bkbobo\b/i.test(t);
+  const isFaac        = /\bfaac\b|\bfaac\s*740\b|\b740\b/i.test(t);
+  const isBft         = /\bbft\b|deimos|ares|phobos/i.test(t);
+  const isNice        = /\bnice\b|robus|toona/i.test(t);
+  const isGenius      = /\bgenius\b|blizzard|g-bat/i.test(t);
+  const isPpa         = /\bppa\b|jetflex/i.test(t);
+  const isDoorhan     = /door\s*han/i.test(t);
+  const isRitar       = /ritar/i.test(t);
+  const isSeg         = /\bseg\b/i.test(t);
+  const isMerik       = /merik/i.test(t);
+  const isCraftsman   = /craftsman|craftman/i.test(t);
+
+  let brandName = null;
+  if (isPowertech)        brandName = 'Powertech';
+  else if (isLiftmaster)  brandName = 'Liftmaster';
+  else if (isChamberlain) brandName = 'Chamberlain';
+  else if (isBeninca)     brandName = 'Beninca';
+  else if (isFaac)        brandName = 'FAAC';
+  else if (isBft)         brandName = 'BFT';
+  else if (isNice)        brandName = 'Nice';
+  else if (isGenius)      brandName = 'Genius';
+  else if (isPpa)         brandName = 'PPA';
+  else if (isDoorhan)     brandName = 'DoorHan';
+  else if (isRitar)       brandName = 'Ritar';
+  else if (isSeg)         brandName = 'SEG';
+  else if (isMerik)       brandName = 'Merik';
+  else if (isCraftsman)   brandName = 'Craftsman';
+
+  // 2. Detección de intenciones y mecanismos
+  const hasControl  = /control|controles|mando|mandos|remoto|llavero|botonera/i.test(t);
+  const hasMotor    = /motor|motores|brazo|brazos|piston|pistones|cremallera|corredizo|levadizo|abatible/i.test(t);
+  const hasManten   = /mantenimiento|servicio\s*tecnico|reparaci|reparar|revisar|falla|no\s*abre|se\s*trabo|desprogram|visita\s*tecnica|chequeo/i.test(t);
+  const hasAutoPort = /automatizaci|automatizar|porton\s*nuevo|instalar\s*motor|ponerle\s*motor/i.test(t);
+  const hasMueble   = /zapatera|estanteria|mesita\s*de\s*noche|escritorio|mueble/i.test(t);
+
+  // Regla A: Si menciona controles + marca (ej. "control para motor powertchy", "control liftmaster")
+  if (hasControl && brandName) {
+    return `Control ${brandName}`;
+  }
+
+  // Regla B: Si solo menciona controles (sin marca)
+  if (hasControl && !hasMueble) {
+    return 'Controles';
+  }
+
+  // Regla C: Si menciona motor + marca o solo la marca de motor (ej. "motor powertchy", "powertech")
+  if (brandName) {
+    return `Motor ${brandName}`;
+  }
+
+  // Regla D: Mantenimiento / Servicio técnico
+  if (hasManten && !hasControl) {
+    return 'Mantenimiento';
+  }
+
+  // Regla E: Automatización de Portón nuevo
+  if (hasAutoPort) {
+    return 'Automatización de Portón';
+  }
+
+  // Regla F: Mecanismo de motor específico
+  if (/cremallera|corredizo/i.test(t) && hasMotor) return 'Motor de Cremallera';
+  if (/brazo|piston|abatible/i.test(t) && hasMotor) return 'Motor de Brazos';
+  if (/cadena|levadizo/i.test(t) && hasMotor) return 'Motor de Cadena';
+  if (/hidraulico/i.test(t) && hasMotor) return 'Motor Hidráulico';
+  if (hasMotor) return 'Motor de Portón';
+
+  // Regla G: Buscar en catálogo de productos reales (excluyendo documentos y muebles a menos que sea explícito)
+  if (Array.isArray(products) && products.length > 0) {
+    for (const pr of products) {
+      const pName = String(pr.nombre || '').trim();
+      const pNameClean = pName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const pCat = String(pr.categoria || '').toLowerCase();
+      if (pCat === 'muebles' && !hasMueble) continue;
+      if (/fabricacion|politica|garantia|faq|estado:/i.test(pNameClean)) continue;
+
+      if (pNameClean.length > 3 && t.includes(pNameClean)) {
+        return pName;
+      }
+    }
+  }
+
+  // Regla H: Muebles (SOLO si explícitamente se pidió un mueble)
+  if (hasMueble) {
+    if (/zapatera/i.test(t)) return 'Zapatera';
+    if (/mesita/i.test(t)) return 'Mesita de Noche';
+    if (/estanteria/i.test(t)) return 'Estantería';
+    return 'Muebles';
+  }
+
+  return existingMotor;
 }
 
 // Helper: obtener configuraciones dinámicas de la base de datos
@@ -1381,28 +1507,27 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
             console.log(`🔥 [Intención de compra] Lead ${leadId} → Interesado: "${String(parsed.mensajePrincipal).slice(0, 60)}"`);
           }
 
-          // Auto-detectar si el mensaje menciona un producto o servicio para actualizar motor si está vacío
-          if (!existingLead.motor || existingLead.motor === 'N/A' || existingLead.motor === 'null') {
-            try {
-              const msgLower = String(parsed.mensajePrincipal || '').toLowerCase();
-              if (/mantenimiento|servicio t[eé]cnico|reparaci[oó]n|visita t[eé]cnica/i.test(msgLower)) {
+          // Auto-detectar si el mensaje menciona un producto o servicio para actualizar motor
+          try {
+            const isOldInvalidOrGeneric = !existingLead.motor ||
+              existingLead.motor === 'N/A' ||
+              existingLead.motor === 'null' ||
+              existingLead.motor === 'Consulta general' ||
+              /fabricaci|mueble/i.test(existingLead.motor);
+
+            const prodsList = await db.all("SELECT nombre, categoria FROM products WHERE activo = 1");
+            const detectedNece = detectLeadNecesidad(parsed.mensajePrincipal, null, prodsList);
+
+            if (detectedNece) {
+              // Si no tenía nada, o tenía el valor erróneo de muebles/fabricación, o si ahora especifica una marca/modelo
+              if (isOldInvalidOrGeneric || (detectedNece !== 'Controles' && detectedNece !== 'Motor de Portón')) {
                 updates.push("motor = ?");
-                params.push("Mantenimiento");
-                console.log(`🤖 [Servicio detectado en chat] Lead ${leadId} → motor: "Mantenimiento"`);
-              } else {
-                const prodsList = await db.all("SELECT nombre FROM products WHERE activo = 1");
-                for (const pr of prodsList) {
-                  const prName = String(pr.nombre || '').toLowerCase().trim();
-                  if (prName && prName.length > 3 && msgLower.includes(prName)) {
-                    updates.push("motor = ?");
-                    params.push(pr.nombre);
-                    console.log(`🤖 [Producto detectado en chat] Lead ${leadId} → motor: "${pr.nombre}"`);
-                    break;
-                  }
-                }
+                params.push(detectedNece);
+                existingLead.motor = detectedNece;
+                console.log(`🤖 [Necesidad detectada en chat] Lead ${leadId} → motor: "${detectedNece}"`);
               }
-            } catch (e) {}
-          }
+            }
+          } catch (e) {}
         }
       }
 
@@ -1421,18 +1546,27 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       const ctwaClid   = data.ctwa_clid    || ref.ctwa_clid  || null;
       const adSourceId  = data.ad_source_id  || ref.source_id  || null;
       const adSourceUrl = data.ad_source_url || ref.source_url || null;
+
+      let detectedMotor = data.motor && data.motor !== 'N/A' && data.motor !== 'null' ? data.motor : 'N/A';
+      if (detectedMotor === 'N/A' && parsed.mensajePrincipal) {
+        try {
+          const prodsList = await db.all("SELECT nombre, categoria FROM products WHERE activo = 1");
+          detectedMotor = detectLeadNecesidad(parsed.mensajePrincipal, 'N/A', prodsList) || 'N/A';
+        } catch (e) {}
+      }
+
       const result = await db.run(
         `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone, priority, ctwa_clid, ad_source_id, ad_source_url)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         parsed.nombre || 'Cliente WhatsApp', data.phone || parsed.clientPhoneRaw, data.email || 'N/A',
         data.score || 50, initialEstado, `WhatsApp (${sourceName})`, initialBotActive,
-        data.motor || 'N/A', data.falla || 'N/A', data.zona || 'N/A',
+        detectedMotor, data.falla || 'N/A', data.zona || 'N/A',
         data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone,
         initialEstado === 'Intervención Requerida' ? 'urgent' : 'normal',
         ctwaClid, adSourceId, adSourceUrl
       );
       leadId = result.lastID;
-      console.log(`🆕 [${sourceName}] Creado nuevo lead ID ${leadId} (${cleanPhone})`);
+      console.log(`🆕 [${sourceName}] Creado nuevo lead ID ${leadId} (${cleanPhone}) — Motor inicial: "${detectedMotor}"`);
     }
 
     // Distinguir si el media_url recibido es del cliente o de la respuesta del bot
@@ -2056,20 +2190,23 @@ app.post('/api/system-alert/clear', async (_req, res) => {
 
 app.post('/api/pedidos', async (req, res) => {
   try {
-    const { cliente, phone, producto, cantidad, precio, notas, fecha_entrega } = req.body;
+    const { cliente, phone, producto, cantidad, precio, notas, fecha_entrega, estado } = req.body;
     if (!producto) return res.status(400).json({ error: 'Falta el producto' });
+    // estado opcional: 'Cotización' para guardar una cotización pendiente (no es pedido aún).
+    const est = (estado && String(estado).trim()) ? String(estado).trim() : 'Nuevo';
+    const esCotizacion = /cotiz/i.test(est);
     const now = new Date();
     const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
     const timestamp = guateTime.getUTCFullYear() + '-' +
-      String(guateTime.getUTCMonth()+1).padStart(2,'0') + '-' + 
-      String(guateTime.getUTCDate()).padStart(2,'0') + ' ' + 
-      String(guateTime.getUTCHours()).padStart(2,'0') + ':' + 
+      String(guateTime.getUTCMonth()+1).padStart(2,'0') + '-' +
+      String(guateTime.getUTCDate()).padStart(2,'0') + ' ' +
+      String(guateTime.getUTCHours()).padStart(2,'0') + ':' +
       String(guateTime.getUTCMinutes()).padStart(2,'0');
     const result = await db.run(
-      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, timestamp) VALUES (?,?,?,?,?,?,'Nuevo',?,?)`,
-      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', fecha_entrega || '', timestamp
+      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, timestamp) VALUES (?,?,?,?,?,?,?,?,?)`,
+      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', est, fecha_entrega || '', timestamp
     );
-    console.log(`🛒 Nuevo pedido #${result.lastID}: ${producto} — ${cliente} (Entrega/Visita: ${fecha_entrega || 'Sin fecha'})`);
+    console.log(`🛒 ${esCotizacion ? 'Cotización' : 'Nuevo pedido'} #${result.lastID}: ${producto} — ${cliente} (Entrega/Visita: ${fecha_entrega || 'Sin fecha'})`);
 
     // Buscar canal y lead del cliente
     let channelPhone = null;
@@ -2081,9 +2218,12 @@ app.post('/api/pedidos', async (req, res) => {
       targetLeadId = lead?.id || null;
     }
 
-    // Notificar al dueño por WhatsApp y Push
-    const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${fecha_entrega ? '\n🗓️ *Visita / Entrega:* ' + fecha_entrega : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
-    await notificarDueno(msg, channelPhone, targetLeadId);
+    // Notificar al dueño SOLO si es un pedido real (una cotización pendiente NO avisa,
+    // para no ser invasivo — queda guardada en el tablero para revisarla cuando quiera).
+    if (!esCotizacion) {
+      const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${fecha_entrega ? '\n🗓️ *Visita / Entrega:* ' + fecha_entrega : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
+      await notificarDueno(msg, channelPhone, targetLeadId);
+    }
     res.json({ success: true, id: result.lastID });
   } catch(err) {
     console.error('❌ Error creando pedido:', err);
@@ -3458,13 +3598,20 @@ app.get('/api/rag/context', async (req, res) => {
     // sepan qué producto está jalando el bot.
     try {
       const phoneRaw = req.query.phone || req.query.from;
-      const topProduct = adProdName || (sources.length > 0 ? sources[0] : null);
-      if (phoneRaw && topProduct) {
-        const cleanPh = String(phoneRaw).replace(/\D/g, '');
-        db.run(
-          "UPDATE leads SET motor = ? WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND (motor IS NULL OR motor = '' OR motor = 'N/A' OR motor = 'null')",
-          topProduct, cleanPh
-        ).catch(() => {});
+      // IMPORTANTE: NUNCA auto-guardar si no hay palabras clave reales (evita que un saludo 'buenas tardes' asigne muebles)
+      if (phoneRaw && keywords.length > 0) {
+        let detected = adProdName;
+        if (!detected) {
+          detected = detectLeadNecesidad(q, null, prods);
+        }
+        // Validar que no sea un documento RAG ni texto de fabricación de muebles
+        if (detected && !/fabricaci|document|faq|politica|estado:/i.test(detected)) {
+          const cleanPh = String(phoneRaw).replace(/\D/g, '');
+          db.run(
+            "UPDATE leads SET motor = ? WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND (motor IS NULL OR motor = '' OR motor = 'N/A' OR motor = 'null' OR motor = 'Consulta general' OR motor LIKE '%fabricaci%' OR motor LIKE '%mueble%')",
+            detected, cleanPh
+          ).catch(() => {});
+        }
       }
     } catch (e) {}
 

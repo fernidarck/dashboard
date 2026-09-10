@@ -35,6 +35,7 @@ export default function QuickQuoteDrawer({
   const [sendingPdf, setSendingPdf] = useState(false);
   const [pdfSentSuccess, setPdfSentSuccess] = useState(false);
   const [savedOrder, setSavedOrder] = useState(false);
+  const [savedQuote, setSavedQuote] = useState(false);
   const [scheduledDay, setScheduledDay] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
 
@@ -222,10 +223,10 @@ export default function QuickQuoteDrawer({
     }
   };
 
-  // Acción: Guardar como Pedido en el CRM
-  const handleSaveAsPedido = async () => {
+  // Acción: Guardar como Pedido en el CRM (o como Cotización pendiente si asCotizacion=true)
+  const handleSaveAsPedido = async (asCotizacion = false) => {
     if (items.length === 0 || !onSavePedido) return;
-    setSavedOrder(true);
+    if (asCotizacion) setSavedQuote(true); else setSavedOrder(true);
     try {
       const prodSummary = items.map(i => `${i.qty}x ${i.name}`).join(' + ');
       let fechaEntregaCombined = '';
@@ -245,12 +246,12 @@ export default function QuickQuoteDrawer({
         precio: `Q${fmtQ(total)}`,
         notas: `Cotizado desde chat. Subtotal: Q${fmtQ(subtotal)}, Descuento: Q${fmtQ(discountAmount)}. ${customNotes || ''}`,
         fecha_entrega: fechaEntregaCombined,
-        estado: fechaEntregaCombined ? 'Visita Programada' : 'Nuevo'
+        estado: asCotizacion ? 'Cotización' : (fechaEntregaCombined ? 'Visita Programada' : 'Nuevo')
       });
-      setTimeout(() => setSavedOrder(false), 3000);
+      setTimeout(() => { asCotizacion ? setSavedQuote(false) : setSavedOrder(false); }, 3000);
     } catch (e) {
-      console.error('Error guardando pedido:', e);
-      setSavedOrder(false);
+      console.error('Error guardando cotización/pedido:', e);
+      if (asCotizacion) setSavedQuote(false); else setSavedOrder(false);
     }
   };
 
@@ -1019,11 +1020,27 @@ export default function QuickQuoteDrawer({
             </button>
           </div>
 
-          {/* Botón terciario: Guardar como Pedido */}
+          {/* Guardar como COTIZACIÓN (queda ligada al cliente, pendiente para pasar a pedido) */}
           {onSavePedido && (
             <button
               type="button"
-              onClick={handleSaveAsPedido}
+              onClick={() => handleSaveAsPedido(true)}
+              disabled={savedQuote}
+              className="w-full py-2 mt-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-70"
+            >
+              {savedQuote ? (
+                <span className="flex items-center gap-1"><CheckCircle2 size={13} /> Cotización guardada</span>
+              ) : (
+                <span>💰 Guardar como cotización</span>
+              )}
+            </button>
+          )}
+
+          {/* Botón terciario: Guardar como Pedido (venta confirmada) */}
+          {onSavePedido && (
+            <button
+              type="button"
+              onClick={() => handleSaveAsPedido(false)}
               disabled={savedOrder}
               className="w-full py-1 text-slate-400 hover:text-slate-600 text-[10.5px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
@@ -1032,7 +1049,7 @@ export default function QuickQuoteDrawer({
                   <CheckCircle2 size={12} /> Guardado en pedidos {(scheduledDay || scheduledTime) ? `(${[scheduledDay, scheduledTime].filter(Boolean).join(' · ')})` : ''}
                 </span>
               ) : (
-                <span>Guardar en pedidos {(scheduledDay || scheduledTime) ? `(${[scheduledDay, scheduledTime].filter(Boolean).join(' · ')})` : ''}</span>
+                <span>Guardar directo en pedidos {(scheduledDay || scheduledTime) ? `(${[scheduledDay, scheduledTime].filter(Boolean).join(' · ')})` : ''}</span>
               )}
             </button>
           )}

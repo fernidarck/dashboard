@@ -49,9 +49,12 @@ export default function ViewPedidos({
     );
   }, [products, productCatalogSearch]);
 
+  // Una cotización NO es venta: se excluye de los totales de dinero.
+  const esCotiz = (p) => /cotiz/i.test(p?.estado || '');
+
   const totalVendido = useMemo(() => {
     return (pedidos || [])
-      .filter(p => p.estado !== 'Cancelado')
+      .filter(p => p.estado !== 'Cancelado' && !esCotiz(p))
       .reduce((sum, p) => sum + parseMoney(p.precio), 0);
   }, [pedidos]);
 
@@ -63,7 +66,7 @@ export default function ViewPedidos({
 
   const totalPorCobrar = useMemo(() => {
     return (pedidos || [])
-      .filter(p => p.estado !== 'Cancelado' && p.estado !== 'Completado')
+      .filter(p => p.estado !== 'Cancelado' && p.estado !== 'Completado' && !esCotiz(p))
       .reduce((sum, p) => sum + parseMoney(p.precio), 0);
   }, [pedidos]);
 
@@ -192,9 +195,17 @@ export default function ViewPedidos({
 
   const KANBAN_COLUMNS = [
     {
+      key: 'Cotización',
+      title: 'Cotizaciones',
+      subtitle: 'Pendientes de confirmar',
+      color: 'border-amber-200 bg-amber-50/20',
+      badge: 'bg-amber-100 text-amber-700',
+      icon: DollarSign
+    },
+    {
       key: 'Nuevo',
       title: 'Por Coordinar',
-      subtitle: 'Nuevos pedidos',
+      subtitle: 'Pedidos confirmados',
       color: 'border-orange-200 bg-orange-50/20',
       badge: 'bg-orange-100 text-orange-700',
       icon: Clock
@@ -394,7 +405,7 @@ export default function ViewPedidos({
       </div>
 
       {/* TABLERO KANBAN */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4.5 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4.5 items-start">
         {KANBAN_COLUMNS.map(({ key, title, subtitle, color, badge, icon: IconComponent }) => {
           const colPedidos = filteredPedidos.filter(p => p.estado === key);
           return (
@@ -566,6 +577,17 @@ export default function ViewPedidos({
                           )}
 
                           {/* Avanzar estado */}
+                          {key === 'Cotización' && (
+                            <button
+                              onClick={() => onUpdateEstado(pedido.id, 'Nuevo')}
+                              className="px-2.5 py-1 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-[9.5px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                              title="El cliente confirmó: convertir en pedido"
+                            >
+                              <span>Pasar a pedido</span>
+                              <ChevronRight size={11} />
+                            </button>
+                          )}
+
                           {key === 'Nuevo' && (
                             <div className="flex items-center gap-1">
                               <button
