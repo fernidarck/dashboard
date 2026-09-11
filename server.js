@@ -1343,6 +1343,22 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
       }
     } catch (e) { /* si falla la detección, seguimos con la lógica normal */ }
 
+    // UN PEDIDO REAL NECESITA DATOS DE ENTREGA. Si el lead todavía NO tiene dirección
+    // ni zona, es una CONSULTA (precio, "¿maneja pago contra entrega?", un "sí" suelto),
+    // NO un pedido confirmado → no lo creamos. Queda como lead para dar seguimiento.
+    // Evita pedidos fantasma "por coordinar" de clientes que solo preguntaron.
+    try {
+      const info = await db.get("SELECT direccion, zona FROM leads WHERE id = ?", leadId);
+      const dir = String(info?.direccion || '').trim();
+      const zona = String(info?.zona || '').trim();
+      const bad = (v) => !v || /^(n\/a|null)$/i.test(v);
+      if (bad(dir) && bad(zona)) {
+        console.log(`📋 [No es pedido] Lead ${leadId}: sin dirección/zona → es consulta, no pedido confirmado.`);
+        await db.run("UPDATE leads SET estado = 'Interesado' WHERE id = ? AND estado = 'PEDIDO_LISTO'", leadId);
+        return null;
+      }
+    } catch (e) { /* si falla, seguimos normal */ }
+
     // Evitar crear pedidos duplicados para el mismo teléfono en las últimas 6 horas
     const existingRecent = await db.get(
       "SELECT id FROM pedidos WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND estado = 'Nuevo' ORDER BY id DESC LIMIT 1",
