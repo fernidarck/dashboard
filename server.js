@@ -472,6 +472,20 @@ async function setup() {
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
+    // Mapeo foto enviada → producto: cuando el bot manda una foto, guardamos su wamid de
+    // WhatsApp junto al producto. Si luego el cliente RESPONDE a esa foto ("¿esta es la X?"),
+    // resolvemos context.id (wamid citado) → producto, y el bot sabe de qué foto habla
+    // sin adivinar. Base para la identificación de fotos por contexto de respuesta.
+    try { await db.exec(`CREATE TABLE IF NOT EXISTS sent_media (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      wamid TEXT,
+      product_id INTEGER,
+      product_name TEXT,
+      media_url TEXT,
+      lead_id INTEGER,
+      created_at TEXT
+    )`); } catch(e){}
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_sent_media_wamid ON sent_media(wamid)"); } catch(e){}
     try {
       // Limpiar fotos asignadas por error al cliente (las fotos de /uploads/ son siempre del catalogo/bot)
       await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%'");
@@ -1900,6 +1914,35 @@ app.get('/api/bot/status/:phone', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── IDENTIFICACIÓN DE FOTOS POR CONTEXTO DE RESPUESTA ────────────────────────
+// n8n llama a esto DESPUÉS de mandar una foto: guarda el wamid ↔ producto.
+// Body: { wamid, product_id, product_name, media_url, lead_id }
+app.post('/api/sent-media', async (req, res) => {
+  try {
+    const { wamid, product_id, product_name, media_url, lead_id } = req.body;
+    if (!wamid) return res.status(400).json({ error: 'Falta wamid' });
+    await db.run(
+      "INSERT INTO sent_media (wamid, product_id, product_name, media_url, lead_id, created_at) VALUES (?,?,?,?,?,?)",
+      String(wamid), product_id || null, product_name || null, media_url || null, lead_id || null, new Date().toISOString()
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// n8n llama a esto cuando llega una RESPUESTA con context.id (el wamid de la foto citada).
+// Devuelve de qué producto/foto era esa foto, para que el bot NO adivine.
+// GET /api/sent-media/resolve?wamid=wamid.XXX
+app.get('/api/sent-media/resolve', async (req, res) => {
+  try {
+    const wamid = String(req.query.wamid || '').trim();
+    if (!wamid) return res.json({ found: false });
+    const row = await db.get("SELECT product_id, product_name, media_url, lead_id FROM sent_media WHERE wamid = ? ORDER BY id DESC LIMIT 1", wamid);
+    if (!row) return res.json({ found: false });
+    res.json({ found: true, ...row });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Archivar lead
 app.post('/api/leads/:id/archive', async (req, res) => {
