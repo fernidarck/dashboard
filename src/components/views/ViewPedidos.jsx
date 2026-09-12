@@ -20,8 +20,10 @@ const fmtQ = (n) => new Intl.NumberFormat('es-GT', {
 
 const parseMoney = (val) => {
   if (!val) return 0;
-  const clean = String(val).replace(/[^0-9.]/g, '');
-  return parseFloat(clean) || 0;
+  // Tomar SOLO el primer número. Si el precio trae varios (ej. "Q535 (Q250 + Q35)"),
+  // NO concatenar todos los dígitos (eso daba totales gigantes tipo 5,352,503,515).
+  const m = String(val).replace(/,/g, '').match(/\d+(\.\d+)?/);
+  return m ? (parseFloat(m[0]) || 0) : 0;
 };
 
 export default function ViewPedidos({
