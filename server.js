@@ -3107,12 +3107,35 @@ app.post('/api/photos/auto-attach', async (req, res) => {
   try {
     const clientMsg = String(req.body.clientMsg || '').toLowerCase();
     const botMsg    = String(req.body.botMsg || '').toLowerCase();
-    if (!clientMsg && !botMsg) return res.json({ urls: [] });
-    const text = clientMsg + ' \n ' + botMsg;
+    if (!clientMsg && !botMsg) return res.json({ urls: [], videos: [] });
+    // CONTEXTO: si viene el teléfono, sabemos de qué producto se viene hablando aunque el
+    // mensaje ACTUAL no lo nombre (ej. ya dijo "One Night" antes y ahora pregunta "¿cómo
+    // funciona el cajón?"). Así el producto sigue "en juego" y sí se manda su foto/video.
+    let ctx = '';
+    try {
+      const phone = String(req.body.phone || '').replace(/\D/g, '');
+      if (phone) {
+        const lead = await db.get("SELECT id, motor FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", phone);
+        if (lead) {
+          ctx += ' ' + String(lead.motor || '').toLowerCase();
+          const recent = await db.all("SELECT text FROM messages WHERE lead_id = ? AND sender='client' AND text IS NOT NULL ORDER BY id DESC LIMIT 6", lead.id);
+          ctx += ' ' + recent.map(r => String(r.text || '').toLowerCase()).join(' ');
+        }
+      }
+    } catch (e) {}
+    const text = clientMsg + ' \n ' + botMsg;        // disparador de fotos (cliente o bot)
+    const ctxText = text + ' \n ' + ctx;             // para saber qué producto está EN JUEGO
 
     const prods = await db.all("SELECT * FROM products WHERE activo = 1");
     const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
     const STOP = new Set(['mesa','noche','melamina','madera','para','con','del','los','las','una','uno','modelo','color','motor','control']);
+    // Palabras demasiado comunes en las etiquetas: no sirven como disparador por sí solas.
+    const TRIG_STOP = new Set(['como','para','este','esta','esto','cuando','video','favor','foto','fotos','pidan','pida','pregunten','pregunte','pregunta','quieran','mostra','mostrala','mostrar','muestra','manda','dale','sobre','enviar','envia','este']);
+    const stem = (w) => w.replace(/(ciones|cion|es|as|os|an|en|n|s)$/,'');
+    const matchTrig = (words, scope) => {
+      const sw = scope.split(/[^a-záéíóúñ0-9]+/i).filter(Boolean).map(stem);
+      return words.some(w => { const ws = stem(w); return ws.length > 2 && sw.some(s => s === ws || s.includes(ws) || ws.includes(s)); });
+    };
     const VIDEO_EXT = /\.(mp4|mov|webm|avi|m4v)(\?|$)/i;
     const urls = [];
     const videos = [];
@@ -3127,7 +3150,7 @@ app.post('/api/photos/auto-attach', async (req, res) => {
       const nombre = String(p.nombre || '').toLowerCase();
       const modelo = (nombre.match(/modelo\s*\d+/) || [])[0];
       const tokens = nombre.split(/\s+/).filter(w => w.length > 3 && !STOP.has(w));
-      const enJuego = (modelo && text.includes(modelo)) || tokens.some(t => text.includes(t));
+      const enJuego = (modelo && ctxText.includes(modelo)) || tokens.some(t => ctxText.includes(t));
       if (!enJuego) continue;
 
       for (const img of normalizeProductImages(p)) {
@@ -3135,7 +3158,7 @@ app.post('/api/photos/auto-attach', async (req, res) => {
         if (!desc) continue;
         // La etiqueta describe CUÁNDO enviarla. Extraer el disparador (lo que viene tras "cuando (te/les) pidan/pregunten...").
         const trig = (desc.match(/cuando\s+(?:te\s+|les\s+)?(?:pidan|pida|pregunten(?:\s+por)?|quieran\s+ver|mostrala|mostrar)\s+(.+)/) || [,''])[1] || desc;
-        const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w));
+        const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w) && !TRIG_STOP.has(w));
         // Se dispara si se están hablando medidas EN EL MENSAJE DEL CLIENTE O EN LA RESPUESTA DEL BOT
         // (ej: cliente dice "modelo 1" y el bot responde "el modelo 1 MIDE 60x45x38").
         const medidas = /medida|mide|tama|dimensi|cu[aá]nto\s+mide/.test(text) && /medida/.test(desc);
@@ -3143,7 +3166,7 @@ app.post('/api/photos/auto-attach', async (req, res) => {
         // Los videos disparan SOLO con lo que dice el CLIENTE (para no mandarlos cuando
         // el bot los ofrece); las fotos, con el mensaje del cliente o del bot.
         const scope = isVideo ? clientMsg : text;
-        const overlap = trigWords.some(w => scope.includes(w));
+        const overlap = matchTrig(trigWords, scope);
         if ((medidas && !isVideo) || overlap) (isVideo ? videos : urls).push(img.url);
       }
     }
@@ -3157,10 +3180,10 @@ app.post('/api/photos/auto-attach', async (req, res) => {
           const desc = String(img.desc || '').toLowerCase();
           if (!desc) continue;
           const trig = (desc.match(/cuando\s+(?:te\s+|les\s+)?(?:pidan|pida|pregunten(?:\s+por)?|quieran\s+ver|mostrala|mostrar)\s+(.+)/) || [, ''])[1] || desc;
-          const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w));
+          const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w) && !TRIG_STOP.has(w));
           const isVideo = VIDEO_EXT.test(img.url);
           const scope = isVideo ? clientMsg : text;
-          if (trigWords.some(w => scope.includes(w))) (isVideo ? videos : urls).push(img.url);
+          if (matchTrig(trigWords, scope)) (isVideo ? videos : urls).push(img.url);
         }
       }
     } catch (e) {}
