@@ -3712,17 +3712,21 @@ app.get('/api/rag/context', async (req, res) => {
     if (allKnowledge.length === 0) return res.json({ context: "No hay información en la base de datos", found: false, sources: [] });
 
     // Búsqueda simple por palabras clave (Mejorada para plurales)
-    const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
-    const keywords = q.toLowerCase()
+    // Quita acentos para que "programación"/"envío" (tarjetas) matcheen con lo que el
+    // cliente escribe sin acento ("programacion"/"envio"). Antes NO matcheaban y tarjetas
+    // clave (ej. la regla programación vs envío) nunca le llegaban al bot.
+    const stripAcc = (str) => String(str).normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const normalizeKw = (k) => stripAcc(k).replace(/es$/, '').replace(/s$/, '');
+    const keywords = stripAcc(q.toLowerCase())
                       .replace(/[¿?¡!.,;:()"'*\n]/g, ' ')   // quitar puntuación: "visacuotas?" → "visacuotas"
                       .split(/\s+/)
                       .filter(k => k.length > 2 && !RAG_STOPWORDS.has(k))
                       .map(normalizeKw)
                       .filter(k => !RAG_STOPWORDS.has(k));
-    
+
     const scored = allKnowledge.map(doc => {
-      const nameL    = String(doc.name || '').toLowerCase();
-      const contentL = String(doc.content || '').toLowerCase();
+      const nameL    = stripAcc(String(doc.name || '').toLowerCase());
+      const contentL = stripAcc(String(doc.content || '').toLowerCase());
       let score = 0;
       keywords.forEach(kw => {
         // Un match en el NOMBRE pesa mucho más que en la descripción: así una consulta
