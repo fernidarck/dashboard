@@ -497,8 +497,14 @@ async function setup() {
       stock TEXT,
       permalink TEXT,
       descripcion TEXT,
+      reglas_bot TEXT,
       synced_at TEXT
     )`); } catch(e){}
+    // reglas_bot + compatibilidad: campos que escribe el dueño por producto web (mismas
+    // "funciones" del catálogo curado que le importan al bot). El sync NUNCA los pisa
+    // (solo actualiza precio/stock/nombre/etc.), así sobreviven a las sincronizaciones.
+    try { await db.exec("ALTER TABLE web_products ADD COLUMN reglas_bot TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE web_products ADD COLUMN compatibilidad TEXT"); } catch(e){}
     try {
       // Limpiar fotos asignadas por error al cliente (las fotos de /uploads/ son siempre del catalogo/bot)
       await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%'");
@@ -2993,6 +2999,19 @@ app.get('/api/web-rag', async (_req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Guardar una REGLA/nota del dueño para un producto web (ej. "paquete de 5 más barato").
+// El sync NO la pisa, así que sobrevive a las sincronizaciones.
+app.put('/api/web-rag/:id', async (req, res) => {
+  try {
+    const { reglas_bot, compatibilidad } = req.body;
+    const sets = [], vals = [];
+    if (reglas_bot !== undefined)     { sets.push("reglas_bot = ?");     vals.push(reglas_bot || null); }
+    if (compatibilidad !== undefined) { sets.push("compatibilidad = ?"); vals.push(compatibilidad || null); }
+    if (sets.length) { vals.push(req.params.id); await db.run(`UPDATE web_products SET ${sets.join(', ')} WHERE id = ?`, ...vals); }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/rag/documents', async (_req, res) => {
   try {
     const rows = await db.all("SELECT id, name, category, timestamp, content, imagen, imagenes FROM documents ORDER BY id DESC");
@@ -3679,12 +3698,12 @@ app.get('/api/rag/context', async (req, res) => {
     // prioridad por un pequeño castigo de score). NO se mezclan con el RAG curado.
     let webItems = [];
     try {
-      const webRows = await db.all("SELECT nombre, categoria, precio, stock, permalink, descripcion FROM web_products");
+      const webRows = await db.all("SELECT nombre, categoria, precio, stock, permalink, descripcion, reglas_bot, compatibilidad FROM web_products");
       webItems = webRows.map(p => ({
         name: p.nombre,
         category: p.categoria,
         __web: true,
-        content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${p.precio} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link: ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.`
+        content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${p.precio} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link: ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.${p.compatibilidad && String(p.compatibilidad).trim() ? ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO lo ofrezcas como compatible.` : ''}${p.reglas_bot && String(p.reglas_bot).trim() ? ` - 🚫 REGLA IMPORTANTE (cumplila SIEMPRE): ${String(p.reglas_bot).trim()}` : ''}`
       }));
     } catch (e) { /* si falla, seguimos sin web */ }
 

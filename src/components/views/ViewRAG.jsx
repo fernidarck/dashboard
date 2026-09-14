@@ -88,6 +88,7 @@ export default function ViewRAG({
   const [unmappedAds,    setUnmappedAds]    = useState([]);
   const [webProducts,    setWebProducts]    = useState([]);
   const [webSyncing,     setWebSyncing]     = useState(false);
+  const [webEdits,       setWebEdits]       = useState({}); // { [id]: { reglas_bot, compatibilidad } }
   const fileInputRef = useRef(null);
 
   // WEB RAG: catálogo de la tienda onecontrol.shop (fuente separada del RAG curado).
@@ -103,6 +104,24 @@ export default function ViewRAG({
       await fetch('/api/web-rag/sync', { method: 'POST', headers: tokenHdr() });
       loadWebProducts();
     } catch (e) { /* noop */ } finally { setWebSyncing(false); }
+  };
+  const webVal = (p, field) => (webEdits[p.id]?.[field] ?? p[field] ?? '');
+  const webChanged = (p) => {
+    const e = webEdits[p.id]; if (!e) return false;
+    return (e.reglas_bot !== undefined && e.reglas_bot !== (p.reglas_bot ?? ''))
+        || (e.compatibilidad !== undefined && e.compatibilidad !== (p.compatibilidad ?? ''));
+  };
+  const setWebField = (id, field, value) => setWebEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  const handleSaveWebRule = async (p) => {
+    const body = {
+      reglas_bot: webEdits[p.id]?.reglas_bot ?? p.reglas_bot ?? '',
+      compatibilidad: webEdits[p.id]?.compatibilidad ?? p.compatibilidad ?? '',
+    };
+    try {
+      await fetch(`/api/web-rag/${p.id}`, { method: 'PUT', headers: { ...tokenHdr(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      setWebProducts(prev => prev.map(x => x.id === p.id ? { ...x, ...body } : x));
+      setWebEdits(prev => { const n = { ...prev }; delete n[p.id]; return n; });
+    } catch (e) { /* noop */ }
   };
 
   // Cargar anuncios de los que llegaron leads pero que aún no están conectados a un producto.
@@ -442,7 +461,33 @@ export default function ViewRAG({
                       <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${/agot/i.test(p.stock || '') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>{p.stock}</span>
                     </div>
                   </div>
-                  {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" className="mt-3 text-[10px] font-bold text-slate-400 hover:text-[#FF6B00] truncate">Ver en la tienda ↗</a>}
+                  {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" className="mt-2 text-[10px] font-bold text-slate-400 hover:text-[#FF6B00] truncate">Ver en la tienda ↗</a>}
+                  {/* Funciones para el bot (igual que el catálogo curado). NO se pierden al sincronizar. */}
+                  <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">🚫 Regla para el bot</label>
+                      <textarea
+                        value={webVal(p, 'reglas_bot')}
+                        onChange={e => setWebField(p.id, 'reglas_bot', e.target.value)}
+                        placeholder="Ej: el paquete de 5 baterías sale a Q150 (más barato que 5 sueltas)."
+                        rows={2}
+                        className="w-full mt-1 text-[11px] p-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-[#FF6B00] resize-y"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">✅ Compatible solo con</label>
+                      <input
+                        type="text"
+                        value={webVal(p, 'compatibilidad')}
+                        onChange={e => setWebField(p.id, 'compatibilidad', e.target.value)}
+                        placeholder="Ej: LiftMaster, Chamberlain"
+                        className="w-full mt-1 text-[11px] p-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-[#FF6B00]"
+                      />
+                    </div>
+                    {webChanged(p) && (
+                      <button onClick={() => handleSaveWebRule(p)} className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-[#FF6B00] text-white text-[10px] font-black uppercase tracking-widest transition-colors">Guardar</button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
