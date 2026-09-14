@@ -486,6 +486,19 @@ async function setup() {
       created_at TEXT
     )`); } catch(e){}
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_sent_media_wamid ON sent_media(wamid)"); } catch(e){}
+    // WEB RAG: catálogo de la tienda WooCommerce onecontrol.shop, SEPARADO del RAG/catálogo
+    // curado. Se sincroniza de la API pública (Store API) y el bot lo usa como fuente
+    // SECUNDARIA para dar precios de productos que no están en el RAG. NO se mezcla.
+    try { await db.exec(`CREATE TABLE IF NOT EXISTS web_products (
+      id INTEGER PRIMARY KEY,
+      nombre TEXT,
+      precio TEXT,
+      categoria TEXT,
+      stock TEXT,
+      permalink TEXT,
+      descripcion TEXT,
+      synced_at TEXT
+    )`); } catch(e){}
     try {
       // Limpiar fotos asignadas por error al cliente (las fotos de /uploads/ son siempre del catalogo/bot)
       await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%'");
@@ -2923,6 +2936,63 @@ function normalizeDocImages(d) {
   }).filter(Boolean);
 }
 
+// ─── WEB RAG (catálogo de la tienda WooCommerce onecontrol.shop) ──────────────
+// Sincroniza los productos públicos de la Store API a la tabla web_products.
+// Fuente SECUNDARIA y SEPARADA del RAG curado. Devuelve cuántos se guardaron.
+async function syncWebProducts() {
+  const BASE = 'https://onecontrol.shop/wp-json/wc/store/products';
+  let page = 1, total = 0;
+  const now = new Date().toISOString();
+  const seen = [];
+  while (page <= 20) { // tope de seguridad
+    let arr;
+    try {
+      const r = await fetch(`${BASE}?per_page=100&page=${page}`);
+      if (!r.ok) break;
+      arr = await r.json();
+    } catch (e) { break; }
+    if (!Array.isArray(arr) || arr.length === 0) break;
+    for (const p of arr) {
+      // precio: viene en "minor units" (ej 250000 con divisor 2 = Q2500.00)
+      const div = Math.pow(10, Number(p.prices?.currency_minor_unit ?? 2));
+      const precioNum = p.prices?.price ? (Number(p.prices.price) / div) : null;
+      const precio = precioNum != null ? `Q${precioNum.toFixed(2)}` : 'Consultar';
+      const categoria = (p.categories || []).map(c => c.name).join(', ');
+      // limpiar descripción HTML corta
+      const desc = String(p.short_description || p.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+      await db.run(
+        `INSERT INTO web_products (id, nombre, precio, categoria, stock, permalink, descripcion, synced_at)
+         VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET nombre=excluded.nombre, precio=excluded.precio, categoria=excluded.categoria,
+           stock=excluded.stock, permalink=excluded.permalink, descripcion=excluded.descripcion, synced_at=excluded.synced_at`,
+        p.id, p.name || '', precio, categoria, p.is_in_stock ? 'En stock' : 'Agotado', p.permalink || '', desc, now
+      );
+      seen.push(p.id); total++;
+    }
+    page++;
+  }
+  // borrar los que ya no existen en la web (se quedaron de un sync anterior)
+  if (seen.length) {
+    try { await db.run(`DELETE FROM web_products WHERE id NOT IN (${seen.map(() => '?').join(',')})`, ...seen); } catch (e) {}
+  }
+  return total;
+}
+
+app.post('/api/web-rag/sync', async (_req, res) => {
+  try {
+    const total = await syncWebProducts();
+    console.log(`🌐 [Web RAG] Sincronizados ${total} productos de onecontrol.shop`);
+    res.json({ success: true, synced: total });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/web-rag', async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM web_products ORDER BY categoria, nombre");
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/rag/documents', async (_req, res) => {
   try {
     const rows = await db.all("SELECT id, name, category, timestamp, content, imagen, imagenes FROM documents ORDER BY id DESC");
@@ -3604,7 +3674,21 @@ app.get('/api/rag/context', async (req, res) => {
       return { name: p.nombre, category: p.categoria, content };
     }).filter(Boolean);
 
-    const allKnowledge = [...docs, ...prods];
+    // WEB RAG: productos de la tienda onecontrol.shop como fuente SECUNDARIA y SEPARADA.
+    // El bot los usa SOLO si el producto no está en el catálogo/RAG principal (menor
+    // prioridad por un pequeño castigo de score). NO se mezclan con el RAG curado.
+    let webItems = [];
+    try {
+      const webRows = await db.all("SELECT nombre, categoria, precio, stock, permalink, descripcion FROM web_products");
+      webItems = webRows.map(p => ({
+        name: p.nombre,
+        category: p.categoria,
+        __web: true,
+        content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${p.precio} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link: ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.`
+      }));
+    } catch (e) { /* si falla, seguimos sin web */ }
+
+    const allKnowledge = [...docs, ...prods, ...webItems];
 
     if (allKnowledge.length === 0) return res.json({ context: "No hay información en la base de datos", found: false, sources: [] });
 
@@ -3634,6 +3718,9 @@ app.get('/api/rag/context', async (req, res) => {
       // Así en "muéstreme las mesas" salen primero las que tiene (ej: Modelo 1).
       if (/ESTADO: SIN STOCK/.test(doc.content)) score -= 3;            // agotado → hasta abajo
       else if (/ESTADO: A PEDIDO/.test(doc.content)) score -= 1;        // a pedido → en medio
+      // WEB RAG es secundario: pequeño castigo para que el RAG/catálogo curado gane
+      // el mismo empate; el web solo asoma cuando el principal no cubre el producto.
+      if (doc.__web) score -= 0.5;
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
@@ -5539,6 +5626,9 @@ const server = app.listen(port, '0.0.0.0', () => {
     try {
       await ensureMetaSubscribedApps();
     } catch(e) {}
+    // Web RAG: sincronizar catálogo de onecontrol.shop al arrancar y cada 12h.
+    try { const n = await syncWebProducts(); console.log(`🌐 [Web RAG] Sync inicial: ${n} productos.`); } catch(e){ console.warn('Web RAG sync inicial falló:', e.message); }
+    setInterval(() => { syncWebProducts().catch(() => {}); }, 12 * 60 * 60 * 1000);
   }).catch(err => {
     console.error("❌ ERROR CRÍTICO EN SETUP:", err);
   });

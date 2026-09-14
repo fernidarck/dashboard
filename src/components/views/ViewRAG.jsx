@@ -86,7 +86,24 @@ export default function ViewRAG({
   const [testResults,    setTestResults]    = useState([]);
   const [isSearching,    setIsSearching]    = useState(false);
   const [unmappedAds,    setUnmappedAds]    = useState([]);
+  const [webProducts,    setWebProducts]    = useState([]);
+  const [webSyncing,     setWebSyncing]     = useState(false);
   const fileInputRef = useRef(null);
+
+  // WEB RAG: catálogo de la tienda onecontrol.shop (fuente separada del RAG curado).
+  const tokenHdr = () => { try { const t = localStorage.getItem('dashboard_token'); return t ? { Authorization: `Bearer ${t}` } : {}; } catch { return {}; } };
+  const loadWebProducts = () => {
+    fetch('/api/web-rag', { headers: tokenHdr() })
+      .then(r => r.ok ? r.json() : []).then(d => setWebProducts(Array.isArray(d) ? d : [])).catch(() => {});
+  };
+  useEffect(() => { loadWebProducts(); }, []);
+  const handleWebSync = async () => {
+    setWebSyncing(true);
+    try {
+      await fetch('/api/web-rag/sync', { method: 'POST', headers: tokenHdr() });
+      loadWebProducts();
+    } catch (e) { /* noop */ } finally { setWebSyncing(false); }
+  };
 
   // Cargar anuncios de los que llegaron leads pero que aún no están conectados a un producto.
   useEffect(() => {
@@ -335,6 +352,7 @@ export default function ViewRAG({
           <div className="flex space-x-1 bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
             <button onClick={() => setRagSubTab('conocimiento')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'conocimiento' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Conocimiento</button>
             <button onClick={() => setRagSubTab('catalogo')}     className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'catalogo'     ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Catálogo</button>
+            <button onClick={() => setRagSubTab('webrag')}       className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'webrag'       ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Web RAG</button>
           </div>
         </div>
         <div className="flex items-center space-x-3">
@@ -396,7 +414,41 @@ export default function ViewRAG({
       ) : null}
 
       {/* Content Grid */}
-      {ragSubTab === 'conocimiento' ? (
+      {ragSubTab === 'webrag' ? (
+        <div className="space-y-5">
+          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-black text-slate-800 uppercase italic">Catálogo Web — onecontrol.shop</h4>
+              <p className="text-[11px] text-slate-500 mt-1">Fuente <b>separada</b> del RAG. El bot la usa solo para productos que <b>no</b> están en tu catálogo curado. Se sincroniza sola cada 12h.</p>
+              <p className="text-[10px] text-slate-400 mt-1">{webProducts.length} productos {webProducts[0]?.synced_at ? `· última sync: ${new Date(webProducts[0].synced_at).toLocaleString('es-GT')}` : ''}</p>
+            </div>
+            <button onClick={handleWebSync} disabled={webSyncing} className="shrink-0 px-5 py-2.5 rounded-2xl bg-[#FF6B00] hover:bg-orange-600 text-white text-[11px] font-black uppercase tracking-widest transition-all disabled:opacity-60">
+              {webSyncing ? 'Sincronizando…' : '↻ Sincronizar tienda'}
+            </button>
+          </div>
+          {webProducts.length === 0 ? (
+            <div className="bg-white p-10 rounded-3xl border border-slate-100 text-center">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin productos aún — dale a "Sincronizar tienda"</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {webProducts.map(p => (
+                <div key={p.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <span className="text-[9px] font-black text-[#FF6B00] uppercase tracking-wider block truncate">{p.categoria || 'General'}</span>
+                    <h4 className="text-xs font-black text-slate-800 leading-snug mt-1 line-clamp-2">{p.nombre}</h4>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-sm font-black text-emerald-600">{p.precio}</span>
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${/agot/i.test(p.stock || '') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>{p.stock}</span>
+                    </div>
+                  </div>
+                  {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" className="mt-3 text-[10px] font-bold text-slate-400 hover:text-[#FF6B00] truncate">Ver en la tienda ↗</a>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : ragSubTab === 'conocimiento' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {documents.map(doc => {
             const cardImgs = getImagesMeta(doc);
