@@ -505,6 +505,9 @@ async function setup() {
     // (solo actualiza precio/stock/nombre/etc.), así sobreviven a las sincronizaciones.
     try { await db.exec("ALTER TABLE web_products ADD COLUMN reglas_bot TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE web_products ADD COLUMN compatibilidad TEXT"); } catch(e){}
+    // precio_manual: precio que pone el dueño cuando la web NO trae precio (o para corregirlo).
+    // El sync NO lo pisa; si está, gana sobre el precio de la web.
+    try { await db.exec("ALTER TABLE web_products ADD COLUMN precio_manual TEXT"); } catch(e){}
     try {
       // Limpiar fotos asignadas por error al cliente (las fotos de /uploads/ son siempre del catalogo/bot)
       await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%'");
@@ -2987,7 +2990,9 @@ async function syncWebProducts() {
       // precio: viene en "minor units" (ej 250000 con divisor 2 = Q2500.00)
       const div = Math.pow(10, Number(p.prices?.currency_minor_unit ?? 2));
       const precioNum = p.prices?.price ? (Number(p.prices.price) / div) : null;
-      const precio = precioNum != null ? `Q${precioNum.toFixed(2)}` : 'Consultar';
+      // Si la web no trae precio real (0 o nulo), lo dejamos VACÍO (el dueño puede ponerlo
+      // a mano con precio_manual, o el bot dirá "a confirmar con asesor"). Nunca "Q0".
+      const precio = (precioNum != null && precioNum > 0) ? `Q${precioNum.toFixed(2)}` : '';
       const categoria = (p.categories || []).map(c => c.name).join(', ');
       // limpiar descripción HTML corta
       const desc = String(p.short_description || p.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
@@ -3028,10 +3033,11 @@ app.get('/api/web-rag', async (_req, res) => {
 // El sync NO la pisa, así que sobrevive a las sincronizaciones.
 app.put('/api/web-rag/:id', async (req, res) => {
   try {
-    const { reglas_bot, compatibilidad } = req.body;
+    const { reglas_bot, compatibilidad, precio_manual } = req.body;
     const sets = [], vals = [];
     if (reglas_bot !== undefined)     { sets.push("reglas_bot = ?");     vals.push(reglas_bot || null); }
     if (compatibilidad !== undefined) { sets.push("compatibilidad = ?"); vals.push(compatibilidad || null); }
+    if (precio_manual !== undefined)  { sets.push("precio_manual = ?");  vals.push(precio_manual || null); }
     if (sets.length) { vals.push(req.params.id); await db.run(`UPDATE web_products SET ${sets.join(', ')} WHERE id = ?`, ...vals); }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3746,12 +3752,13 @@ app.get('/api/rag/context', async (req, res) => {
     // prioridad por un pequeño castigo de score). NO se mezclan con el RAG curado.
     let webItems = [];
     try {
-      const webRows = await db.all("SELECT nombre, categoria, precio, stock, permalink, descripcion, reglas_bot, compatibilidad FROM web_products");
+      const webRows = await db.all("SELECT nombre, categoria, precio, precio_manual, stock, permalink, descripcion, reglas_bot, compatibilidad FROM web_products");
       webItems = webRows.map(p => ({
         name: p.nombre,
         category: p.categoria,
         __web: true,
-        content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${p.precio} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link: ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.${p.compatibilidad && String(p.compatibilidad).trim() ? ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO lo ofrezcas como compatible.` : ''}${p.reglas_bot && String(p.reglas_bot).trim() ? ` - 🚫 REGLA IMPORTANTE (cumplila SIEMPRE): ${String(p.reglas_bot).trim()}` : ''}`
+        // Precio efectivo: manual del dueño > precio de la web > "a confirmar con asesor".
+        content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${(p.precio_manual && String(p.precio_manual).trim()) || (p.precio && String(p.precio).trim()) || 'a confirmar con un asesor (NO inventes un monto ni digas Q0)'} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link: ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.${p.compatibilidad && String(p.compatibilidad).trim() ? ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO lo ofrezcas como compatible.` : ''}${p.reglas_bot && String(p.reglas_bot).trim() ? ` - 🚫 REGLA IMPORTANTE (cumplila SIEMPRE): ${String(p.reglas_bot).trim()}` : ''}`
       }));
     } catch (e) { /* si falla, seguimos sin web */ }
 

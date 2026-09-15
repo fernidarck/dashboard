@@ -109,13 +109,15 @@ export default function ViewRAG({
   const webChanged = (p) => {
     const e = webEdits[p.id]; if (!e) return false;
     return (e.reglas_bot !== undefined && e.reglas_bot !== (p.reglas_bot ?? ''))
-        || (e.compatibilidad !== undefined && e.compatibilidad !== (p.compatibilidad ?? ''));
+        || (e.compatibilidad !== undefined && e.compatibilidad !== (p.compatibilidad ?? ''))
+        || (e.precio_manual !== undefined && e.precio_manual !== (p.precio_manual ?? ''));
   };
   const setWebField = (id, field, value) => setWebEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   const handleSaveWebRule = async (p) => {
     const body = {
       reglas_bot: webEdits[p.id]?.reglas_bot ?? p.reglas_bot ?? '',
       compatibilidad: webEdits[p.id]?.compatibilidad ?? p.compatibilidad ?? '',
+      precio_manual: webEdits[p.id]?.precio_manual ?? p.precio_manual ?? '',
     };
     try {
       await fetch(`/api/web-rag/${p.id}`, { method: 'PUT', headers: { ...tokenHdr(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -457,13 +459,25 @@ export default function ViewRAG({
                     <span className="text-[9px] font-black text-[#FF6B00] uppercase tracking-wider block truncate">{p.categoria || 'General'}</span>
                     <h4 className="text-xs font-black text-slate-800 leading-snug mt-1 line-clamp-2">{p.nombre}</h4>
                     <div className="mt-2 flex items-center gap-2">
-                      <span className="text-sm font-black text-emerald-600">{p.precio}</span>
+                      {(p.precio_manual && p.precio_manual.trim()) || (p.precio && p.precio.trim())
+                        ? <span className="text-sm font-black text-emerald-600">{(p.precio_manual && p.precio_manual.trim()) || p.precio}{p.precio_manual && p.precio_manual.trim() ? ' ✎' : ''}</span>
+                        : <span className="text-[11px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Sin precio — ponelo ↓</span>}
                       <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${/agot/i.test(p.stock || '') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>{p.stock}</span>
                     </div>
                   </div>
                   {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" className="mt-2 text-[10px] font-bold text-slate-400 hover:text-[#FF6B00] truncate">Ver en la tienda ↗</a>}
                   {/* Funciones para el bot (igual que el catálogo curado). NO se pierden al sincronizar. */}
                   <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">💲 Precio manual {p.precio && p.precio.trim() ? `(web: ${p.precio})` : '(la web no trae precio)'}</label>
+                      <input
+                        type="text"
+                        value={webVal(p, 'precio_manual')}
+                        onChange={e => setWebField(p.id, 'precio_manual', e.target.value)}
+                        placeholder={p.precio && p.precio.trim() ? 'Dejar vacío usa el de la web' : 'Ej: Q2,900'}
+                        className="w-full mt-1 text-[11px] p-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-[#FF6B00]"
+                      />
+                    </div>
                     <div>
                       <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">🚫 Regla para el bot</label>
                       <textarea
