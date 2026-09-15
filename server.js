@@ -1977,6 +1977,31 @@ app.get('/api/sent-media/resolve', async (req, res) => {
     res.json({ found: true, ...row });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// Registrar en el dashboard una FOTO/VIDEO que el bot (n8n) mandó, para que aparezca en la
+// conversación (los textos del bot ya se guardan; las fotos deterministas no se guardaban).
+// Body: { phone, channel_phone, url, caption }. saveSmartMessage ya deduplica.
+app.post('/api/messages/log-bot-media', async (req, res) => {
+  try {
+    const { phone, channel_phone, url, caption } = req.body;
+    if (!url) return res.json({ ok: false, error: 'falta url' });
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const cleanChan  = String(channel_phone || '').replace(/\D/g, '');
+    if (!cleanPhone) return res.json({ ok: false, error: 'falta phone' });
+    let lead = null;
+    if (cleanChan) {
+      lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? AND REPLACE(REPLACE(REPLACE(channel_phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", cleanPhone, cleanChan);
+    }
+    if (!lead) lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", cleanPhone);
+    if (!lead) return res.json({ ok: false, error: 'lead no encontrado' });
+    // Dedup por URL: no registrar la misma foto dos veces en los últimos 20 mensajes del lead.
+    const dup = await db.get("SELECT id FROM messages WHERE lead_id = ? AND mediaUrl = ? ORDER BY id DESC LIMIT 1", lead.id, url);
+    if (dup) return res.json({ ok: true, dup: true, leadId: lead.id });
+    const mediaType = /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(url) ? 'video' : 'image';
+    await saveSmartMessage(lead.id, 'bot', caption || '', horaGuate(), url, mediaType);
+    res.json({ ok: true, leadId: lead.id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Archivar lead
