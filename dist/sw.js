@@ -10,16 +10,18 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'OneControl';
   const url = data.url || '/';
   const chatId = data.chatId || (url && url.includes('chat=') ? (new URL(url, 'http://localhost')).searchParams.get('chat') : null);
+  const urgent = (data.level || 'urgent') === 'urgent';
   const options = {
     body: data.body || '',
     icon: '/logo-onecontrol.png',
     badge: '/logo-onecontrol.png',
     data: { url, chatId },
-    vibrate: [300, 120, 300, 120, 300],
+    // Urgente (handoff/pedido): vibra fuerte y se queda en pantalla. Normal (interesado): más suave.
+    vibrate: urgent ? [300, 120, 300, 120, 300] : [200, 100, 200],
     renotify: true,
-    requireInteraction: true, // se queda en pantalla hasta que la toques
-    silent: false,            // que suene/vibre
-    tag: chatId ? `onecontrol-chat-${chatId}` : ('onecontrol-' + Date.now())
+    requireInteraction: urgent,
+    silent: false,
+    tag: data.tag || (chatId ? `onecontrol-chat-${chatId}` : ('onecontrol-' + Date.now()))
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });

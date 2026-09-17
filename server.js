@@ -1508,6 +1508,7 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
     let leadId;
     if (existingLead) {
       leadId = existingLead.id;
+      let becameInteresado = false; // para avisar al dueño (push) cuando un lead se pone caliente
       const updates = [];
       const params = [];
 
@@ -1553,9 +1554,11 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
             // se reactiva como "Interesado" para que resurja en "Por Hablar" y no pase
             // desapercibido. (Opción A pedida por el dueño.)
             updates.push("estado = 'Interesado'");
+            becameInteresado = true;
             console.log(`♻️ [Cliente Perdido reactivado] Lead ${leadId} volvió a escribir → Interesado`);
           } else if (parsed.mensajePrincipal && BUY_INTENT.test(parsed.mensajePrincipal) && !KEEP.includes(existingLead.estado)) {
             updates.push("estado = 'Interesado'");
+            becameInteresado = true;
             console.log(`🔥 [Intención de compra] Lead ${leadId} → Interesado: "${String(parsed.mensajePrincipal).slice(0, 60)}"`);
           }
 
@@ -1586,6 +1589,13 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       if (updates.length > 0) {
         params.push(leadId);
         await db.run(`UPDATE leads SET ${updates.join(", ")} WHERE id = ?`, ...params);
+      }
+      // 🔔 Aviso al dueño cuando un lead se pone CALIENTE (pasó a Interesado). Solo push
+      // (no WhatsApp), y solo canal OneControl (Reach lo maneja aparte). Abre el chat al tocar.
+      if (becameInteresado && !String(cleanChannelPhone || '').includes('35154362')) {
+        const nom = (existingLead.nombre && !/cliente/i.test(existingLead.nombre)) ? existingLead.nombre : 'Un cliente';
+        const prev = String(parsed.mensajePrincipal || '').replace(/\n/g, ' ').slice(0, 90);
+        sendPush(`🔥 Cliente interesado: ${nom}\n${prev || 'Quiere avanzar. Tocá para atenderlo.'}`, `/?chat=${leadId}`, leadId, { level: 'normal', tag: `interesado-${leadId}` }).catch(() => {});
       }
     } else {
       // Crear nuevo lead
@@ -2123,7 +2133,7 @@ async function ensureVapid() {
 }
 // Envía una notificación push a todos los dispositivos suscritos.
 // mensaje = texto (1ra línea = título, resto = cuerpo). Best-effort, nunca lanza.
-async function sendPush(mensaje, url = '/', targetChatId = null) {
+async function sendPush(mensaje, url = '/', targetChatId = null, opts = {}) {
   try {
     const wp = await ensureVapid();
     if (!wp) return;
@@ -2133,7 +2143,10 @@ async function sendPush(mensaje, url = '/', targetChatId = null) {
     const title = (lines[0] || 'OneControl').replace(/[*_]/g, '').slice(0, 60);
     const body = (lines.slice(1).join(' ') || '').replace(/[*_]/g, '').slice(0, 180);
     const chatId = targetChatId || (url && url.includes('chat=') ? (new URL(url, 'http://localhost')).searchParams.get('chat') : null);
-    const payload = JSON.stringify({ title, body, url, chatId });
+    // level: 'urgent' (handoff/pedido) vibra fuerte y se queda fijo; 'normal' (interesado) más suave.
+    const level = opts.level || 'urgent';
+    const tag = opts.tag || (chatId ? `chat-${chatId}` : undefined);
+    const payload = JSON.stringify({ title, body, url, chatId, level, tag });
     await Promise.all(subs.map(async row => {
       try { await wp.sendNotification(JSON.parse(row.subscription), payload, { urgency: 'high', TTL: 86400 }); }
       catch (e) { if (e.statusCode === 404 || e.statusCode === 410) await db.run("DELETE FROM push_subscriptions WHERE id = ?", row.id); }
