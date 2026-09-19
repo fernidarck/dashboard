@@ -3849,11 +3849,23 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Construir respuesta: agregamos BLOQUES COMPLETOS de producto hasta llenar maxChars,
     // sin cortar ninguno a la mitad (antes se hacía un substring que partía el último).
+    // UNA SOLA FOTO: dejamos la URL de imagen SOLO en el primer bloque que trae foto (el
+    // producto más relevante). A los demás les quitamos la foto para que el bot no mande
+    // fotos de varios productos (ej. mandaba el control + el riel + la botonera).
+    let imgYaIncluida = false;
+    const quitarFotos = (s) => String(s)
+      .replace(/ - Imagen:\s*\S+/gi, '')
+      .replace(/\n?[^\n]*IMAGEN_PARA_ENVIAR:\s*\S+/gi, '')
+      .replace(/\n?\s*⚠️ ENVIÁ ESTA FOTO[^\n]*/gi, '');
     let context = "";
     const sources = [];
     const budget = Number(maxChars) - adNote.length;
     for (const doc of scored) {
-      const block = `--- RESULTADO: ${doc.name} ---\n${doc.content}\n\n`;
+      let contenido = doc.content;
+      const traeFoto = /(Imagen:|IMAGEN_PARA_ENVIAR)/i.test(contenido);
+      if (traeFoto && imgYaIncluida) contenido = quitarFotos(contenido);
+      else if (traeFoto) imgYaIncluida = true;
+      const block = `--- RESULTADO: ${doc.name} ---\n${contenido}\n\n`;
       if (sources.length > 0 && context.length + block.length > budget) break;
       context += block;
       sources.push(doc.name);
