@@ -999,6 +999,34 @@ async function detectHandoff(text) {
 }
 
 // Función inteligente para guardar mensajes y actualizar leads
+// Descarga un audio/foto de YCloud (URL firmada que caduca) y lo guarda en /uploads,
+// para que quede PERMANENTE y se pueda reproducir/ver siempre en el dashboard.
+// Devuelve la URL local (/uploads/...) o la original si algo falla.
+async function persistYCloudMedia(url, channelPhone, mediaType) {
+  try {
+    if (!url || !/api\.ycloud\.com\/.*\/media\/download\//i.test(url)) return url;
+    let apiKey = null;
+    try {
+      const ch = await getChannelConfig(channelPhone);
+      apiKey = (ch && ch.api_key) || await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    } catch (e) {}
+    const resp = await fetch(url, apiKey ? { headers: { 'X-API-Key': apiKey } } : {});
+    if (!resp.ok) return url;
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (!buf.length || buf.length > 25 * 1024 * 1024) return url;
+    const ct = (resp.headers.get('content-type') || '').toLowerCase();
+    const ext = /ogg|opus/.test(ct) ? 'ogg' : /mpeg|mp3/.test(ct) ? 'mp3' : /wav/.test(ct) ? 'wav'
+      : /m4a/.test(ct) ? 'm4a' : /webm/.test(ct) ? 'webm' : /mp4/.test(ct) ? (mediaType === 'audio' ? 'm4a' : 'mp4')
+      : /jpeg|jpg/.test(ct) ? 'jpg' : /png/.test(ct) ? 'png' : /webp/.test(ct) ? 'webp'
+      : (mediaType === 'audio' ? 'ogg' : mediaType === 'video' ? 'mp4' : 'jpg');
+    const name = 'in_' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    try { fs.mkdirSync(join(__dirname, 'uploads'), { recursive: true }); } catch (e) {}
+    fs.writeFileSync(join(__dirname, 'uploads', name), buf);
+    console.log(`🎧 [Media guardada] ${mediaType || 'archivo'} del cliente → /uploads/${name} (${(buf.length/1024).toFixed(0)}KB)`);
+    return `/uploads/${name}`;
+  } catch (e) { console.error('persistYCloudMedia:', e.message); return url; }
+}
+
 async function saveSmartMessage(leadId, sender, text, timestamp, mediaUrl = null, mediaType = null) {
   const cleanT = (text || '').trim();
   if (!cleanT && !mediaUrl) return;
@@ -1640,8 +1668,14 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
 
     // Distinguir si el media_url recibido es del cliente o de la respuesta del bot
     const isBotReport = !!parsed.mensajeSecundario && !parsed.isEcho;
-    const clientMedia = isBotReport ? null : parsed.mediaUrl;
+    let clientMedia = isBotReport ? null : parsed.mediaUrl;
     const clientMediaType = isBotReport ? null : parsed.mediaType;
+    // Los audios/fotos del cliente llegan como URL firmada de YCloud que CADUCA (y pide
+    // llave) → después no se pueden reproducir. Los descargamos al vuelo y los guardamos
+    // en /uploads para que queden permanentes y se escuchen/vean siempre en el dashboard.
+    if (clientMedia && /api\.ycloud\.com\/.*\/media\/download\//i.test(clientMedia)) {
+      clientMedia = await persistYCloudMedia(clientMedia, cleanChannelPhone, clientMediaType);
+    }
 
     // Guardar mensaje principal (cliente o agente desde el teléfono)
     if (parsed.mensajePrincipal || clientMedia) {
@@ -2001,6 +2035,21 @@ app.get('/api/sent-media/resolve', async (req, res) => {
 // Registrar en el dashboard una FOTO/VIDEO que el bot (n8n) mandó, para que aparezca en la
 // conversación (los textos del bot ya se guardan; las fotos deterministas no se guardaban).
 // Body: { phone, channel_phone, url, caption }. saveSmartMessage ya deduplica.
+// RESCATE: baja los audios/fotos viejos que quedaron con URL de YCloud (que caduca) y los
+// guarda en /uploads, actualizando el mensaje. Corre en el servidor (tiene acceso a disco+BD).
+app.post('/api/media/backfill', async (req, res) => {
+  try {
+    const rows = await db.all("SELECT m.id, m.mediaUrl, m.mediaType, l.channel_phone FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.mediaUrl LIKE '%api.ycloud.com%media/download%' ORDER BY m.id DESC LIMIT 200");
+    let ok = 0, fail = 0;
+    for (const r of rows) {
+      const local = await persistYCloudMedia(r.mediaUrl, r.channel_phone, r.mediaType);
+      if (local && local !== r.mediaUrl) { await db.run("UPDATE messages SET mediaUrl = ? WHERE id = ?", local, r.id); ok++; }
+      else fail++;
+    }
+    res.json({ ok: true, total: rows.length, recuperados: ok, expirados: fail });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/messages/log-bot-media', async (req, res) => {
   try {
     const { phone, channel_phone, url, caption } = req.body;
