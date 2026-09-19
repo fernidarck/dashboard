@@ -12,7 +12,7 @@ import QuickQuoteDrawer from '../QuickQuoteDrawer.jsx';
 // Configuraciones y etapas reales del Lead (embudo oficial de Leads / CRM de OneControl)
 export const LEAD_STAGES = [
   { id: 'En Seguimiento', label: 'En seguimiento', shortLabel: 'En seguimiento', color: '#D97706' },
-  { id: 'Venta', label: 'A pedido / Venta', shortLabel: 'A pedido', color: '#059669' },
+  { id: 'Venta', label: 'Cerró Venta (Ya compró)', shortLabel: 'Ya compró', color: '#059669', icon: '🏆' },
   { id: 'Cita Agendada', label: 'Cita / Visita agendada', shortLabel: 'Cita / Visita', color: '#4F46E5' },
   { id: 'Perdido', label: 'No compró', shortLabel: 'No compró', color: '#94A3B8' },
   { id: 'Nuevo', label: 'Por hablarles (Nuevo)', shortLabel: 'Por hablarles', color: '#64748B' },
@@ -594,21 +594,33 @@ export default function ViewConversaciones({
             >
               Todos
             </button>
-            {LEAD_STAGES.slice(0, 5).map(s => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setStageFilter(stageFilter === s.id ? 'todos' : s.id)}
-                className={`px-3 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                  stageFilter === s.id
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                <span>{s.shortLabel || s.label}</span>
-              </button>
-            ))}
+            {LEAD_STAGES.slice(0, 5).map(s => {
+              const isSelected = stageFilter === s.id;
+              const isVenta = s.id === 'Venta';
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStageFilter(isSelected ? 'todos' : s.id)}
+                  className={`px-3 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? isVenta
+                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                        : 'bg-slate-900 text-white shadow-xs'
+                      : isVenta
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 font-bold'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
+                  }`}
+                >
+                  {isVenta ? (
+                    <span className="text-xs">🏆</span>
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                  )}
+                  <span>{s.shortLabel || s.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Selector de orden: Más recientes (WhatsApp) vs Urgentes */}
@@ -673,22 +685,31 @@ export default function ViewConversaciones({
           ) : filteredLeads.map(lead => {
             const badgeInfo = getChannelBadge(lead);
             const leadLabel = getLeadLabel(lead);
+            const isBuyer = leadLabel?.id === 'Venta';
+            const isSelected = selectedChatId === lead.id;
+
             return (
               <button
                 key={lead.id}
                 onClick={() => { onSelectChat(lead.id); setMobileShowChat(true); }}
-                className={`w-full p-4 md:p-5 text-left hover:bg-slate-50 transition-all relative ${
-                  selectedChatId === lead.id ? 'bg-orange-50/40 border-l-4 border-[#FF6B00]' : ''
+                className={`w-full p-4 md:p-5 text-left transition-all relative ${
+                  isBuyer
+                    ? isSelected
+                      ? 'bg-emerald-50/60 border-l-4 border-emerald-600 shadow-xs'
+                      : 'bg-emerald-50/20 border-l-[3px] border-emerald-500 hover:bg-emerald-50/40'
+                    : isSelected
+                    ? 'bg-orange-50/40 border-l-4 border-[#FF6B00]'
+                    : 'hover:bg-slate-50'
                 } ${lead.priority === 'urgent' ? 'bg-red-50/60' : ''}`}
               >
                 <div className="flex items-center space-x-3 mb-2">
                   <div className="relative shrink-0">
                     <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shadow-sm ${
                       lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
-                      lead.estado === 'Venta' ? 'bg-emerald-100 text-emerald-600' :
+                      isBuyer ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 ring-2 ring-emerald-400' :
                       lead.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-900 text-[#FF6B00]'
                     }`}>
-                      {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : lead.estado === 'Venta' ? '🏆' : lead.botActive ? <Bot size={14} /> : (lead.nombre?.[0] || '?')}
+                      {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : isBuyer ? '🏆' : lead.botActive ? <Bot size={14} /> : (lead.nombre?.[0] || '?')}
                     </div>
                     {/* Badge con el ícono del canal de origen */}
                     <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none" title={badgeInfo.label}>
@@ -697,12 +718,21 @@ export default function ViewConversaciones({
                     {lead.priority === 'urgent' && (
                       <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-ping" />
                     )}
+                    {isBuyer && (
+                      <span className="absolute -top-1 -left-1 h-4 w-4 bg-emerald-500 text-white text-[8px] font-black rounded-full flex items-center justify-center shadow-xs border border-white" title="Cliente que ya compró">
+                        ✓
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : 'text-slate-800'}`}>{lead.nombre}</p>
-                        {leadLabel && (
+                        <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : isBuyer ? 'text-emerald-950 font-black' : 'text-slate-800'}`}>{lead.nombre}</p>
+                        {isBuyer ? (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-600 text-white shadow-xs shrink-0 tracking-tight">
+                            🏆 Ya compró
+                          </span>
+                        ) : leadLabel && (
                           <span
                             className="w-2 h-2 rounded-full shrink-0 inline-block"
                             style={{ backgroundColor: leadLabel.color }}
@@ -719,13 +749,18 @@ export default function ViewConversaciones({
                       </span>
                     </div>
                     <div className="flex justify-between items-center mt-0.5">
-                      <p className={`text-[9px] font-black uppercase tracking-tighter ${
-                        lead.priority === 'urgent' ? 'text-red-500' :
-                        lead.estado === 'Venta' ? 'text-emerald-600' :
-                        lead.botActive ? 'text-emerald-500' : 'text-slate-400'
-                      }`}>
-                        {lead.priority === 'urgent' ? '⚠️ INTERVENCIÓN' : lead.estado === 'Venta' ? '🏆 VENTA' : lead.botActive ? `Score: ${lead.score || 0}%` : 'Modo Manual'}
-                      </p>
+                      {isBuyer ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-300">
+                          🏆 CLIENTE (YA COMPRÓ)
+                        </span>
+                      ) : (
+                        <p className={`text-[9px] font-black uppercase tracking-tighter ${
+                          lead.priority === 'urgent' ? 'text-red-500' :
+                          lead.botActive ? 'text-emerald-500' : 'text-slate-400'
+                        }`}>
+                          {lead.priority === 'urgent' ? '⚠️ INTERVENCIÓN' : lead.botActive ? `Score: ${lead.score || 0}%` : 'Modo Manual'}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -802,23 +837,38 @@ export default function ViewConversaciones({
               <ArrowLeft size={20} />
             </button>
 
-            <div
-              onClick={() => {
-                setRightPanelTab('perfil');
-                setShowRightPanel(true);
-              }}
-              className="h-10 w-10 rounded-xl bg-slate-800 text-[#FF6B00] flex items-center justify-center font-black text-sm border border-[#FF6B00]/40 shrink-0 relative cursor-pointer hover:border-[#FF6B00] transition-all shadow-xs"
-              title="Ver ficha del lead"
-            >
-              {selectedLead.nombre?.[0] || 'OC'}
-              <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-200 leading-none">
-                {getChannelIcon(selectedLead.origen)}
-              </span>
-            </div>
+            {/* Header Avatar */}
+            {(() => {
+              const isBuyer = activeLabel?.id === 'Venta';
+              return (
+                <div
+                  onClick={() => {
+                    setRightPanelTab('perfil');
+                    setShowRightPanel(true);
+                  }}
+                  className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 relative cursor-pointer transition-all shadow-xs ${
+                    isBuyer
+                      ? 'bg-emerald-600 text-white border-2 border-emerald-400 shadow-md shadow-emerald-200'
+                      : 'bg-slate-800 text-[#FF6B00] border border-[#FF6B00]/40 hover:border-[#FF6B00]'
+                  }`}
+                  title="Ver ficha del lead"
+                >
+                  {isBuyer ? '🏆' : (selectedLead.nombre?.[0] || 'OC')}
+                  <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-200 leading-none">
+                    {getChannelIcon(selectedLead.origen)}
+                  </span>
+                  {isBuyer && (
+                    <span className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-emerald-500 text-white text-[7px] font-black rounded-full flex items-center justify-center border border-white">
+                      ✓
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="min-w-0 flex-1">
               {/* Línea 1: Nombre de la persona — GRANDE, EN NEGRITA, LEGIBLE */}
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap sm:flex-nowrap">
                 <p
                   onClick={() => {
                     setRightPanelTab('perfil');
@@ -829,6 +879,12 @@ export default function ViewConversaciones({
                 >
                   {selectedLead.nombre || 'Selecciona un chat'}
                 </p>
+                {activeLabel?.id === 'Venta' && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] sm:text-[11px] font-black shadow-sm shadow-emerald-200/50 shrink-0 tracking-wide border border-emerald-500 animate-in fade-in">
+                    <Trophy size={12} className="stroke-[2.5]" />
+                    <span>CLIENTE (YA COMPRÓ)</span>
+                  </span>
+                )}
                 {selectedLead.motor && selectedLead.motor !== 'N/A' && selectedLead.motor !== 'null' && (
                   <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-50 border border-orange-200 text-orange-900 text-[10px] font-black shrink-0" title="Producto detectado">
                     <Tag size={9} className="text-[#FF6B00]" />
@@ -869,21 +925,34 @@ export default function ViewConversaciones({
             {/* PILL DESPLEGABLE: CONFIGURACIÓN Y ETAPA DEL LEAD */}
             {selectedLead?.id && (
               <div className="relative" ref={labelDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowLabelDropdown(prev => !prev)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-full border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] sm:text-[12px] font-semibold text-slate-700 transition-colors cursor-pointer shrink-0"
-                  title="Configuración de etapa del lead"
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: activeLabel.color }}
-                  />
-                  <span className="truncate max-w-[75px] sm:max-w-[140px] text-slate-700 font-medium">
-                    {activeLabel.shortLabel || activeLabel.label}
-                  </span>
-                  <ChevronDown size={12} className={`text-slate-400 transition-transform duration-150 ${showLabelDropdown ? 'rotate-180' : ''}`} />
-                </button>
+                {(() => {
+                  const isBuyer = activeLabel?.id === 'Venta';
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setShowLabelDropdown(prev => !prev)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-full transition-all cursor-pointer shrink-0 ${
+                        isBuyer
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 shadow-md shadow-emerald-200 font-bold ring-2 ring-emerald-300/40'
+                          : 'border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold'
+                      }`}
+                      title="Configuración de etapa del lead"
+                    >
+                      {isBuyer ? (
+                        <Trophy size={13} className="text-white shrink-0 stroke-[2.5]" />
+                      ) : (
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: activeLabel.color }}
+                        />
+                      )}
+                      <span className={`truncate max-w-[85px] sm:max-w-[150px] ${isBuyer ? 'text-white font-black' : 'text-slate-700 font-medium'}`}>
+                        {isBuyer ? '🏆 Ya compró' : (activeLabel.shortLabel || activeLabel.label)}
+                      </span>
+                      <ChevronDown size={12} className={`${isBuyer ? 'text-emerald-100' : 'text-slate-400'} transition-transform duration-150 ${showLabelDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                  );
+                })()}
 
                 {/* Popover desplegable: estrictamente las configuraciones del lead */}
                 {showLabelDropdown && (
@@ -896,6 +965,7 @@ export default function ViewConversaciones({
                     <div className="max-h-72 overflow-y-auto py-1">
                       {LEAD_STAGES.map(stage => {
                         const isSelected = activeLabel.id === stage.id;
+                        const isVenta = stage.id === 'Venta';
                         return (
                           <button
                             key={stage.id}
@@ -905,14 +975,22 @@ export default function ViewConversaciones({
                               setShowLabelDropdown(false);
                             }}
                             className={`w-full px-3.5 py-2 flex items-center justify-between gap-3 text-left hover:bg-slate-50 transition-colors cursor-pointer ${
-                              isSelected ? 'bg-slate-50/80' : ''
+                              isSelected
+                                ? isVenta
+                                  ? 'bg-emerald-50 text-emerald-950 font-bold border-l-2 border-emerald-600'
+                                  : 'bg-slate-50/80 font-semibold text-slate-900'
+                                : ''
                             }`}
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: stage.color }}
-                              />
+                              {isVenta ? (
+                                <span className="text-xs">🏆</span>
+                              ) : (
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: stage.color }}
+                                />
+                              )}
                               <span className={`text-[12.5px] truncate ${isSelected ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
                                 {stage.label}
                               </span>
@@ -922,7 +1000,7 @@ export default function ViewConversaciones({
                             <div
                               className={`w-3.5 h-3.5 rounded-[3px] flex items-center justify-center transition-all ${
                                 isSelected
-                                  ? 'bg-slate-900 text-white'
+                                  ? isVenta ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white'
                                   : 'border border-slate-300 bg-white'
                               }`}
                             >
@@ -1056,6 +1134,30 @@ export default function ViewConversaciones({
 
         {/* Mensajes */}
         <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 no-scrollbar">
+          {/* Tarjeta del ANUNCIO del que vino el cliente (como la muestra WhatsApp) */}
+          {(selectedLead?.ad_image_url || selectedLead?.ad_headline) && (
+            <div className="mx-auto max-w-sm bg-emerald-50 border border-emerald-200 rounded-2xl overflow-hidden shadow-xs">
+              <div className="px-3 pt-2.5 pb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                <span>📢 Anuncio de {/instagram/i.test(selectedLead.ad_source_url || '') ? 'Instagram' : 'Facebook'}</span>
+              </div>
+              <div className="flex items-center gap-3 px-3 pb-3">
+                {selectedLead.ad_image_url && (
+                  <img
+                    src={selectedLead.ad_image_url}
+                    alt="anuncio"
+                    className="h-16 w-16 rounded-xl object-cover border border-emerald-200 shrink-0 bg-white"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-800 leading-snug line-clamp-3">{selectedLead.ad_headline || 'Vino de un anuncio'}</p>
+                  {selectedLead.ad_source_url && (
+                    <a href={selectedLead.ad_source_url} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-emerald-700 hover:underline">Ver anuncio ↗</a>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
               <Bot size={32} className="text-slate-300" />
@@ -1071,8 +1173,11 @@ export default function ViewConversaciones({
               const isInstagram = origLower.includes('instagram');
               const isFacebook = origLower.includes('facebook');
 
+              const isBuyer = activeLabel?.id === 'Venta';
               const senderLabel = isClient
-                ? (isInstagram ? `👤 ${selectedLead.nombre || 'Cliente'} (Instagram)` : isFacebook ? `👤 ${selectedLead.nombre || 'Cliente'} (Facebook)` : `👤 ${selectedLead.nombre || 'Cliente'}`)
+                ? isBuyer
+                  ? `🏆 ${selectedLead.nombre || 'Cliente'} (Comprador)`
+                  : (isInstagram ? `👤 ${selectedLead.nombre || 'Cliente'} (Instagram)` : isFacebook ? `👤 ${selectedLead.nombre || 'Cliente'} (Facebook)` : `👤 ${selectedLead.nombre || 'Cliente'}`)
                 : isAgent
                 ? (isInstagram ? '📸 Tú (Instagram Direct)' : isFacebook ? '📘 Tú (Messenger)' : '📱 Tú (WhatsApp / Panel)')
                 : '🤖 IA OneControl';
@@ -1081,14 +1186,16 @@ export default function ViewConversaciones({
                 <div key={i} className={`flex ${isClient ? 'justify-start' : 'justify-end'}`}>
                   <div className={`max-w-[75%] md:max-w-[65%] rounded-2xl text-[11px] font-medium shadow-sm overflow-hidden ${
                     isClient
-                      ? 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
+                      ? isBuyer
+                        ? 'bg-white border-2 border-emerald-300/80 text-slate-800 rounded-tl-none shadow-xs'
+                        : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
                       : isAgent
                       ? 'bg-slate-900 text-white rounded-tr-none border border-slate-800'
                       : 'bg-slate-800 text-white rounded-tr-none border border-slate-700'
                   }`}>
                     {/* Indicador de quién envió el mensaje */}
                     <div className={`px-4 pt-2.5 pb-1 flex items-center justify-between text-[9px] font-black uppercase tracking-wider ${
-                      isClient ? 'text-[#FF6B00]' : isAgent ? 'text-emerald-400' : 'text-blue-300'
+                      isClient ? (isBuyer ? 'text-emerald-700' : 'text-[#FF6B00]') : isAgent ? 'text-emerald-400' : 'text-blue-300'
                     }`}>
                       <span>
                         {senderLabel}
@@ -1606,12 +1713,22 @@ export default function ViewConversaciones({
             ) : (
               <div className="flex-1 p-6 space-y-6 overflow-y-auto no-scrollbar">
                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-center space-y-3">
-                  <div className="h-16 w-16 bg-slate-900 text-[#FF6B00] rounded-2xl flex items-center justify-center font-black text-xl italic mx-auto border-2 border-white shadow-xl">
-                    {selectedLead.nombre?.[0] || '?'}
+                  <div className={`h-16 w-16 rounded-2xl flex items-center justify-center font-black text-xl italic mx-auto border-2 border-white shadow-xl ${
+                    activeLabel?.id === 'Venta'
+                      ? 'bg-emerald-600 text-white shadow-emerald-200'
+                      : 'bg-slate-900 text-[#FF6B00]'
+                  }`}>
+                    {activeLabel?.id === 'Venta' ? '🏆' : (selectedLead.nombre?.[0] || '?')}
                   </div>
                   <div>
                     <h4 className="font-black text-slate-800 uppercase italic">{selectedLead.nombre}</h4>
                     <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{selectedLead.phone}</p>
+                    {activeLabel?.id === 'Venta' && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-black shadow-sm">
+                        <Trophy size={12} className="stroke-[2.5]" />
+                        <span>CLIENTE CONFIRMADO (YA COMPRÓ)</span>
+                      </div>
+                    )}
                   </div>
                   {selectedLead.phone && (
                     <button
