@@ -83,6 +83,7 @@ export default function App() {
     approveKnowledge, ignoreKnowledge,
     saveTrainingRule, updateTrainingRule, deleteTrainingRule, approveTrainingRule, rejectTrainingRule,
     analyzeTrainingWithAI, testTrainingPrompt,
+    fetchTestSessions, createTestSession, updateTestSession, deleteTestSession,
     uploadProductImage, uploadDocument, uploadImageFile, uploadMediaFile, runTestSearch, syncBrainConfig,
     saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     playMessageAlert,
@@ -617,6 +618,10 @@ export default function App() {
                 onRejectRule={rejectTrainingRule}
                 onAnalyzeAI={analyzeTrainingWithAI}
                 onTestPrompt={testTrainingPrompt}
+                onFetchSessions={fetchTestSessions}
+                onCreateSession={createTestSession}
+                onUpdateSession={updateTestSession}
+                onDeleteSession={deleteTestSession}
               />
             )}
           </div>

@@ -17,7 +17,11 @@ export default function ViewEntrenamiento({
   onApproveRule,
   onRejectRule,
   onAnalyzeAI,
-  onTestPrompt
+  onTestPrompt,
+  onFetchSessions,
+  onCreateSession,
+  onUpdateSession,
+  onDeleteSession
 }) {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'approved' | 'simulator'
   const [filterType, setFilterType] = useState('all'); // 'all' | 'prohibido' | 'permitido' | 'faq' | 'objecion'
@@ -39,14 +43,27 @@ export default function ViewEntrenamiento({
     status: 'approved'
   });
 
-  // Simulator State
-  const [simQuestion, setSimQuestion] = useState('');
-  const [simResult, setSimResult] = useState(null);
+  // Simulator State — chat conversacional con memoria + sesiones guardadas
+  const [simInput, setSimInput] = useState('');
   const [simLoading, setSimLoading] = useState(false);
+  const [sessions, setSessions] = useState([]);      // [{id, nombre, mensajes, ...}]
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]); // hilo activo: [{role, content, mediaInfo?, appliedRules?, source?}]
 
   useEffect(() => {
     onFetchRules?.();
   }, [onFetchRules]);
+
+  // Cargar sesiones guardadas al entrar al tab del probador
+  useEffect(() => {
+    if (activeTab !== 'simulator' || !onFetchSessions) return;
+    (async () => {
+      const list = await onFetchSessions();
+      setSessions(Array.isArray(list) ? list : []);
+    })();
+  }, [activeTab, onFetchSessions]);
+
+  const activeSession = sessions.find(s => s.id === activeSessionId) || null;
 
   const handleOpenNewModal = () => {
     setEditingRule(null);
@@ -108,18 +125,78 @@ export default function ViewEntrenamiento({
     }
   };
 
-  const handleRunSimulation = async (e) => {
-    e?.preventDefault();
-    if (!simQuestion.trim()) return;
-    setSimLoading(true);
-    setSimResult(null);
-    try {
-      const res = await onTestPrompt?.(simQuestion);
-      setSimResult(res);
-    } finally {
-      setSimLoading(false);
+  // Empezar un chat de prueba nuevo (vacío, aún sin guardar hasta el primer mensaje)
+  const handleNewChat = () => {
+    setActiveSessionId(null);
+    setChatMessages([]);
+    setSimInput('');
+  };
+
+  // Abrir una sesión guardada
+  const handleOpenSession = (session) => {
+    setActiveSessionId(session.id);
+    setChatMessages(Array.isArray(session.mensajes) ? session.mensajes : []);
+    setSimInput('');
+  };
+
+  // Borrar una sesión guardada
+  const handleDeleteSession = async (id, e) => {
+    e?.stopPropagation();
+    if (!window.confirm('¿Borrar este chat de prueba? No se puede deshacer.')) return;
+    const ok = await onDeleteSession?.(id);
+    if (ok) {
+      setSessions(prev => prev.filter(s => s.id !== id));
+      if (activeSessionId === id) handleNewChat();
     }
   };
+
+  // Enviar un mensaje del "cliente" al probador (con memoria del hilo)
+  const handleSendChat = async (e) => {
+    e?.preventDefault();
+    const text = simInput.trim();
+    if (!text || simLoading) return;
+
+    const history = chatMessages.map(m => ({ role: m.role, content: m.content }));
+    const userMsg = { role: 'user', content: text };
+    const withUser = [...chatMessages, userMsg];
+    setChatMessages(withUser);
+    setSimInput('');
+    setSimLoading(true);
+
+    let botMsg;
+    try {
+      const res = await onTestPrompt?.(text, history);
+      botMsg = {
+        role: 'assistant',
+        content: res?.reply || res?.error || '(sin respuesta)',
+        mediaInfo: res?.mediaInfo || null,
+        appliedRules: res?.appliedRules || [],
+        source: res?.source || null
+      };
+    } catch (err) {
+      botMsg = { role: 'assistant', content: 'Error: ' + (err?.message || 'no se pudo simular'), mediaInfo: null, appliedRules: [] };
+    }
+
+    const finalMsgs = [...withUser, botMsg];
+    setChatMessages(finalMsgs);
+    setSimLoading(false);
+
+    // Persistir el hilo (crear la sesión en el primer mensaje, o actualizarla)
+    const nombre = (activeSession?.nombre) || text.slice(0, 40);
+    if (!activeSessionId) {
+      const created = await onCreateSession?.(nombre, finalMsgs);
+      if (created?.id) {
+        setActiveSessionId(created.id);
+        setSessions(prev => [{ ...created, mensajes: finalMsgs, nombre }, ...prev]);
+      }
+    } else {
+      await onUpdateSession?.(activeSessionId, { nombre, mensajes: finalMsgs });
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, mensajes: finalMsgs, nombre, updated_at: new Date().toISOString() } : s));
+    }
+  };
+
+  // Última pregunta del cliente (para el botón de corregir)
+  const lastClientQuestion = [...chatMessages].reverse().find(m => m.role === 'user')?.content || '';
 
   // Filtered Rules
   const filteredRules = useMemo(() => {
@@ -363,183 +440,212 @@ export default function ViewEntrenamiento({
       {/* Tab Content: Simulator */}
       {activeTab === 'simulator' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2.5">
-              <div className="p-2 bg-purple-100 text-purple-700 rounded-xl"><Zap size={18} /></div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Probador de Respuestas</h3>
-                <p className="text-[11px] text-slate-400">Escribí como si fueras un cliente para evaluar la respuesta.</p>
+          {/* Columna izquierda: lista de chats de prueba guardados */}
+          <div className="lg:col-span-4 bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-purple-100 text-purple-700 rounded-lg"><MessageSquare size={16} /></div>
+                <h3 className="text-sm font-bold text-slate-900">Chats de prueba</h3>
               </div>
-            </div>
-
-            <form onSubmit={handleRunSimulation} className="space-y-3">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
-                  Mensaje del Cliente:
-                </label>
-                <textarea
-                  rows={4}
-                  value={simQuestion}
-                  onChange={(e) => setSimQuestion(e.target.value)}
-                  placeholder="Ej: Hola, ¿cuál es el precio de la mesa One Night? ¿Hacen descuento si compro dos?"
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-purple-500 focus:bg-white transition-all resize-none"
-                />
-              </div>
-
-              {/* Sugerencias Rápidas */}
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  '¿Las mesas vienen armadas?',
-                  '¿El precio de Q550 es por el par?',
-                  '¿Tienen la mesa One Night?',
-                  '¿Cuánto cobran de envío a Mixco?',
-                  '¿Aceptan Visacuotas?'
-                ].map((quick, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setSimQuestion(quick)}
-                    className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 transition-colors"
-                  >
-                    {quick}
-                  </button>
-                ))}
-              </div>
-
               <button
-                type="submit"
-                disabled={simLoading || !simQuestion.trim()}
-                className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-purple-500/20 hover:shadow-purple-500/30 transition-all flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
+                onClick={handleNewChat}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold rounded-xl transition-colors cursor-pointer"
               >
-                {simLoading ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
-                <span>{simLoading ? 'Simulando...' : 'Evaluar Respuesta'}</span>
+                <Plus size={13} /> Nuevo
               </button>
-            </form>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-snug">Cada chat guarda su propia memoria. Podés crear varios y borrarlos cuando quieras.</p>
+
+            <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
+              {/* Chat nuevo sin guardar */}
+              {activeSessionId === null && (
+                <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-purple-300 bg-purple-50 ring-1 ring-purple-400/20">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="h-2 w-2 rounded-full bg-purple-500 shrink-0" />
+                    <span className="text-xs font-bold text-purple-900 truncate">Chat nuevo (sin guardar)</span>
+                  </div>
+                  <span className="text-[10px] text-purple-500 font-semibold shrink-0">se guarda al escribir</span>
+                </div>
+              )}
+              {sessions.length === 0 && activeSessionId !== null && (
+                <p className="text-[11px] text-slate-400 py-4 text-center">No hay chats guardados todavía.</p>
+              )}
+              {sessions.map(s => (
+                <div
+                  key={s.id}
+                  onClick={() => handleOpenSession(s)}
+                  className={`group flex items-center justify-between px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${
+                    activeSessionId === s.id
+                      ? 'border-purple-300 bg-purple-50 ring-1 ring-purple-400/20'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MessageSquare size={13} className={activeSessionId === s.id ? 'text-purple-600 shrink-0' : 'text-slate-400 shrink-0'} />
+                    <div className="min-w-0">
+                      <p className={`text-xs font-bold truncate ${activeSessionId === s.id ? 'text-purple-900' : 'text-slate-700'}`}>{s.nombre || 'Chat de prueba'}</p>
+                      <p className="text-[10px] text-slate-400">{(s.mensajes?.length || 0)} mensajes</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteSession(s.id, e)}
+                    className="p-1 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                    title="Borrar chat"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="lg:col-span-7 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Resultado de la IA</span>
-              {simResult && (simResult.source === 'bot-real'
-                ? <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">🤖 Bot real (deepseek)</span>
-                : <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">≈ Aproximación (sin llave)</span>)}
+          {/* Columna derecha: el chat conversacional */}
+          <div className="lg:col-span-8 bg-white rounded-3xl border border-slate-200/80 shadow-sm flex flex-col" style={{ minHeight: '560px' }}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-purple-100 text-purple-700 rounded-xl"><Zap size={18} /></div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Probador con memoria</h3>
+                  <p className="text-[11px] text-slate-400">Escribí como si fueras el cliente. El bot recuerda todo el hilo.</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 hidden sm:inline">🤖 Bot real (deepseek)</span>
             </div>
 
-            {simResult ? (
-              <div className="space-y-4 animate-fadeIn">
-                {/* Simulated Chat Balloon */}
-                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4.5 space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="h-6 w-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-[10px] font-bold">IA</div>
-                    <span className="text-xs font-bold text-slate-800">Respuesta Generada del Bot:</span>
+            {/* Hilo de mensajes */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4" style={{ maxHeight: '420px' }}>
+              {chatMessages.length === 0 ? (
+                <div className="py-16 text-center text-slate-400 space-y-2">
+                  <MessageSquare size={32} className="mx-auto text-slate-300 opacity-60" />
+                  <p className="text-xs font-semibold text-slate-500">Escribí el primer mensaje del cliente para empezar.</p>
+                  <p className="text-[11px] text-slate-400 max-w-sm mx-auto">La simulación usa el catálogo (RAG), las reglas aprobadas y recuerda toda la conversación.</p>
+                  <div className="flex flex-wrap justify-center gap-1.5 pt-3">
+                    {[
+                      'Hola, necesito un control para mi portón',
+                      'Es Liftmaster',
+                      '¿Lo envían a Xela?',
+                      '¿Cuánto por 3 controles?'
+                    ].map((quick, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setSimInput(quick)}
+                        className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 transition-colors"
+                      >
+                        {quick}
+                      </button>
+                    ))}
                   </div>
-                  <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed pl-8">
-                    {simResult.reply}
-                  </p>
                 </div>
+              ) : (
+                chatMessages.map((m, i) => (
+                  m.role === 'user' ? (
+                    <div key={i} className="flex justify-end">
+                      <div className="max-w-[80%] bg-[#FF6B00] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-xs leading-relaxed whitespace-pre-line shadow-sm">
+                        {m.content}
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={i} className="flex justify-start">
+                      <div className="max-w-[85%] space-y-2">
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl rounded-bl-md px-4 py-2.5">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <div className="h-4 w-4 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-[8px] font-bold">IA</div>
+                            <span className="text-[10px] font-bold text-slate-500">Fer (bot)</span>
+                          </div>
+                          <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed">{m.content}</p>
+                        </div>
 
-                {/* Media Attachment Indicator (Fotos y Videos) */}
-                {simResult.mediaInfo && (
-                  <div className={`p-4 rounded-2xl border transition-all text-xs space-y-2.5 ${
-                    simResult.mediaInfo.willSendVideo
-                      ? 'bg-purple-50/70 border-purple-200 ring-1 ring-purple-400/20'
-                      : simResult.mediaInfo.willSendImage
-                      ? 'bg-emerald-50/70 border-emerald-200 ring-1 ring-emerald-400/20'
-                      : 'bg-slate-50 border-slate-200/80'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {simResult.mediaInfo.willSendVideo ? (
-                          <div className="px-2.5 py-1 rounded-lg bg-purple-100 text-purple-800 font-bold flex items-center gap-1.5">
-                            <Video size={14} />
-                            <span className="text-[10px] font-black uppercase tracking-wider">🎬 Enviará Video Demostrativo</span>
+                        {/* Indicador de media (compacto) */}
+                        {m.mediaInfo && (m.mediaInfo.willSendImage || m.mediaInfo.willSendVideo) && (
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
+                            m.mediaInfo.willSendVideo
+                              ? 'bg-purple-50 border-purple-200 text-purple-800'
+                              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                          }`}>
+                            {m.mediaInfo.willSendVideo ? <Video size={12} /> : <ImageIcon size={12} />}
+                            {m.mediaInfo.willSendVideo ? '🎬 Enviará video' : `📸 Enviará ${m.mediaInfo.images?.length || 1} foto(s)`}
                           </div>
-                        ) : simResult.mediaInfo.willSendImage ? (
-                          <div className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1.5">
-                            <ImageIcon size={14} />
-                            <span className="text-[10px] font-black uppercase tracking-wider">📸 Enviará Foto(s) Adjunta(s)</span>
+                        )}
+                        {m.mediaInfo && m.mediaInfo.images && m.mediaInfo.images.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {m.mediaInfo.images.slice(0, 4).map((img, idx) => (
+                              <img
+                                key={idx}
+                                src={img.url}
+                                alt={img.desc || 'Foto'}
+                                className="h-11 w-11 object-cover rounded-lg border border-slate-200 bg-white"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                              />
+                            ))}
                           </div>
-                        ) : (
-                          <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded-md">
-                            <span>📝</span> Solo Mensaje de Texto (Sin fotos/videos)
-                          </span>
+                        )}
+
+                        {/* Reglas aplicadas (compacto) */}
+                        {m.appliedRules && m.appliedRules.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {m.appliedRules.slice(0, 3).map((r, idx) => (
+                              <span key={idx} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100" title={r.rule}>
+                                📘 {r.title}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      <span className="text-[10px] font-bold text-slate-400">
-                        {simResult.mediaInfo.willSendVideo ? 'Video listo en WhatsApp' : simResult.mediaInfo.willSendImage ? 'Foto lista en WhatsApp' : 'Respuesta directa'}
-                      </span>
                     </div>
-
-                    <p className="text-[11px] text-slate-700 font-medium">
-                      {simResult.mediaInfo.summary}
-                    </p>
-
-                    {/* Previews de fotos si están disponibles */}
-                    {simResult.mediaInfo.images && simResult.mediaInfo.images.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {simResult.mediaInfo.images.slice(0, 4).map((img, idx) => (
-                          <div key={idx} className="relative group">
-                            <img
-                              src={img.url}
-                              alt={img.desc || 'Foto'}
-                              className="h-12 w-12 object-cover rounded-xl border border-slate-200 bg-white shadow-xs"
-                              onError={(e) => { e.target.style.display = 'none'; }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  )
+                ))
+              )}
+              {simLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl rounded-bl-md px-4 py-3 flex items-center gap-2 text-xs text-slate-400">
+                    <RefreshCw size={13} className="animate-spin" /> Fer está escribiendo…
                   </div>
-                )}
-
-                {/* Applied Rules Summary */}
-                {simResult.appliedRules && simResult.appliedRules.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-[11px] font-black uppercase tracking-widest text-purple-700">Reglas Aprendidas que Influyeron:</span>
-                    <div className="space-y-1.5">
-                      {simResult.appliedRules.map((r, i) => (
-                        <div key={i} className="p-3 bg-purple-50/50 border border-purple-100 rounded-xl text-xs flex items-start gap-2">
-                          <span className="text-purple-600 mt-0.5">•</span>
-                          <div>
-                            <p className="font-bold text-purple-900">{r.title}</p>
-                            <p className="text-[11px] text-purple-700">{r.rule}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Action Feedback */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">¿No te gustó la respuesta? Creá una regla correctiva:</span>
-                  <button
-                    onClick={() => {
-                      setFormData({
-                        type: 'prohibido',
-                        title: `Corrección para: "${simQuestion.slice(0, 30)}..."`,
-                        rule: `PROHIBIDO dar la respuesta anterior. La respuesta correcta debe ser: ...`,
-                        example_question: simQuestion,
-                        example_response: '',
-                        status: 'approved'
-                      });
-                      setEditingRule(null);
-                      setModalOpen(true);
-                    }}
-                    className="text-[11px] font-bold text-[#FF6B00] hover:underline flex items-center gap-1"
-                  >
-                    <span>Corregir esta respuesta</span>
-                    <ArrowRight size={12} />
-                  </button>
                 </div>
-              </div>
-            ) : (
-              <div className="py-16 text-center text-slate-400 space-y-2">
-                <MessageSquare size={32} className="mx-auto text-slate-300 opacity-60" />
-                <p className="text-xs font-semibold text-slate-500">Ingresá una pregunta en el probador para ver la respuesta simulada.</p>
-                <p className="text-[11px] text-slate-400 max-w-sm mx-auto">La simulación tiene en cuenta el catálogo RAG y todas las reglas aprobadas en tiempo real.</p>
+              )}
+            </div>
+
+            {/* Barra de correción + input */}
+            {chatMessages.length > 0 && (
+              <div className="px-6 pt-2 flex justify-end">
+                <button
+                  onClick={() => {
+                    setFormData({
+                      type: 'prohibido',
+                      title: `Corrección para: "${lastClientQuestion.slice(0, 30)}..."`,
+                      rule: `PROHIBIDO dar la respuesta anterior. La respuesta correcta debe ser: ...`,
+                      example_question: lastClientQuestion,
+                      example_response: '',
+                      status: 'approved'
+                    });
+                    setEditingRule(null);
+                    setModalOpen(true);
+                  }}
+                  className="text-[10px] font-bold text-[#FF6B00] hover:underline flex items-center gap-1"
+                >
+                  <span>Corregir la última respuesta</span>
+                  <ArrowRight size={11} />
+                </button>
               </div>
             )}
+            <form onSubmit={handleSendChat} className="border-t border-slate-100 p-4 flex items-end gap-2">
+              <textarea
+                rows={1}
+                value={simInput}
+                onChange={(e) => setSimInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat(e); } }}
+                placeholder="Escribí como cliente…  (Enter para enviar, Shift+Enter para salto de línea)"
+                className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-purple-500 focus:bg-white transition-all resize-none max-h-32"
+              />
+              <button
+                type="submit"
+                disabled={simLoading || !simInput.trim()}
+                className="p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50 cursor-pointer shrink-0"
+                title="Enviar"
+              >
+                {simLoading ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </form>
           </div>
         </div>
       )}

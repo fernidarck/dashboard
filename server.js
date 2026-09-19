@@ -489,6 +489,16 @@ async function setup() {
       created_at TEXT
     )`); } catch(e){}
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_sent_media_wamid ON sent_media(wamid)"); } catch(e){}
+    // SESIONES DE PRUEBA DEL PROBADOR: cada "chat de prueba" tiene su propio hilo (memoria)
+    // guardado como JSON. Sirve para simular conversaciones completas con el bot, con
+    // contexto, y poder crear/guardar/borrar varias. No toca leads ni conversaciones reales.
+    try { await db.exec(`CREATE TABLE IF NOT EXISTS test_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT,
+      mensajes TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )`); } catch(e){}
     // WEB RAG: catálogo de la tienda WooCommerce onecontrol.shop, SEPARADO del RAG/catálogo
     // curado. Se sincroniza de la API pública (Store API) y el bot lo usa como fuente
     // SECUNDARIA para dar precios de productos que no están en el RAG. NO se mezcla.
@@ -4392,11 +4402,75 @@ app.post('/api/training/analyze', async (_req, res) => {
   }
 });
 
+// 6.5 Sesiones de prueba del Probador (chats de prueba con memoria, guardados)
+// Cada sesión es un hilo independiente que el dueño puede crear, guardar y borrar.
+app.get('/api/training/sessions', async (req, res) => {
+  try {
+    const rows = await db.all("SELECT id, nombre, mensajes, created_at, updated_at FROM test_sessions ORDER BY updated_at DESC, id DESC");
+    const sessions = rows.map(r => {
+      let mensajes = [];
+      try { mensajes = JSON.parse(r.mensajes || '[]'); } catch(e){ mensajes = []; }
+      return { id: r.id, nombre: r.nombre, mensajes, created_at: r.created_at, updated_at: r.updated_at };
+    });
+    res.json(sessions);
+  } catch (err) {
+    console.error('Error GET /api/training/sessions:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/training/sessions', async (req, res) => {
+  try {
+    const { nombre, mensajes } = req.body || {};
+    const now = new Date().toISOString();
+    const msgs = Array.isArray(mensajes) ? mensajes : [];
+    const r = await db.run(
+      "INSERT INTO test_sessions (nombre, mensajes, created_at, updated_at) VALUES (?,?,?,?)",
+      [ (nombre || 'Chat de prueba').slice(0, 120), JSON.stringify(msgs), now, now ]
+    );
+    res.json({ id: r.lastID, nombre: nombre || 'Chat de prueba', mensajes: msgs, created_at: now, updated_at: now });
+  } catch (err) {
+    console.error('Error POST /api/training/sessions:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/training/sessions/:id', async (req, res) => {
+  try {
+    const { nombre, mensajes } = req.body || {};
+    const now = new Date().toISOString();
+    const sets = [];
+    const vals = [];
+    if (typeof nombre === 'string') { sets.push('nombre = ?'); vals.push(nombre.slice(0, 120)); }
+    if (Array.isArray(mensajes)) { sets.push('mensajes = ?'); vals.push(JSON.stringify(mensajes)); }
+    sets.push('updated_at = ?'); vals.push(now);
+    vals.push(req.params.id);
+    await db.run(`UPDATE test_sessions SET ${sets.join(', ')} WHERE id = ?`, vals);
+    res.json({ ok: true, updated_at: now });
+  } catch (err) {
+    console.error('Error PUT /api/training/sessions/:id:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/training/sessions/:id', async (req, res) => {
+  try {
+    await db.run("DELETE FROM test_sessions WHERE id = ?", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error DELETE /api/training/sessions/:id:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7. Probador / Simulador en Vivo de Respuestas
 app.post('/api/training/test', async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question, history } = req.body;
     if (!question || !question.trim()) return res.status(400).json({ error: "Falta la pregunta" });
+    // Historial de la charla (memoria) para que el simulador siga el contexto igual que el bot.
+    // Formato: [{ role: 'user'|'assistant', content: '...' }, ...]
+    const hist = Array.isArray(history) ? history.filter(h => h && h.role && h.content).slice(-10) : [];
 
     const approvedRules = await db.all("SELECT * FROM training_rules WHERE status = 'approved'");
     const qClean = question.toLowerCase();
@@ -4536,7 +4610,10 @@ app.post('/api/training/test', async (req, res) => {
         // RAG idéntico al bot: llamamos al MISMO endpoint (sin refactor) con el token interno.
         let ragCtx = '', ragFound = false;
         try {
-          const ragRes = await fetch(`http://127.0.0.1:${port}/api/rag/context?maxChars=2500&q=${encodeURIComponent(question)}`, { headers: { Authorization: 'Bearer onecontrol-n8n-token-static-2026' } });
+          // El RAG usa el contexto: últimas preguntas del cliente + la actual, para que
+          // productos ya mencionados (ej. "LiftMaster") sigan apareciendo en follow-ups.
+          const ragQuery = (hist.filter(h => h.role === 'user').slice(-2).map(h => h.content).join(' ') + ' ' + question).trim();
+          const ragRes = await fetch(`http://127.0.0.1:${port}/api/rag/context?maxChars=2500&q=${encodeURIComponent(ragQuery)}`, { headers: { Authorization: 'Bearer onecontrol-n8n-token-static-2026' } });
           const ragJson = await ragRes.json();
           ragCtx = ragJson.context || ''; ragFound = !!ragJson.found;
         } catch (e) { console.error('sim RAG:', e.message); }
@@ -4547,7 +4624,7 @@ app.post('/api/training/test', async (req, res) => {
         const llmRes = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, temperature: 0.5, messages: [{ role: 'system', content: sys }, { role: 'user', content: question }] }),
+          body: JSON.stringify({ model, temperature: 0.5, messages: [{ role: 'system', content: sys }, ...hist, { role: 'user', content: question }] }),
           signal: ctrl.signal
         }).finally(() => clearTimeout(to));
         const llmJson = await llmRes.json();

@@ -914,17 +914,54 @@ export function useAppData(apiBase, authToken) {
     }
   }, [apiFetch, apiBase, fetchTrainingRules, notify]);
 
-  const testTrainingPrompt = useCallback(async (question) => {
+  const testTrainingPrompt = useCallback(async (question, history = []) => {
     try {
       const res = await apiFetch(`${apiBase}/api/training/test`, {
         method: 'POST',
-        body: JSON.stringify({ question })
+        body: JSON.stringify({ question, history })
       });
       if (res.ok) return await res.json();
       return { error: 'Error en la respuesta' };
     } catch (e) {
       return { error: e.message };
     }
+  }, [apiFetch, apiBase]);
+
+  // --- Sesiones de prueba del Probador (chats de prueba con memoria, guardados) ---
+  const fetchTestSessions = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/sessions`);
+      if (res.ok) return await res.json();
+      return [];
+    } catch (e) { return []; }
+  }, [apiFetch, apiBase]);
+
+  const createTestSession = useCallback(async (nombre, mensajes = []) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/sessions`, {
+        method: 'POST',
+        body: JSON.stringify({ nombre, mensajes })
+      });
+      if (res.ok) return await res.json();
+      return null;
+    } catch (e) { return null; }
+  }, [apiFetch, apiBase]);
+
+  const updateTestSession = useCallback(async (id, { nombre, mensajes }) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/sessions/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ nombre, mensajes })
+      });
+      return res.ok;
+    } catch (e) { return false; }
+  }, [apiFetch, apiBase]);
+
+  const deleteTestSession = useCallback(async (id) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/training/sessions/${id}`, { method: 'DELETE' });
+      return res.ok;
+    } catch (e) { return false; }
   }, [apiFetch, apiBase]);
 
   const fetchMetaInsights = useCallback(async () => {
@@ -963,6 +1000,7 @@ export function useAppData(apiBase, authToken) {
     approveKnowledge, ignoreKnowledge,
     saveTrainingRule, updateTrainingRule, deleteTrainingRule, approveTrainingRule, rejectTrainingRule,
     analyzeTrainingWithAI, testTrainingPrompt,
+    fetchTestSessions, createTestSession, updateTestSession, deleteTestSession,
     uploadProductImage, uploadDocument, uploadImageFile, uploadMediaFile, runTestSearch, syncBrainConfig,
     saveChannel, deleteChannel, toggleChannelBot, saveUser, deleteUser,
     // Alerts
