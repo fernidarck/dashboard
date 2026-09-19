@@ -433,6 +433,9 @@ async function setup() {
     try { await db.exec("ALTER TABLE leads ADD COLUMN ctwa_clid TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN ad_source_id TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN ad_source_url TEXT"); } catch(e){}
+    // Título y miniatura del anuncio (los manda WhatsApp) → atribución automática sin mapear.
+    try { await db.exec("ALTER TABLE leads ADD COLUMN ad_headline TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE leads ADD COLUMN ad_image_url TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN direccion TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN notas TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN nit TEXT"); } catch(e){}
@@ -1608,6 +1611,10 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       const ctwaClid   = data.ctwa_clid    || ref.ctwa_clid  || null;
       const adSourceId  = data.ad_source_id  || ref.source_id  || null;
       const adSourceUrl = data.ad_source_url || ref.source_url || null;
+      // ATRIBUCIÓN AUTOMÁTICA: WhatsApp manda el TÍTULO y la MINIATURA del anuncio en cada
+      // lead. Con eso el bot sabe qué producto vio el cliente SIN mapear anuncios a mano.
+      const adHeadline = ref.headline || ref.body || null;
+      const adImageUrl = ref.image_url || ref.imageUrl || ref.thumbnail_url || null;
 
       let detectedMotor = data.motor && data.motor !== 'N/A' && data.motor !== 'null' ? data.motor : 'N/A';
       if (detectedMotor === 'N/A' && parsed.mensajePrincipal) {
@@ -1618,14 +1625,14 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       }
 
       const result = await db.run(
-        `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone, priority, ctwa_clid, ad_source_id, ad_source_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO leads (nombre, phone, email, score, estado, origen, botActive, motor, falla, zona, direccion, notas, nit, channel_phone, priority, ctwa_clid, ad_source_id, ad_source_url, ad_headline, ad_image_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         parsed.nombre || 'Cliente WhatsApp', data.phone || parsed.clientPhoneRaw, data.email || 'N/A',
         data.score || 50, initialEstado, `WhatsApp (${sourceName})`, initialBotActive,
         detectedMotor, data.falla || 'N/A', data.zona || 'N/A',
         data.direccion || null, data.notas || null, data.nit || null, cleanChannelPhone,
         initialEstado === 'Intervención Requerida' ? 'urgent' : 'normal',
-        ctwaClid, adSourceId, adSourceUrl
+        ctwaClid, adSourceId, adSourceUrl, adHeadline, adImageUrl
       );
       leadId = result.lastID;
       console.log(`🆕 [${sourceName}] Creado nuevo lead ID ${leadId} (${cleanPhone}) — Motor inicial: "${detectedMotor}"`);
@@ -3707,14 +3714,37 @@ app.get('/api/rag/context', async (req, res) => {
       if (phoneRaw) {
         const cleanPhone = String(phoneRaw).replace(/\D/g, '');
         const lead = await db.get(
-          "SELECT ad_source_id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND ad_source_id IS NOT NULL AND ad_source_id != '' ORDER BY id DESC LIMIT 1",
+          "SELECT ad_source_id, ad_headline FROM leads WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ? AND (ad_source_id IS NOT NULL AND ad_source_id != '' OR ad_headline IS NOT NULL AND ad_headline != '') ORDER BY id DESC LIMIT 1",
           cleanPhone
         );
-        if (lead && lead.ad_source_id) {
-          const adProd = await getProductByAdId(lead.ad_source_id);
+        if (lead && (lead.ad_source_id || lead.ad_headline)) {
+          // 1) Mapeo manual anuncio→producto (si el dueño lo configuró).
+          let adProd = lead.ad_source_id ? await getProductByAdId(lead.ad_source_id) : null;
+          // 2) AUTOMÁTICO: detectar el producto por el TÍTULO del anuncio (lo manda WhatsApp).
+          if (!adProd && lead.ad_headline) {
+            try {
+              const noAcc = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+              const hl = noAcc(lead.ad_headline);
+              const GEN = new Set(['para','con','del','los','las','una','uno','control','motor','porton','mesa','noche','modelo','remoto','tienda']);
+              const prods2 = await db.all("SELECT nombre FROM products WHERE activo = 1");
+              let best = null, bestScore = 0;
+              for (const p of prods2) {
+                const toks = noAcc(p.nombre).split(/\s+/).filter(t => t.length > 3 && !GEN.has(t));
+                // número de modelo también cuenta (ej. "modelo 1")
+                const modelo = (noAcc(p.nombre).match(/modelo\s*(\d+)/) || [])[1];
+                let sc = toks.filter(t => hl.includes(t)).length;
+                if (modelo && new RegExp('modelo\\s*' + modelo + '(\\D|$)').test(hl)) sc += 2;
+                if (sc > bestScore) { bestScore = sc; best = p; }
+              }
+              if (best && bestScore > 0) adProd = best;
+            } catch (e) {}
+          }
           if (adProd) {
             adProdName = adProd.nombre;
             adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO (IMPORTANTE): Este cliente llegó desde un anuncio de Meta que muestra el producto *${adProd.nombre}*. Si dice "la del anuncio", "la que sale en el anuncio", "la de la publicidad", "esa" o algo parecido SIN nombrar otro modelo, se refiere a *${adProd.nombre}*. Enfocate en ESE producto y mandale su foto directo — NO le tires todos los modelos primero.\n\n`;
+          } else if (lead.ad_headline) {
+            // No calzó un producto exacto, pero le decimos al bot de qué era el anuncio.
+            adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO: Este cliente llegó desde un anuncio titulado "${lead.ad_headline}". Cuando diga "la del anuncio" o "esa", se refiere a lo de ese título. Ofrecele directo el producto que coincida con ese título (con su foto) — NO le pidas la marca ni le tires todos los modelos primero.\n\n`;
           }
         }
       }
