@@ -3911,19 +3911,36 @@ app.get('/api/rag/context', async (req, res) => {
     // UNA SOLA FOTO: dejamos la URL de imagen SOLO en el primer bloque que trae foto (el
     // producto más relevante). A los demás les quitamos la foto para que el bot no mande
     // fotos de varios productos (ej. mandaba el control + el riel + la botonera).
-    let imgYaIncluida = false;
     const quitarFotos = (s) => String(s)
       .replace(/ - Imagen:\s*\S+/gi, '')
       .replace(/\n?[^\n]*IMAGEN_PARA_ENVIAR:\s*\S+/gi, '')
       .replace(/\n?\s*⚠️ ENVIÁ ESTA FOTO[^\n]*/gi, '');
+    // MUEBLES/MESAS = VITRINA: si el cliente navega mesas de noche/muebles SIN nombrar un
+    // modelo específico, mostramos VARIOS modelos (con foto) para que elija — es lo que se
+    // quiere. Para controles/motores/repuestos seguimos con UNA sola foto (evita el bug de
+    // mandar control+riel+botonera). Si ya nombró un modelo puntual, también UNA sola.
+    const qNorm = stripAcc(String(q).toLowerCase());
+    const navegaMuebles = /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(qNorm);
+    const pidioModeloEspecifico = /(modelo\s*(1|2|3|4|5|uno|dos|tres|cuatro|cinco)|one\s*night|melamina|caf[eé])/.test(qNorm);
+    const permitirVariasFotos = navegaMuebles && !pidioModeloEspecifico;
+    const maxFotos = permitirVariasFotos ? 5 : 1;
+    let fotosIncluidas = 0;
     let context = "";
     const sources = [];
     const budget = Number(maxChars) - adNote.length;
     for (const doc of scored) {
       let contenido = doc.content;
       const traeFoto = /(Imagen:|IMAGEN_PARA_ENVIAR)/i.test(contenido);
-      if (traeFoto && imgYaIncluida) contenido = quitarFotos(contenido);
-      else if (traeFoto) imgYaIncluida = true;
+      if (traeFoto) {
+        const esMueble = /(mesa|mesita|noche|mueble|zapatera|estanter)/i.test(doc.name || '');
+        // En modo vitrina solo conservamos fotos de MUEBLES (no metemos fotos de otra
+        // categoría que se haya colado). En modo normal, la primera foto que aparezca.
+        const puedeConservar = permitirVariasFotos
+          ? (esMueble && fotosIncluidas < maxFotos)
+          : (fotosIncluidas < 1);
+        if (puedeConservar) fotosIncluidas++;
+        else contenido = quitarFotos(contenido);
+      }
       const block = `--- RESULTADO: ${doc.name} ---\n${contenido}\n\n`;
       if (sources.length > 0 && context.length + block.length > budget) break;
       context += block;
