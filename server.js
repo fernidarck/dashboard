@@ -2054,6 +2054,40 @@ app.post('/api/sent-media', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// FOTO CORRECTA SEGÚN EL TEXTO DEL BOT: dado el mensaje que el bot va a enviar, devuelve la
+// foto del producto que el bot NOMBRA (ej. "modelo 1" → foto del modelo 1). n8n la usa para
+// CORREGIR la foto y que nunca mande la de otro modelo. Solo devuelve found:true si hay un
+// ganador CLARO (un modelo puntual nombrado); si es genérico o ambiguo, found:false (no toca).
+app.get('/api/products/match-photo', async (req, res) => {
+  try {
+    const strip = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const text = strip(req.query.text || '');
+    if (!text.trim()) return res.json({ found: false });
+    const prods = await db.all("SELECT id, nombre, imagen FROM products WHERE activo = 1 AND imagen IS NOT NULL AND imagen != ''");
+    if (!prods.length) return res.json({ found: false });
+    const GENERIC = new Set(['mesa','mesita','noche','modelo','control','controles','remoto','remotos','producto','porton','portones','motor','motores','kit','de','del','la','el','los','las','para','con','y','en','un','una','su','le']);
+    // Modelo puntual nombrado en el texto ("modelo 3", "one night").
+    const modeloTokens = [];
+    (text.match(/modelo\s*\d+/g) || []).forEach(t => modeloTokens.push(t.replace(/\s+/g, ' ').trim()));
+    if (/one\s*night/.test(text)) modeloTokens.push('one night');
+    const scored = prods.map(p => {
+      const nameN = strip(p.nombre || '');
+      let score = 0;
+      modeloTokens.forEach(t => { if (nameN.includes(t)) score += 50; });   // modelo puntual = match fuerte
+      // Tokens distintivos del nombre (marca/modelo) presentes en el texto.
+      nameN.split(/\s+/).filter(w => w.length > 2 && !GENERIC.has(w)).forEach(w => { if (text.includes(w)) score += 3; });
+      const url = String(p.imagen).split(',')[0].trim();
+      return { id: p.id, name: p.nombre, url, score };
+    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+    if (scored.length === 0) return res.json({ found: false });
+    // Ganador CLARO: si el primero empata con el segundo, es ambiguo (ej. vitrina de varios
+    // modelos) → no corregimos, dejamos que se manden varios.
+    if (scored.length > 1 && scored[0].score === scored[1].score) return res.json({ found: false, ambiguous: true });
+    const top = scored[0];
+    res.json({ found: true, name: top.name, url: top.url, score: top.score });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // n8n llama a esto cuando llega una RESPUESTA con context.id (el wamid de la foto citada).
 // Devuelve de qué producto/foto era esa foto, para que el bot NO adivine.
 // GET /api/sent-media/resolve?wamid=wamid.XXX
