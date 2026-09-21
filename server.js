@@ -2019,13 +2019,38 @@ app.get('/api/bot/status/:phone', async (req, res) => {
 // Body: { wamid, product_id, product_name, media_url, lead_id }
 app.post('/api/sent-media', async (req, res) => {
   try {
-    const { wamid, product_id, product_name, media_url, lead_id } = req.body;
+    const { wamid, media_url } = req.body;
+    let { product_id, product_name, lead_id } = req.body;
     if (!wamid) return res.status(400).json({ error: 'Falta wamid' });
+
+    // Si n8n no manda el nombre del producto, lo resolvemos desde la URL de la foto
+    // (comparando el nombre de archivo contra las imágenes del catálogo). Así n8n solo
+    // necesita mandar {wamid, media_url, phone} y el dashboard sabe de qué producto es.
+    if (!product_name && media_url) {
+      const baseName = (u) => { try { return decodeURIComponent(String(u).split('?')[0].split('/').pop()); } catch { return String(u).split('/').pop(); } };
+      const target = baseName(media_url);
+      if (target) {
+        const prods = await db.all("SELECT id, nombre, imagen FROM products WHERE imagen IS NOT NULL AND imagen != ''");
+        const hit = prods.find(p => String(p.imagen).split(',').some(u => baseName(u) === target));
+        if (hit) { product_id = product_id || hit.id; product_name = hit.nombre; }
+      }
+    }
+
+    // Si no vino lead_id pero sí el teléfono, resolvemos el lead (para saber a quién fue).
+    if (!lead_id && (req.body.phone || req.body.channel_phone)) {
+      const cleanPhone = String(req.body.phone || '').replace(/\D/g, '');
+      const cleanChan  = String(req.body.channel_phone || '').replace(/\D/g, '');
+      let lead = null;
+      if (cleanPhone && cleanChan) lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? AND REPLACE(REPLACE(REPLACE(channel_phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", cleanPhone, cleanChan);
+      if (!lead && cleanPhone) lead = await db.get("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", cleanPhone);
+      if (lead) lead_id = lead.id;
+    }
+
     await db.run(
       "INSERT INTO sent_media (wamid, product_id, product_name, media_url, lead_id, created_at) VALUES (?,?,?,?,?,?)",
       String(wamid), product_id || null, product_name || null, media_url || null, lead_id || null, new Date().toISOString()
     );
-    res.json({ success: true });
+    res.json({ success: true, product_name: product_name || null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2079,6 +2104,33 @@ app.post('/api/messages/log-bot-media', async (req, res) => {
     const mediaType = /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(url) ? 'video' : 'image';
     await saveSmartMessage(lead.id, 'bot', caption || '', horaGuate(), url, mediaType);
     res.json({ ok: true, leadId: lead.id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Fotos que el bot YA le mandó a este cliente (para que n8n NO reenvíe la misma foto
+// en cada respuesta). Devuelve la lista de URLs y sus nombres de archivo (basename).
+app.get('/api/media/sent', async (req, res) => {
+  try {
+    const cleanPhone = String(req.query.phone || '').replace(/\D/g, '');
+    const cleanChan  = String(req.query.channel_phone || '').replace(/\D/g, '');
+    if (!cleanPhone) return res.json({ urls: [], files: [] });
+    // Todos los leads de ese teléfono (mismo cliente aunque tenga varios canales).
+    let leads;
+    if (cleanChan) {
+      leads = await db.all("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? AND REPLACE(REPLACE(REPLACE(channel_phone,'+',''),' ',''),'-','') = ?", cleanPhone, cleanChan);
+    }
+    if (!leads || leads.length === 0) {
+      leads = await db.all("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ?", cleanPhone);
+    }
+    if (!leads || leads.length === 0) return res.json({ urls: [], files: [] });
+    const ids = leads.map(l => l.id);
+    const rows = await db.all(
+      `SELECT DISTINCT mediaUrl FROM messages WHERE sender = 'bot' AND mediaUrl IS NOT NULL AND mediaUrl != '' AND lead_id IN (${ids.map(() => '?').join(',')})`,
+      ...ids
+    );
+    const urls = rows.map(r => r.mediaUrl);
+    const files = urls.map(u => { try { return decodeURIComponent(String(u).split('?')[0].split('/').pop()); } catch { return String(u).split('/').pop(); } });
+    res.json({ urls, files });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 // ─────────────────────────────────────────────────────────────────────────────
