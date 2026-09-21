@@ -3933,10 +3933,20 @@ app.get('/api/rag/context', async (req, res) => {
                       .map(normalizeKw)
                       .filter(k => !RAG_STOPWORDS.has(k));
 
+    // MODELO PUNTUAL POR NÚMERO/NOMBRE ("modelo 3", "modelo 5", "one night"): el número
+    // suelto ("3") se filtra por longitud, así que lo tratamos aparte para que la foto sea
+    // la del modelo correcto (evita "pide modelo 3 y le manda el modelo 5").
+    const qStrip = stripAcc(String(q).toLowerCase());
+    const modeloTokens = [];
+    (qStrip.match(/modelo\s*\d+/g) || []).forEach(t => modeloTokens.push(t.replace(/\s+/g, ' ').trim()));
+    if (/one\s*night/.test(qStrip)) modeloTokens.push('one night');
+
     const scored = allKnowledge.map(doc => {
       const nameL    = stripAcc(String(doc.name || '').toLowerCase());
       const contentL = stripAcc(String(doc.content || '').toLowerCase());
       let score = 0;
+      // Boost fuerte si el nombre del doc contiene el modelo puntual pedido.
+      if (modeloTokens.length && modeloTokens.some(t => nameL.includes(t))) score += 50;
       keywords.forEach(kw => {
         // Un match en el NOMBRE pesa mucho más que en la descripción: así una consulta
         // con marca ("chamberlain") prioriza el producto correcto y no cualquiera que
@@ -3953,6 +3963,12 @@ app.get('/api/rag/context', async (req, res) => {
       // WEB RAG es secundario: pequeño castigo para que el RAG/catálogo curado gane
       // el mismo empate; el web solo asoma cuando el principal no cubre el producto.
       if (doc.__web) score -= 0.5;
+      // ANUNCIO (arreglo del "dice modelo 1 y manda foto del modelo 5"): si este doc ES el
+      // producto del anuncio, va HASTA ARRIBA. Así su bloque (y su foto) es el que sobrevive
+      // a la regla de "una sola foto" y COINCIDE con lo que el bot dice. Sin esto, el RAG
+      // rankea por keyword (ej. "mesita" pega con "Mesita de noche modelo 5") y la foto no
+      // corresponde al modelo del que habla el bot.
+      if (adProdName && stripAcc(String(doc.name || '').toLowerCase()) === stripAcc(String(adProdName).toLowerCase())) score += 100;
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
@@ -3974,7 +3990,9 @@ app.get('/api/rag/context', async (req, res) => {
     const qNorm = stripAcc(String(q).toLowerCase());
     const navegaMuebles = /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(qNorm);
     const pidioModeloEspecifico = /(modelo\s*(1|2|3|4|5|uno|dos|tres|cuatro|cinco)|one\s*night|melamina|caf[eé])/.test(qNorm);
-    const permitirVariasFotos = navegaMuebles && !pidioModeloEspecifico;
+    // Vitrina (varias fotos) SOLO si navega muebles genéricos, NO nombró un modelo y NO viene
+    // de un anuncio de un modelo puntual (si vino del anuncio, nos enfocamos en ESE modelo).
+    const permitirVariasFotos = navegaMuebles && !pidioModeloEspecifico && !adProdName;
     const maxFotos = permitirVariasFotos ? 5 : 1;
     let fotosIncluidas = 0;
     let context = "";
