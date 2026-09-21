@@ -3329,7 +3329,11 @@ app.post('/api/photos/auto-attach', async (req, res) => {
     const TRIG_STOP = new Set(['como','para','este','esta','esto','cuando','video','favor','foto','fotos','pidan','pida','pregunten','pregunte','pregunta','quieran','mostra','mostrala','mostrar','muestra','manda','dale','sobre','enviar','envia','este']);
     const stem = (w) => w.replace(/(ciones|cion|es|as|os|an|en|n|s)$/,'');
     const matchTrig = (words, scope) => {
-      const sw = scope.split(/[^a-záéíóúñ0-9]+/i).filter(Boolean).map(stem);
+      // BUG FIX: stem() puede devolver "" para palabras cortas ("es","en","os","as"...).
+      // Antes `ws.includes(s)` con s="" daba SIEMPRE true → cualquier texto con "es"/"en"
+      // disparaba TODAS las fotos del producto en juego (ej. mandaba el riel en una charla
+      // de control). Filtramos stems de menos de 3 chars en ambos lados.
+      const sw = scope.split(/[^a-záéíóúñ0-9]+/i).filter(Boolean).map(stem).filter(s => s.length > 2);
       return words.some(w => { const ws = stem(w); return ws.length > 2 && sw.some(s => s === ws || s.includes(ws) || ws.includes(s)); });
     };
     const VIDEO_EXT = /\.(mp4|mov|webm|avi|m4v)(\?|$)/i;
