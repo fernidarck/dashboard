@@ -3996,6 +3996,19 @@ app.get('/api/rag/context', async (req, res) => {
     (qStrip.match(/modelo\s*\d+/g) || []).forEach(t => modeloTokens.push(t.replace(/\s+/g, ' ').trim()));
     if (/one\s*night/.test(qStrip)) modeloTokens.push('one night');
 
+    // EL ANUNCIO SOLO MANDA SI VIENE AL CASO: si el cliente llegó de un anuncio (ej. de un
+    // control) pero ahora pregunta por OTRA cosa (ej. "motor corredizo"), NO forzamos el
+    // producto del anuncio. Sin esto, el boost +100 tapaba TODO (para "motor corredizo"
+    // devolvía solo el control del anuncio) y mandaba su foto. Solo aplica si el anuncio
+    // comparte una palabra con la consulta, o si el cliente es vago / se refiere "al anuncio".
+    if (adProdName) {
+      const adProdNorm = stripAcc(String(adProdName).toLowerCase());
+      const adRelevante = keywords.length === 0
+        || keywords.some(kw => kw.length > 2 && adProdNorm.includes(kw))
+        || /(anuncio|publicidad|\besa\b|\bese\b|la del|lo que sale|el que sale)/.test(qStrip);
+      if (!adRelevante) { adNote = ""; adProdName = ""; }
+    }
+
     const scored = allKnowledge.map(doc => {
       const nameL    = stripAcc(String(doc.name || '').toLowerCase());
       const contentL = stripAcc(String(doc.content || '').toLowerCase());
