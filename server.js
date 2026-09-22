@@ -4081,14 +4081,25 @@ app.get('/api/rag/context', async (req, res) => {
     // quiere. Para controles/motores/repuestos seguimos con UNA sola foto (evita el bug de
     // mandar control+riel+botonera). Si ya nombró un modelo puntual, también UNA sola.
     const qNorm = stripAcc(String(q).toLowerCase());
-    const navegaMuebles = /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(qNorm);
+    // Contexto de mueble: lo dice el mensaje actual, O el motor/interés guardado del lead
+    // (ej. el cliente ya venía por mesas y ahora dice "muéstreme los diferentes modelos"
+    //  sin repetir "mesa"). Así sabemos que la vitrina es de mesas aunque no lo repita.
+    let leadMotorCtx = '';
+    try {
+      const ph = String(req.query.phone || req.query.from || '').replace(/\D/g, '');
+      if (ph) { const lm = await db.get("SELECT motor FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", ph); leadMotorCtx = stripAcc(String(lm?.motor || '').toLowerCase()); }
+    } catch (e) {}
+    const navegaMuebles = /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(qNorm) || /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(leadMotorCtx);
     // Pedido PUNTUAL: nombró un modelo, O describió una función específica que identifica un
     // modelo (ej. "tapa elevable"/"se levanta la tapadera"/"cajón oculto"/"nfc" = One Night).
     // En estos casos NO hacemos vitrina: mandamos SOLO la foto del modelo que pide.
     const pidioModeloEspecifico = /(modelo\s*(1|2|3|4|5|uno|dos|tres|cuatro|cinco)|one\s*night|melamina|caf[eé]|tapa\s*elevabl|elevabl|tapadera|se\s*levanta|levanta\s*la\s*tapa|caj[oó]n\s*oculto|oculto|nfc)/.test(qNorm);
-    // Vitrina (varias fotos) SOLO si navega muebles genéricos, NO nombró un modelo y NO viene
-    // de un anuncio de un modelo puntual (si vino del anuncio, nos enfocamos en ESE modelo).
-    const permitirVariasFotos = navegaMuebles && !pidioModeloEspecifico && !adProdName;
+    // VITRINA (varias fotos) SOLO cuando el cliente pide EXPLÍCITAMENTE ver varios/modelos/
+    // opciones/colores, en contexto de mueble, y no pidió un modelo puntual. Si pide ver
+    // varios, la vitrina gana incluso si vino de un anuncio (quiere comparar). Para todo lo
+    // demás → UNA sola foto (evita el "manda fotos de más").
+    const pideVarios = /(diferentes|distintos|varios|varias|todos|todas|opciones|variedad|cat[aá]logo|colores|que\s+modelos|cu[aá]les|los\s+modelos|otros\s+modelos|mas\s+modelos|todos\s+los\s+modelos|muestr\w*\s+(los|las|todos|todas|modelos|mesas|opciones))/.test(qNorm);
+    const permitirVariasFotos = navegaMuebles && pideVarios && !pidioModeloEspecifico;
     const maxFotos = permitirVariasFotos ? 5 : 1;
     let fotosIncluidas = 0;
     let context = "";
