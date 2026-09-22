@@ -4073,16 +4073,34 @@ app.get('/api/rag/context', async (req, res) => {
     // forzamos fotos acá (nada de "vitrina" ni "una sola" por reglas de palabras) — el sistema
     // manda EXACTAMENTE las fotos que el bot ponga en su respuesta. Así no se contradicen las
     // reglas: la inteligencia la pone el bot, que sí entiende el contexto.
+    // COMPACTAR para que QUEPAN TODOS los modelos: el producto más relevante va COMPLETO;
+    // los demás en versión corta (nombre + descripción breve + precio + foto). Así, cuando
+    // hay varios modelos (ej. 6 mesas de noche), el bot los ve TODOS con su precio y foto y
+    // no dice "solo tengo 3" por falta de espacio. (Antes la descripción larga de un modelo
+    // se comía el presupuesto y cortaba a los demás.)
+    const compactar = (content) => {
+      const precio = (content.match(/-\s*Precio:\s*([^-\n]+)/i) || [, ''])[1].trim();
+      const oferta = (content.match(/-\s*OFERTA:\s*([^-\n]+)/i) || [, ''])[1].trim();
+      const imagen = (content.match(/-\s*Imagen:\s*(\S+)/i) || content.match(/IMAGEN_PARA_ENVIAR:\s*(\S+)/i) || [, ''])[1];
+      let desc0 = content.split(/-\s*Precio:/i)[0].replace(/\s+/g, ' ').trim();
+      if (desc0.length > 130) desc0 = desc0.slice(0, 130) + '…';
+      let out = desc0;
+      if (precio) out += ` - Precio: ${precio}`;
+      if (oferta) out += ` - OFERTA: ${oferta}`;
+      if (imagen) out += ` - Imagen: ${imagen}`;
+      return out;
+    };
     let context = "";
     const sources = [];
     const budget = Number(maxChars) - adNote.length - citaNote.length;
-    for (const doc of scored) {
-      const block = `--- RESULTADO: ${doc.name} ---\n${doc.content}\n\n`;
-      if (sources.length > 0 && context.length + block.length > budget) break;
+    scored.forEach((doc, i) => {
+      if (sources.length >= 8) return;
+      const contenido = i === 0 ? doc.content : compactar(doc.content);
+      const block = `--- RESULTADO: ${doc.name} ---\n${contenido}\n\n`;
+      if (sources.length > 0 && context.length + block.length > budget) return;
       context += block;
       sources.push(doc.name);
-      if (sources.length >= 6) break;
-    }
+    });
 
     // 🤖 AUTO-GUARDADO: Si el bot jaló información de un producto para este cliente (por teléfono),
     // guardamos automáticamente el producto en leads.motor para que el dashboard y el cotizador
