@@ -4078,7 +4078,10 @@ app.get('/api/rag/context', async (req, res) => {
     // mandar control+riel+botonera). Si ya nombró un modelo puntual, también UNA sola.
     const qNorm = stripAcc(String(q).toLowerCase());
     const navegaMuebles = /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(qNorm);
-    const pidioModeloEspecifico = /(modelo\s*(1|2|3|4|5|uno|dos|tres|cuatro|cinco)|one\s*night|melamina|caf[eé])/.test(qNorm);
+    // Pedido PUNTUAL: nombró un modelo, O describió una función específica que identifica un
+    // modelo (ej. "tapa elevable"/"se levanta la tapadera"/"cajón oculto"/"nfc" = One Night).
+    // En estos casos NO hacemos vitrina: mandamos SOLO la foto del modelo que pide.
+    const pidioModeloEspecifico = /(modelo\s*(1|2|3|4|5|uno|dos|tres|cuatro|cinco)|one\s*night|melamina|caf[eé]|tapa\s*elevabl|elevabl|tapadera|se\s*levanta|levanta\s*la\s*tapa|caj[oó]n\s*oculto|oculto|nfc)/.test(qNorm);
     // Vitrina (varias fotos) SOLO si navega muebles genéricos, NO nombró un modelo y NO viene
     // de un anuncio de un modelo puntual (si vino del anuncio, nos enfocamos en ESE modelo).
     const permitirVariasFotos = navegaMuebles && !pidioModeloEspecifico && !adProdName;
