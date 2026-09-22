@@ -4067,58 +4067,17 @@ app.get('/api/rag/context', async (req, res) => {
 
     if (scored.length === 0) return res.json({ context: (citaNote + adNote + "No se encontró información relevante para: " + q).trim(), found: !!(adNote || citaNote), sources: [] });
 
-    // Construir respuesta: agregamos BLOQUES COMPLETOS de producto hasta llenar maxChars,
-    // sin cortar ninguno a la mitad (antes se hacía un substring que partía el último).
-    // UNA SOLA FOTO: dejamos la URL de imagen SOLO en el primer bloque que trae foto (el
-    // producto más relevante). A los demás les quitamos la foto para que el bot no mande
-    // fotos de varios productos (ej. mandaba el control + el riel + la botonera).
-    const quitarFotos = (s) => String(s)
-      .replace(/ - Imagen:\s*\S+/gi, '')
-      .replace(/\n?[^\n]*IMAGEN_PARA_ENVIAR:\s*\S+/gi, '')
-      .replace(/\n?\s*⚠️ ENVIÁ ESTA FOTO[^\n]*/gi, '');
-    // MUEBLES/MESAS = VITRINA: si el cliente navega mesas de noche/muebles SIN nombrar un
-    // modelo específico, mostramos VARIOS modelos (con foto) para que elija — es lo que se
-    // quiere. Para controles/motores/repuestos seguimos con UNA sola foto (evita el bug de
-    // mandar control+riel+botonera). Si ya nombró un modelo puntual, también UNA sola.
-    const qNorm = stripAcc(String(q).toLowerCase());
-    // Contexto de mueble: lo dice el mensaje actual, O el motor/interés guardado del lead
-    // (ej. el cliente ya venía por mesas y ahora dice "muéstreme los diferentes modelos"
-    //  sin repetir "mesa"). Así sabemos que la vitrina es de mesas aunque no lo repita.
-    let leadMotorCtx = '';
-    try {
-      const ph = String(req.query.phone || req.query.from || '').replace(/\D/g, '');
-      if (ph) { const lm = await db.get("SELECT motor FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", ph); leadMotorCtx = stripAcc(String(lm?.motor || '').toLowerCase()); }
-    } catch (e) {}
-    const navegaMuebles = /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(qNorm) || /(mesa|mesita|noche|mueble|zapatera|estanter)/.test(leadMotorCtx);
-    // Pedido PUNTUAL: nombró un modelo, O describió una función específica que identifica un
-    // modelo (ej. "tapa elevable"/"se levanta la tapadera"/"cajón oculto"/"nfc" = One Night).
-    // En estos casos NO hacemos vitrina: mandamos SOLO la foto del modelo que pide.
-    const pidioModeloEspecifico = /(modelo\s*(1|2|3|4|5|uno|dos|tres|cuatro|cinco)|one\s*night|melamina|caf[eé]|tapa\s*elevabl|elevabl|tapadera|se\s*levanta|levanta\s*la\s*tapa|caj[oó]n\s*oculto|oculto|nfc)/.test(qNorm);
-    // VITRINA (varias fotos) SOLO cuando el cliente pide EXPLÍCITAMENTE ver varios/modelos/
-    // opciones/colores, en contexto de mueble, y no pidió un modelo puntual. Si pide ver
-    // varios, la vitrina gana incluso si vino de un anuncio (quiere comparar). Para todo lo
-    // demás → UNA sola foto (evita el "manda fotos de más").
-    const pideVarios = /(diferentes|distintos|varios|varias|todos|todas|opciones|variedad|cat[aá]logo|colores|que\s+modelos|cu[aá]les|los\s+modelos|otros\s+modelos|mas\s+modelos|todos\s+los\s+modelos|muestr\w*\s+(los|las|todos|todas|modelos|mesas|opciones))/.test(qNorm);
-    const permitirVariasFotos = navegaMuebles && pideVarios && !pidioModeloEspecifico;
-    const maxFotos = permitirVariasFotos ? 5 : 1;
-    let fotosIncluidas = 0;
+    // Construir respuesta: BLOQUES COMPLETOS de producto (sin cortar) hasta llenar el budget.
+    // DECIDE EL BOT: a cada producto le dejamos SU foto (URL) etiquetada con su nombre, para
+    // que el bot elija cuál(es) mandar según lo que entienda de la charla. NO recortamos ni
+    // forzamos fotos acá (nada de "vitrina" ni "una sola" por reglas de palabras) — el sistema
+    // manda EXACTAMENTE las fotos que el bot ponga en su respuesta. Así no se contradicen las
+    // reglas: la inteligencia la pone el bot, que sí entiende el contexto.
     let context = "";
     const sources = [];
     const budget = Number(maxChars) - adNote.length - citaNote.length;
     for (const doc of scored) {
-      let contenido = doc.content;
-      const traeFoto = /(Imagen:|IMAGEN_PARA_ENVIAR)/i.test(contenido);
-      if (traeFoto) {
-        const esMueble = /(mesa|mesita|noche|mueble|zapatera|estanter)/i.test(doc.name || '');
-        // En modo vitrina solo conservamos fotos de MUEBLES (no metemos fotos de otra
-        // categoría que se haya colado). En modo normal, la primera foto que aparezca.
-        const puedeConservar = permitirVariasFotos
-          ? (esMueble && fotosIncluidas < maxFotos)
-          : (fotosIncluidas < 1);
-        if (puedeConservar) fotosIncluidas++;
-        else contenido = quitarFotos(contenido);
-      }
-      const block = `--- RESULTADO: ${doc.name} ---\n${contenido}\n\n`;
+      const block = `--- RESULTADO: ${doc.name} ---\n${doc.content}\n\n`;
       if (sources.length > 0 && context.length + block.length > budget) break;
       context += block;
       sources.push(doc.name);
