@@ -466,6 +466,10 @@ async function setup() {
     try { await db.exec("ALTER TABLE training_rules ADD COLUMN prompt_instruction TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE scheduled_posts ADD COLUMN post_type TEXT DEFAULT 'post'"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes_meta TEXT"); } catch(e){}
+    // MÁS VENDIDO (el dueño marca cuáles son los más pedidos → el bot los ofrece primero como
+    // "los más pedidos") y CAMPAÑA ACTIVA (marca que ese producto está en una campaña que corre).
+    try { await db.exec("ALTER TABLE products ADD COLUMN mas_vendido INTEGER DEFAULT 0"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN campana_activa INTEGER DEFAULT 0"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN lead_alertado INTEGER DEFAULT 0"); } catch(e){}
@@ -3609,9 +3613,14 @@ app.put('/api/products/:id', async (req, res) => {
     const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad } = req.body;
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
+    // Flags "más vendido" / "campaña activa": si no vienen en el body, se preservan (para no
+    // pisarlos cuando se guarda el producto desde otra pantalla que no los manda).
+    const existingFlags = await db.get("SELECT mas_vendido, campana_activa FROM products WHERE id=?", req.params.id);
+    const masVendido    = req.body.mas_vendido    !== undefined ? (req.body.mas_vendido    ? 1 : 0) : (existingFlags?.mas_vendido    || 0);
+    const campanaActiva = req.body.campana_activa !== undefined ? (req.body.campana_activa ? 1 : 0) : (existingFlags?.campana_activa || 0);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, compatibilidad=? WHERE id=?",
-      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), compatibilidad ?? '', req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, compatibilidad=?, mas_vendido=?, campana_activa=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), compatibilidad ?? '', masVendido, campanaActiva, req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3931,7 +3940,7 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
-    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad FROM products WHERE activo = 1");
+    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad, COALESCE(mas_vendido,0) as mas_vendido, COALESCE(campana_activa,0) as campana_activa FROM products WHERE activo = 1");
     // Detecta agotado (sin stock inmediato). Los muebles se fabrican a pedido en ~4 días.
     // 3 estados de stock:
     //  - AGOTADO  → no se ofrece; solo aparece (a pedido) si el cliente lo nombra específicamente.
@@ -3946,6 +3955,10 @@ app.get('/api/rag/context', async (req, res) => {
       const aPedido  = !agotado && APEDIDO.test(stockStr);
       // Formato IDÉNTICO al anterior para los disponibles (no rompe nada).
       let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + (p.whatsapp_link ? ' - Link WhatsApp (compartilo para que vean el producto): ' + p.whatsapp_link : '') + (p.catalog_link ? ' - Link tienda onecontrol.shop (compartilo para más info): ' + p.catalog_link : '');
+      // MÁS PEDIDO / CAMPAÑA: el dueño marca estos. El bot los ofrece PRIMERO como "los más
+      // pedidos" (son los que más se venden) y sabe cuáles están en campaña activa.
+      if (p.mas_vendido)    content += ' - ⭐ MÁS PEDIDO (de los que más se venden; ofrecelo entre los primeros como "uno de los más pedidos").';
+      if (p.campana_activa) content += ' - 📣 EN CAMPAÑA ACTIVA (lo estamos promocionando ahora mismo).';
       // Compatibilidad por marca de motor: dato duro para ofrecer el producto correcto.
       if (p.compatibilidad && String(p.compatibilidad).trim()) {
         content += ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO ofrezcas este producto ni prometas que le sirve; para otra marca/desconocida hay que adaptar un receptor externo (pasá con asesor).`;
@@ -3966,7 +3979,7 @@ app.get('/api/rag/context', async (req, res) => {
         // A pedido / fabricación: se ofrece, aclarando que es a pedido (~4 días).
         content = 'ESTADO: A PEDIDO / FABRICACION — no hay stock inmediato, pero se fabrica A PEDIDO, listo en ~4 dias aprox. OFRECELO aclarando que es a pedido (~4 dias); NUNCA prometas entrega inmediata ni digas que hay stock. ' + content;
       }
-      return { name: p.nombre, category: p.categoria, content };
+      return { name: p.nombre, category: p.categoria, content, mas_vendido: p.mas_vendido, campana_activa: p.campana_activa };
     }).filter(Boolean);
 
     // WEB RAG: productos de la tienda onecontrol.shop como fuente SECUNDARIA y SEPARADA.
@@ -4062,6 +4075,9 @@ app.get('/api/rag/context', async (req, res) => {
       if (adProdName && stripAcc(String(doc.name || '').toLowerCase()) === stripAcc(String(adProdName).toLowerCase())) score += 100;
       // FOTO CITADA: el producto de la foto que el cliente citó va hasta arriba (su info+foto).
       if (citaProdName && stripAcc(String(doc.name || '').toLowerCase()) === stripAcc(String(citaProdName).toLowerCase())) score += 120;
+      // MÁS PEDIDO: sube un poco (para que, entre productos parecidos, salgan primero los que
+      // más se venden). Empate: gana el más pedido. No tapa un match fuerte de otra cosa.
+      if (doc.mas_vendido && score > 0) score += 1.5;
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
@@ -4101,6 +4117,15 @@ app.get('/api/rag/context', async (req, res) => {
       context += block;
       sources.push(doc.name);
     });
+
+    // LINK DE LA TIENDA como COMPLEMENTO (no barrera): cuando el bot muestra varias opciones,
+    // que ofrezca al FINAL el enlace para ver el catálogo completo. Configurable por el dueño.
+    try {
+      const storeUrl = await getDynamicSetting('store_catalog_url', 'https://onecontrol.shop');
+      if (storeUrl && String(storeUrl).trim()) {
+        context += `\n[ENLACE TIENDA — si mostrás VARIAS opciones/modelos, ofrecelo al FINAL como complemento (NUNCA como barrera), ej: "Estas son las más pedidas. Si querés ver TODOS los modelos y medidas, los tenés completos acá: ${String(storeUrl).trim()}"]\n`;
+      }
+    } catch (e) {}
 
     // 🤖 AUTO-GUARDADO: Si el bot jaló información de un producto para este cliente (por teléfono),
     // guardamos automáticamente el producto en leads.motor para que el dashboard y el cotizador

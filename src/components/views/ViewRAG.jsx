@@ -618,7 +618,11 @@ export default function ViewRAG({
 
                 <div className="p-6 space-y-3 flex-1 flex flex-col justify-between">
                   <div className="space-y-2">
-                    <span className="text-[8px] font-black text-[#FF6B00] uppercase tracking-widest">{prod.categoria}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[8px] font-black text-[#FF6B00] uppercase tracking-widest">{prod.categoria}</span>
+                      {!!prod.mas_vendido && <span className="text-[8px] font-black text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5">⭐ MÁS PEDIDO</span>}
+                      {!!prod.campana_activa && <span className="text-[8px] font-black text-purple-700 bg-purple-100 border border-purple-200 rounded px-1.5 py-0.5">📣 CAMPAÑA</span>}
+                    </div>
                     <h4 className="text-sm font-black text-slate-800 uppercase italic leading-tight">{prod.nombre}</h4>
                     
                     {/* Descripción para cliente */}
@@ -916,6 +920,19 @@ export default function ViewRAG({
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 block pt-2">📢 IDs de anuncios de Meta (opcional)</label>
                 <input type="text" value={editingProduct.ad_ids || ''} onChange={e => setEditingProduct({...editingProduct, ad_ids: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-100 focus:border-[#FF6B00] transition-all" placeholder="120250800200560462, 120250..." />
                 <p className="text-[9px] text-slate-400 italic ml-2">Si un cliente llega de estos anuncios y dice "la del anuncio", el bot manda ESTE producto. Separá varios con coma.</p>
+
+                {/* ⭐ Más vendido / 📣 Campaña activa */}
+                <div className="flex flex-col gap-2 pt-3 mt-2 border-t border-slate-100">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input type="checkbox" checked={!!editingProduct.mas_vendido} onChange={e => setEditingProduct({...editingProduct, mas_vendido: e.target.checked ? 1 : 0})} className="h-4 w-4 accent-[#FF6B00] cursor-pointer" />
+                    <span className="text-xs font-bold text-slate-700">⭐ Más vendido / más pedido</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input type="checkbox" checked={!!editingProduct.campana_activa} onChange={e => setEditingProduct({...editingProduct, campana_activa: e.target.checked ? 1 : 0})} className="h-4 w-4 accent-[#FF6B00] cursor-pointer" />
+                    <span className="text-xs font-bold text-slate-700">📣 En campaña activa</span>
+                  </label>
+                  <p className="text-[9px] text-slate-400 italic ml-1">El bot ofrece primero los "⭐ más pedidos" y sabe cuáles están en campaña.</p>
+                </div>
               </div>
 
               <button onClick={handleUpdateProduct} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#FF6B00] transition-all active:scale-95">Guardar Cambios</button>
