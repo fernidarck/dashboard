@@ -4016,8 +4016,14 @@ app.get('/api/rag/context', async (req, res) => {
     // comparte una palabra con la consulta, o si el cliente es vago / se refiere "al anuncio".
     if (adProdName) {
       const adProdNorm = stripAcc(String(adProdName).toLowerCase());
-      const adRelevante = keywords.length === 0
-        || keywords.some(kw => kw.length > 2 && adProdNorm.includes(kw))
+      // Palabras de CATEGORÍA (genéricas): compartir solo estas NO hace relevante al anuncio
+      // (ej. "noche" la comparten TODAS las mesas). Si la consulta trae una palabra DISTINTIVA
+      // que no es del producto del anuncio (ej. "tapa elevable" = One Night, no modelo 1),
+      // seguimos lo que pide el cliente y NO forzamos el del anuncio.
+      const GENERIC_CAT = new Set(['mesa','mesita','noche','mueble','muebles','control','controles','remoto','remotos','motor','motores','porton','portones','producto','productos','kit','foto','fotos','precio','info','informacion']);
+      const distinctiveKw = keywords.filter(kw => kw.length > 2 && !GENERIC_CAT.has(kw));
+      const adRelevante = distinctiveKw.length === 0
+        || distinctiveKw.some(kw => adProdNorm.includes(kw))
         || /(anuncio|publicidad|\besa\b|\bese\b|la del|lo que sale|el que sale)/.test(qStrip);
       if (!adRelevante) { adNote = ""; adProdName = ""; }
     }
