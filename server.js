@@ -3853,6 +3853,23 @@ app.get('/api/rag/context', async (req, res) => {
     const maxChars = req.query.maxChars || 2500;
     if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
 
+    // ── FOTO CITADA ──────────────────────────────────────────────────────────
+    // Si el cliente RESPONDE citando una foto que le mandamos, WhatsApp trae el wamid
+    // de esa foto en context.id. Lo resolvemos (sent_media) y le decimos al bot de qué
+    // producto/foto le está hablando, para que NO adivine ni cambie de modelo.
+    let citaNote = "";
+    let citaProdName = "";
+    try {
+      const quotedWamid = String(req.query.quoted_wamid || req.query.context_id || '').trim();
+      if (quotedWamid) {
+        const row = await db.get("SELECT product_name FROM sent_media WHERE wamid = ? AND product_name IS NOT NULL AND product_name != '' ORDER BY id DESC LIMIT 1", quotedWamid);
+        if (row && row.product_name) {
+          citaProdName = row.product_name;
+          citaNote = `📌 FOTO CITADA (MÁXIMA PRIORIDAD): El cliente está RESPONDIENDO sobre la foto de *${row.product_name}*. Su mensaje se refiere a ESE producto exacto. Seguí con *${row.product_name}* (dá su precio/info y, si pide, su foto). NO preguntes "¿cuál?" ni cambies de modelo.\n\n`;
+        }
+      }
+    } catch (e) { console.error('citaNote:', e.message); }
+
     // ── ATRIBUCIÓN DE ANUNCIO ────────────────────────────────────────────────
     // Si viene el teléfono del cliente, revisamos de qué anuncio llegó y si ese
     // anuncio está conectado a un producto. Así el bot sabe qué es "la del anuncio".
@@ -4007,10 +4024,12 @@ app.get('/api/rag/context', async (req, res) => {
       // rankea por keyword (ej. "mesita" pega con "Mesita de noche modelo 5") y la foto no
       // corresponde al modelo del que habla el bot.
       if (adProdName && stripAcc(String(doc.name || '').toLowerCase()) === stripAcc(String(adProdName).toLowerCase())) score += 100;
+      // FOTO CITADA: el producto de la foto que el cliente citó va hasta arriba (su info+foto).
+      if (citaProdName && stripAcc(String(doc.name || '').toLowerCase()) === stripAcc(String(citaProdName).toLowerCase())) score += 120;
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
-    if (scored.length === 0) return res.json({ context: (adNote + "No se encontró información relevante para: " + q).trim(), found: !!adNote, sources: [] });
+    if (scored.length === 0) return res.json({ context: (citaNote + adNote + "No se encontró información relevante para: " + q).trim(), found: !!(adNote || citaNote), sources: [] });
 
     // Construir respuesta: agregamos BLOQUES COMPLETOS de producto hasta llenar maxChars,
     // sin cortar ninguno a la mitad (antes se hacía un substring que partía el último).
@@ -4035,7 +4054,7 @@ app.get('/api/rag/context', async (req, res) => {
     let fotosIncluidas = 0;
     let context = "";
     const sources = [];
-    const budget = Number(maxChars) - adNote.length;
+    const budget = Number(maxChars) - adNote.length - citaNote.length;
     for (const doc of scored) {
       let contenido = doc.content;
       const traeFoto = /(Imagen:|IMAGEN_PARA_ENVIAR)/i.test(contenido);
@@ -4078,7 +4097,7 @@ app.get('/api/rag/context', async (req, res) => {
       }
     } catch (e) {}
 
-    res.json({ context: (adNote + context).trim(), found: true, sources });
+    res.json({ context: (citaNote + adNote + context).trim(), found: true, sources });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
