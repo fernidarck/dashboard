@@ -486,7 +486,13 @@ export function useAppData(apiBase, authToken) {
         body: JSON.stringify({ leadId, text, sender: 'agent' })
       });
       if (!res.ok) { notify('❌ Error al enviar: ' + res.status); fetchLeads(); return false; }
+      const data = await res.json().catch(() => ({}));
       await Promise.all([fetchMessages(leadId), fetchLeads()]);
+      // El backend ahora dice si el mensaje REALMENTE se entregó al cliente por WhatsApp.
+      if (data && data.delivered === false) {
+        notify('⚠️ Guardado, pero NO llegó al cliente: ' + (data.deliveryError || 'revisá la ventana de 24h o la config del canal'), 8000);
+        return false;
+      }
       notify('✅ Mensaje enviado', 2000);
       return true;
     } catch { notify('❌ Error de red'); fetchLeads(); return false; }

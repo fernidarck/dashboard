@@ -741,7 +741,11 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
     const channel = await getChannelConfig(channelPhone);
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
-    if (!apiKey || !fromNum || !toPhone || !imageUrl) return;
+    if (!apiKey || !fromNum || !toPhone || !imageUrl) {
+      const falta = [!apiKey && 'api_key', !fromNum && 'número de canal', !imageUrl && 'imagen'].filter(Boolean).join(', ');
+      console.error(`❌ No se envió imagen: falta ${falta} (canal ${channelPhone || '?'})`);
+      return { ok: false, error: `falta ${falta}` };
+    }
 
     const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
     const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
@@ -768,11 +772,14 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
     if (!res.ok) {
       const errText = await res.text();
       console.error(`❌ Error enviando imagen YCloud (${res.status}): ${errText}`);
+      return { ok: false, error: `YCloud ${res.status}: ${String(errText).slice(0, 200)}` };
     } else {
       console.log(`✅ Imagen enviada exitosamente por YCloud a ${cleanTo}`);
+      return { ok: true };
     }
   } catch(e) {
     console.error('❌ Error enviando imagen via YCloud:', e.message);
+    return { ok: false, error: e.message };
   }
 }
 
@@ -2917,6 +2924,7 @@ app.post('/api/messages/send', async (req, res) => {
 
     const msgSender = sender || 'agent';
     const time = horaGuate();
+    let deliveryError = null;   // se llena si el envío real a WhatsApp falla
 
     // Extraer imagen si el texto trae ENVIAR_IMAGEN:
     const { cleanText, imageUrl } = parseImageFromText(text);
@@ -2961,34 +2969,36 @@ app.post('/api/messages/send', async (req, res) => {
           const formattedChanPhone = String(chanPhone).startsWith('+') ? String(chanPhone) : `+${String(chanPhone).replace(/\D/g, '')}`;
           const formattedTargetPhone = String(targetPhone).startsWith('+') ? String(targetPhone) : `+${String(targetPhone).replace(/\D/g, '')}`;
 
+          // AHORA ESPERAMOS el envío real y capturamos el error, en vez de "fire-and-forget"
+          // (antes el dashboard decía "enviado" aunque YCloud lo rechazara → el cliente no
+          // recibía nada y no se veía el error).
           if (outboundWebhook && outboundWebhook.trim() !== '') {
-            fetch(outboundWebhook, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phone: formattedTargetPhone,
-                text: cleanText,
-                image_url: imageUrl || null,
-                channel_phone: formattedChanPhone
-              })
-            }).catch(err => console.error("❌ Error enviando texto a n8n:", err.message));
+            try {
+              const wr = await fetch(outboundWebhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: formattedTargetPhone, text: cleanText, image_url: imageUrl || null, channel_phone: formattedChanPhone })
+              });
+              if (!wr.ok) deliveryError = `webhook n8n ${wr.status}`;
+            } catch (err) { deliveryError = 'webhook n8n no responde: ' + err.message; }
           } else {
             // FALLBACK DIRECTO A YCLOUD: Si no hay webhook de n8n
             if (imageUrl) {
-              sendImageViaYCloud(formattedTargetPhone, imageUrl, cleanText, formattedChanPhone);
+              const r = await sendImageViaYCloud(formattedTargetPhone, imageUrl, cleanText, formattedChanPhone);
+              if (r && r.ok === false) deliveryError = r.error;
             } else if (cleanText) {
               const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-              if (apiKey) {
-                fetch('https://api.ycloud.com/v2/whatsapp/messages', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-                  body: JSON.stringify({
-                    from: formattedChanPhone,
-                    to: formattedTargetPhone,
-                    type: 'text',
-                    text: { body: cleanText, preview_url: true }
-                  })
-                }).catch(err => console.error("❌ Error directo YCloud:", err.message));
+              if (!apiKey) {
+                deliveryError = 'el canal no tiene API key de YCloud configurada en el dashboard';
+              } else {
+                try {
+                  const yr = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+                    body: JSON.stringify({ from: formattedChanPhone, to: formattedTargetPhone, type: 'text', text: { body: cleanText, preview_url: true } })
+                  });
+                  if (!yr.ok) { const et = await yr.text(); deliveryError = `YCloud ${yr.status}: ${String(et).slice(0,200)}`; }
+                } catch (err) { deliveryError = 'YCloud no responde: ' + err.message; }
               }
             }
           }
@@ -2996,7 +3006,8 @@ app.post('/api/messages/send', async (req, res) => {
       }
     }
 
-    res.json({ success: true, message: savedMessage });
+    if (deliveryError) console.error(`⚠️ Lead ${leadId}: mensaje guardado pero NO entregado al cliente → ${deliveryError}`);
+    res.json({ success: true, delivered: !deliveryError, deliveryError, message: savedMessage });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
