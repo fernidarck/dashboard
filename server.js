@@ -4008,6 +4008,10 @@ app.get('/api/rag/context', async (req, res) => {
     const modeloTokens = [];
     (qStrip.match(/modelo\s*\d+/g) || []).forEach(t => modeloTokens.push(t.replace(/\s+/g, ' ').trim()));
     if (/one\s*night/.test(qStrip)) modeloTokens.push('one night');
+    // La "tapa elevable / se levanta la tapadera / cajón oculto / nfc" = One Night. Si el
+    // cliente la describe así (sin nombrarla), boosteamos la One Night para que gane a las
+    // otras mesas (que pegan por "mesita/noche") y sea SU foto la que se manda.
+    if (/tapa\s*elevabl|elevabl|tapadera|se\s*levanta|levanta\s*la\s*tapa|caj[oó]n\s*oculto|oculto|nfc/.test(qStrip)) modeloTokens.push('one night');
 
     // EL ANUNCIO SOLO MANDA SI VIENE AL CASO: si el cliente llegó de un anuncio (ej. de un
     // control) pero ahora pregunta por OTRA cosa (ej. "motor corredizo"), NO forzamos el
