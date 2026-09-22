@@ -3359,13 +3359,15 @@ app.post('/api/photos/auto-attach', async (req, res) => {
         // La etiqueta describe CUÁNDO enviarla. Extraer el disparador (lo que viene tras "cuando (te/les) pidan/pregunten...").
         const trig = (desc.match(/cuando\s+(?:te\s+|les\s+)?(?:pidan|pida|pregunten(?:\s+por)?|quieran\s+ver|mostrala|mostrar)\s+(.+)/) || [,''])[1] || desc;
         const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w) && !TRIG_STOP.has(w));
-        // Se dispara si se están hablando medidas EN EL MENSAJE DEL CLIENTE O EN LA RESPUESTA DEL BOT
-        // (ej: cliente dice "modelo 1" y el bot responde "el modelo 1 MIDE 60x45x38").
-        const medidas = /medida|mide|tama|dimensi|cu[aá]nto\s+mide/.test(text) && /medida/.test(desc);
+        // La foto de "medidas" se dispara SOLO si el CLIENTE pregunta por medidas (no cuando
+        // el BOT las menciona). Antes usaba todo el texto (cliente+bot): si el bot decía las
+        // medidas en su respuesta, se colaba la foto de medidas ADEMÁS de la principal → el
+        // cliente recibía dos fotos del mismo producto sin haberlas pedido.
+        const medidas = /medida|mide|tama|dimensi|cu[aá]nto\s+mide/.test(clientMsg) && /medida/.test(desc);
         const isVideo = VIDEO_EXT.test(img.url);
         // Los videos disparan SOLO con lo que dice el CLIENTE (para no mandarlos cuando
         // el bot los ofrece); las fotos, con el mensaje del cliente o del bot.
-        const scope = isVideo ? clientMsg : text;
+        const scope = clientMsg; // fotos etiquetadas se disparan SOLO con lo que dice el CLIENTE (no cuando el bot lo menciona)
         const overlap = matchTrig(trigWords, scope);
         if ((medidas && !isVideo) || overlap) (isVideo ? videos : urls).push(img.url);
       }
@@ -3382,7 +3384,7 @@ app.post('/api/photos/auto-attach', async (req, res) => {
           const trig = (desc.match(/cuando\s+(?:te\s+|les\s+)?(?:pidan|pida|pregunten(?:\s+por)?|quieran\s+ver|mostrala|mostrar)\s+(.+)/) || [, ''])[1] || desc;
           const trigWords = trig.split(/[^a-záéíóúñ0-9]+/i).filter(w => w.length > 3 && !STOP.has(w) && !TRIG_STOP.has(w));
           const isVideo = VIDEO_EXT.test(img.url);
-          const scope = isVideo ? clientMsg : text;
+          const scope = clientMsg; // fotos etiquetadas se disparan SOLO con lo que dice el CLIENTE (no cuando el bot lo menciona)
           if (matchTrig(trigWords, scope)) (isVideo ? videos : urls).push(img.url);
         }
       }
