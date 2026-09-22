@@ -3920,7 +3920,7 @@ app.get('/api/rag/context', async (req, res) => {
           }
           if (adProd) {
             adProdName = adProd.nombre;
-            adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO (IMPORTANTE): Este cliente llegó desde un anuncio de Meta que muestra el producto *${adProd.nombre}*. Si dice "la del anuncio", "la que sale en el anuncio", "la de la publicidad", "esa" o algo parecido SIN nombrar otro modelo, se refiere a *${adProd.nombre}*. Enfocate en ESE producto y mandale su foto directo — NO le tires todos los modelos primero.\n\n`;
+            adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO (MÁXIMA PRIORIDAD): Este cliente llegó desde un anuncio de Meta del producto *${adProd.nombre}*. YA SABÉS qué le interesa: es *${adProd.nombre}*. Aunque abra genérico ("info", "precio", "más información") o diga "la del anuncio"/"esa", andá DIRECTO con *${adProd.nombre}*: dale su precio y su foto de una. TERMINANTEMENTE PROHIBIDO preguntar "¿qué producto le interesa?" o "¿cuál busca?" — ya lo sabés por el anuncio. Solo cambiá de producto si el cliente pide EXPLÍCITAMENTE otra cosa distinta.\n\n`;
           } else if (lead.ad_headline) {
             // No calzó un producto exacto, pero le decimos al bot de qué era el anuncio.
             adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO: Este cliente llegó desde un anuncio titulado "${lead.ad_headline}". Cuando diga "la del anuncio" o "esa", se refiere a lo de ese título. Ofrecele directo el producto que coincida con ese título (con su foto) — NO le pidas la marca ni le tires todos los modelos primero.\n\n`;
