@@ -4129,9 +4129,14 @@ app.get('/api/rag/context', async (req, res) => {
     // LINK DE LA TIENDA como COMPLEMENTO (no barrera): cuando el bot muestra varias opciones,
     // que ofrezca al FINAL el enlace para ver el catálogo completo. Configurable por el dueño.
     try {
-      const storeUrl = await getDynamicSetting('store_catalog_url', 'https://onecontrol.shop');
-      if (storeUrl && String(storeUrl).trim()) {
-        context += `\n[ENLACE TIENDA — si mostrás VARIAS opciones/modelos, ofrecelo al FINAL como complemento (NUNCA como barrera), ej: "Estas son las más pedidas. Si querés ver TODOS los modelos y medidas, los tenés completos acá: ${String(storeUrl).trim()}"]\n`;
+      // Link POR CATEGORÍA: si lo que se muestra son MUEBLES/MESAS, usamos el link de mesas;
+      // si no, el general. Así no manda el link de mesas en una charla de controles/motores.
+      const esMuebleCtx = /mesa|mesita|noche|mueble|zapatera|estanter/i.test(sources.join(' '));
+      const linkMuebles = await getDynamicSetting('catalog_url_muebles', '');
+      const storeGeneral = await getDynamicSetting('store_catalog_url', 'https://onecontrol.shop');
+      const storeUrl = (esMuebleCtx && linkMuebles && String(linkMuebles).trim()) ? String(linkMuebles).trim() : String(storeGeneral || '').trim();
+      if (storeUrl) {
+        context += `\n[ENLACE TIENDA — si mostrás VARIAS opciones/modelos, ofrecelo al FINAL como complemento (NUNCA como barrera), ej: "Estas son las más pedidas. Si querés ver TODOS los modelos y medidas, los tenés completos acá: ${storeUrl}"]\n`;
       }
     } catch (e) {}
 
