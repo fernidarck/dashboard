@@ -498,6 +498,16 @@ export function useAppData(apiBase, authToken) {
     } catch { notify('❌ Error de red'); fetchLeads(); return false; }
   }, [apiFetch, apiBase, fetchMessages, fetchLeads, notify]);
 
+  // ¿El último mensaje que le mandamos al cliente REALMENTE le llegó? (consulta YCloud)
+  const checkLastDelivery = useCallback(async (phone, channelPhone) => {
+    try {
+      const qs = `phone=${encodeURIComponent(phone || '')}&channel_phone=${encodeURIComponent(channelPhone || '')}`;
+      const res = await apiFetch(`${apiBase}/api/delivery/last?${qs}`);
+      if (res.ok) return await res.json();
+      return null;
+    } catch { return null; }
+  }, [apiFetch, apiBase]);
+
   const sendDocument = useCallback(async (leadId, file, caption = '') => {
     try {
       const isImg = file?.type?.startsWith('image/');
@@ -999,7 +1009,7 @@ export function useAppData(apiBase, authToken) {
     fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
-    sendMessage, sendDocument, updatePedidoEstado, savePedido, deletePedido,
+    sendMessage, sendDocument, checkLastDelivery, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,

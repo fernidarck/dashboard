@@ -2620,6 +2620,40 @@ app.get('/api/settings', async (req, res) => {
   }
 });
 
+// ESTADO DE ENTREGA: consulta a YCloud si el ÚLTIMO mensaje que le mandamos al cliente
+// realmente le llegó. Si falló (ej. 131047 = ventana de 24h cerrada en coexistencia), lo
+// avisamos en el dashboard para que el dueño le escriba manual y no pierda la venta.
+app.get('/api/delivery/last', async (req, res) => {
+  try {
+    const cleanPhone = String(req.query.phone || '').replace(/\D/g, '');
+    if (!cleanPhone) return res.json({ ok: false });
+    const cleanChan = String(req.query.channel_phone || '').replace(/\D/g, '');
+    // api key del canal (o la del env)
+    let apiKey = null;
+    if (cleanChan) { const ch = await db.get("SELECT api_key FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? AND active = 1", cleanChan); apiKey = ch?.api_key; }
+    if (!apiKey) apiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    if (!apiKey) return res.json({ ok: false, error: 'sin api key' });
+    const url = `https://api.ycloud.com/v2/whatsapp/messages?filter.to=%2B${cleanPhone}&limit=3&sortBy=${encodeURIComponent('createTime desc')}`;
+    const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    const j = await r.json();
+    const items = j.items || j.data || [];
+    if (!items.length) return res.json({ ok: true, found: false });
+    const last = items[0];
+    const failed = last.status === 'failed';
+    const ventana24h = /131047|131051|24 hours|24 horas|re-?engage|reengagement/i.test(String(last.errorCode || '') + ' ' + String(last.errorMessage || ''));
+    res.json({
+      ok: true, found: true,
+      status: last.status,
+      delivered: last.status !== 'failed',
+      failed,
+      ventana24h: failed && ventana24h,
+      errorCode: last.errorCode || null,
+      errorMessage: last.errorMessage || null,
+      createTime: last.createTime || last.sendTime || null
+    });
+  } catch (err) { res.json({ ok: false, error: err.message }); }
+});
+
 app.get('/api/bot/channel-key', async (req, res) => {
   try {
     const phone = req.query.phone;

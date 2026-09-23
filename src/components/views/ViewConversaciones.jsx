@@ -151,6 +151,7 @@ export default function ViewConversaciones({
   onSelectChat,
   onSendMessage,
   onSendDocument,
+  onCheckDelivery,
   onToggleBot,
   onSavePedido,
   onUpdateLead,
@@ -159,6 +160,7 @@ export default function ViewConversaciones({
   openChatNonce = 0
 }) {
   const [messageText, setMessageText] = useState('');
+  const [deliveryWarn, setDeliveryWarn] = useState(null); // {ventana24h, errorMessage} si el último NO llegó
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState('cotizador'); // 'cotizador' | 'perfil'
   const [mobileShowChat, setMobileShowChat] = useState(false);
@@ -197,6 +199,20 @@ export default function ViewConversaciones({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showLabelDropdown, showLikeTemplates]);
+
+  // Al abrir/actualizar un chat, preguntar a YCloud si la última respuesta REALMENTE le llegó
+  // al cliente. Si falló (ventana 24h u otro), mostramos el aviso rojo para escribirle manual.
+  useEffect(() => {
+    setDeliveryWarn(null);
+    const phone = selectedLead?.phone || selectedLead?.telefono;
+    if (!phone || !onCheckDelivery) return;
+    let cancel = false;
+    (async () => {
+      const r = await onCheckDelivery(phone, selectedLead?.channel_phone);
+      if (!cancel && r && r.found && r.failed) setDeliveryWarn({ ventana24h: r.ventana24h, errorMessage: r.errorMessage });
+    })();
+    return () => { cancel = true; };
+  }, [selectedLead?.id, messages.length, onCheckDelivery]);
 
   const activeLabel = useMemo(() => {
     return getLeadLabel(selectedLead);
@@ -1288,8 +1304,20 @@ export default function ViewConversaciones({
 
         {/* Input Bar */}
         <div className="p-3 md:p-6 bg-white border-t border-slate-100">
+          {/* AVISO CONFIRMADO: tu última respuesta NO le llegó al cliente (YCloud lo reporta) */}
+          {selectedChatId && deliveryWarn && (
+            <div className="mb-3 p-3 bg-rose-50 border border-rose-300 rounded-2xl flex items-start gap-2.5 animate-in slide-in-from-bottom-2 duration-200">
+              <span className="text-lg leading-none shrink-0">🚫</span>
+              <p className="text-[11px] text-rose-800 font-semibold leading-snug">
+                Tu última respuesta <b>NO le llegó</b> al cliente.
+                {deliveryWarn.ventana24h
+                  ? ' WhatsApp la bloqueó por la ventana de 24h (pasó mucho desde que el cliente escribió). Escribile vos desde tu WhatsApp para reabrir la conversación.'
+                  : ` Motivo: ${deliveryWarn.errorMessage || 'rechazado por WhatsApp'}. Probá escribirle desde tu WhatsApp.`}
+              </p>
+            </div>
+          )}
           {/* AVISO: ventana de 24h de WhatsApp cerrada → los mensajes pueden no entregarse */}
-          {selectedChatId && windowStatus.open === false && (
+          {selectedChatId && !deliveryWarn && windowStatus.open === false && (
             <div className="mb-3 p-3 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-2.5 animate-in slide-in-from-bottom-2 duration-200">
               <span className="text-lg leading-none shrink-0">⚠️</span>
               <p className="text-[11px] text-amber-800 font-semibold leading-snug">
