@@ -920,11 +920,11 @@ export function useAppData(apiBase, authToken) {
     }
   }, [apiFetch, apiBase, fetchTrainingRules, notify]);
 
-  const testTrainingPrompt = useCallback(async (question, history = []) => {
+  const testTrainingPrompt = useCallback(async (question, history = [], imageDataUrl = null) => {
     try {
       const res = await apiFetch(`${apiBase}/api/training/test`, {
         method: 'POST',
-        body: JSON.stringify({ question, history })
+        body: JSON.stringify({ question, history, imageDataUrl })
       });
       if (res.ok) return await res.json();
       return { error: 'Error en la respuesta' };

@@ -4675,14 +4675,15 @@ app.delete('/api/training/sessions/:id', async (req, res) => {
 // 7. Probador / Simulador en Vivo de Respuestas
 app.post('/api/training/test', async (req, res) => {
   try {
-    const { question, history } = req.body;
-    if (!question || !question.trim()) return res.status(400).json({ error: "Falta la pregunta" });
+    const { question, history, imageDataUrl } = req.body;
+    const hasImg = !!(imageDataUrl && String(imageDataUrl).trim());
+    if ((!question || !question.trim()) && !hasImg) return res.status(400).json({ error: "Falta la pregunta o una foto" });
     // Historial de la charla (memoria) para que el simulador siga el contexto igual que el bot.
     // Formato: [{ role: 'user'|'assistant', content: '...' }, ...]
     const hist = Array.isArray(history) ? history.filter(h => h && h.role && h.content).slice(-10) : [];
 
     const approvedRules = await db.all("SELECT * FROM training_rules WHERE status = 'approved'");
-    const qClean = question.toLowerCase();
+    const qClean = String(question || '').toLowerCase();
 
     // 1. Buscar en catálogo de productos con scoring inteligente
     const products = await db.all("SELECT * FROM products WHERE activo = 1");
@@ -4800,6 +4801,8 @@ app.post('/api/training/test', async (req, res) => {
     // Si algo falla o no hay key, cae al texto aproximado de arriba (no rompe).
     let finalReply = simulatedReply;
     let replySource = 'aprox'; // 'aprox' = plantilla local | 'bot-real' = LLM real
+    let visionDesc = '';       // lo que "vio" la visión en la foto (si mandaron una)
+    let modelUsed = '';        // 'gpt-4o' (idéntico al vivo) o 'deepseek'
     try {
       // Traemos el cerebro por el MISMO endpoint que usa el bot (/api/settings), que
       // YA inyecta las reglas de entrenamiento aprobadas en prompt_recepcionista. Así el
@@ -4812,16 +4815,38 @@ app.post('/api/training/test', async (req, res) => {
         const setRows = await db.all("SELECT key, value FROM settings");
         setRows.forEach(r => S[r.key] = r.value);
       }
-      const apiKey = S.deepseek_api_key;
+      // SIMULADOR IDÉNTICO AL VIVO: si hay llave de OpenAI (probador_openai_key), usamos el MISMO
+      // modelo que el bot real (GPT-4o) y la MISMA visión (gpt-4o-mini). Si no, cae a DeepSeek.
+      const useOpenAI = !!(S.probador_openai_key && String(S.probador_openai_key).trim());
+      const apiKey = useOpenAI ? S.probador_openai_key : S.deepseek_api_key;
       if (apiKey) {
-        const baseUrl = String(S.deepseek_base_url || 'https://api.deepseek.com').replace(/\/+$/, '');
-        const model = S.deepseek_model || 'deepseek-v4-pro';
+        const baseUrl = useOpenAI ? 'https://api.openai.com/v1' : String(S.deepseek_base_url || 'https://api.deepseek.com').replace(/\/+$/, '');
+        const model = useOpenAI ? 'gpt-4o' : (S.deepseek_model || 'deepseek-v4-pro');
+        // VISIÓN (igual que el bot en vivo): si el cliente mandó una FOTO, la describe gpt-4o-mini
+        // y esa descripción entra a la charla, tal como hace n8n con "Analyze image1".
+        let imgDesc = '';
+        if (hasImg && useOpenAI) {
+          try {
+            const vres = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+              body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 300, messages: [{ role: 'user', content: [
+                { type: 'text', text: 'Describí en español, breve y concreto, qué se ve en esta imagen para una tienda de portones/muebles: si es un motor, control remoto, riel, mesa de noche u otro; y la marca/modelo SOLO si se distingue con claridad (no inventes).' },
+                { type: 'image_url', image_url: { url: imageDataUrl } }
+              ] }] })
+            });
+            const vj = await vres.json();
+            imgDesc = (vj?.choices?.[0]?.message?.content || '').trim();
+          } catch (e) { console.error('sim visión:', e.message); }
+        }
+        // Lo que "dice" el cliente este turno: su texto + (si mandó foto) la descripción de la visión.
+        const userTurn = (imgDesc ? `[El cliente envió una FOTO. La visión ve: ${imgDesc}]\n` : '') + String(question || '').trim();
         // RAG idéntico al bot: llamamos al MISMO endpoint (sin refactor) con el token interno.
         let ragCtx = '', ragFound = false;
         try {
-          // El RAG usa el contexto: últimas preguntas del cliente + la actual, para que
-          // productos ya mencionados (ej. "LiftMaster") sigan apareciendo en follow-ups.
-          const ragQuery = (hist.filter(h => h.role === 'user').slice(-2).map(h => h.content).join(' ') + ' ' + question).trim();
+          // El RAG usa el contexto: últimas preguntas del cliente + la actual (+ lo que vio en la
+          // foto), para que productos ya mencionados sigan apareciendo en follow-ups.
+          const ragQuery = (hist.filter(h => h.role === 'user').slice(-2).map(h => h.content).join(' ') + ' ' + question + ' ' + imgDesc).trim();
           const ragRes = await fetch(`http://127.0.0.1:${port}/api/rag/context?maxChars=2500&q=${encodeURIComponent(ragQuery)}`, { headers: { Authorization: 'Bearer onecontrol-n8n-token-static-2026' } });
           const ragJson = await ragRes.json();
           ragCtx = ragJson.context || ''; ragFound = !!ragJson.found;
@@ -4833,13 +4858,14 @@ app.post('/api/training/test', async (req, res) => {
         const llmRes = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, temperature: 0.5, messages: [{ role: 'system', content: sys }, ...hist, { role: 'user', content: question }] }),
+          body: JSON.stringify({ model, temperature: 0.5, messages: [{ role: 'system', content: sys }, ...hist, { role: 'user', content: userTurn }] }),
           signal: ctrl.signal
         }).finally(() => clearTimeout(to));
         const llmJson = await llmRes.json();
         const txt = llmJson?.choices?.[0]?.message?.content;
+        visionDesc = imgDesc; modelUsed = useOpenAI ? 'gpt-4o' : 'deepseek';
         if (txt && txt.trim()) { finalReply = txt.trim(); replySource = 'bot-real'; }
-        else if (llmJson?.error) { console.error('deepseek sim error:', JSON.stringify(llmJson.error).slice(0, 200)); }
+        else if (llmJson?.error) { console.error('sim LLM error:', JSON.stringify(llmJson.error).slice(0, 200)); }
       }
     } catch (e) { console.error('simulador LLM:', e.message); }
 
@@ -4867,6 +4893,8 @@ app.post('/api/training/test', async (req, res) => {
       question,
       reply: finalReply,
       source: replySource,
+      model: modelUsed,
+      visionDesc,
       mediaInfo,
       appliedRules: matchingRules.map(r => ({ id: r.id, title: r.title, type: r.type, rule: r.rule })),
       productsFound: scoredProducts.slice(0, 3).map(p => `${p.nombre} (Q${p.precio})`)

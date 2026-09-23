@@ -45,6 +45,7 @@ export default function ViewEntrenamiento({
 
   // Simulator State — chat conversacional con memoria + sesiones guardadas
   const [simInput, setSimInput] = useState('');
+  const [simImage, setSimImage] = useState(null);   // foto adjunta (data URL) para probar visión
   const [simLoading, setSimLoading] = useState(false);
   const [sessions, setSessions] = useState([]);      // [{id, nombre, mensajes, ...}]
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -154,24 +155,27 @@ export default function ViewEntrenamiento({
   const handleSendChat = async (e) => {
     e?.preventDefault();
     const text = simInput.trim();
-    if (!text || simLoading) return;
+    const img = simImage;   // data URL de la foto adjunta (si hay)
+    if ((!text && !img) || simLoading) return;
 
     const history = chatMessages.map(m => ({ role: m.role, content: m.content }));
-    const userMsg = { role: 'user', content: text };
+    const userMsg = { role: 'user', content: text || '(envió una foto)', image: img || null };
     const withUser = [...chatMessages, userMsg];
     setChatMessages(withUser);
     setSimInput('');
+    setSimImage(null);
     setSimLoading(true);
 
     let botMsg;
     try {
-      const res = await onTestPrompt?.(text, history);
+      const res = await onTestPrompt?.(text, history, img);
       botMsg = {
         role: 'assistant',
         content: res?.reply || res?.error || '(sin respuesta)',
         mediaInfo: res?.mediaInfo || null,
         appliedRules: res?.appliedRules || [],
-        source: res?.source || null
+        source: res?.source || null,
+        visionDesc: res?.visionDesc || null
       };
     } catch (err) {
       botMsg = { role: 'assistant', content: 'Error: ' + (err?.message || 'no se pudo simular'), mediaInfo: null, appliedRules: [] };
@@ -182,7 +186,7 @@ export default function ViewEntrenamiento({
     setSimLoading(false);
 
     // Persistir el hilo (crear la sesión en el primer mensaje, o actualizarla)
-    const nombre = (activeSession?.nombre) || text.slice(0, 40);
+    const nombre = (activeSession?.nombre) || (text || 'Foto de prueba').slice(0, 40);
     if (!activeSessionId) {
       const created = await onCreateSession?.(nombre, finalMsgs);
       if (created?.id) {
@@ -193,6 +197,18 @@ export default function ViewEntrenamiento({
       await onUpdateSession?.(activeSessionId, { nombre, mensajes: finalMsgs });
       setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, mensajes: finalMsgs, nombre, updated_at: new Date().toISOString() } : s));
     }
+  };
+
+  // Adjuntar una foto al Probador (para probar la visión, igual que el bot en vivo)
+  const handlePickSimImage = (e) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
+    if (!file) return;
+    if (!file.type?.startsWith('image/')) return;
+    if (file.size > 6 * 1024 * 1024) { alert('La foto es muy grande (máx 6MB).'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setSimImage(reader.result);
+    reader.readAsDataURL(file);
   };
 
   // Última pregunta del cliente (para el botón de corregir)
@@ -509,7 +525,7 @@ export default function ViewEntrenamiento({
                   <p className="text-[11px] text-slate-400">Escribí como si fueras el cliente. El bot recuerda todo el hilo.</p>
                 </div>
               </div>
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 hidden sm:inline">🤖 Bot real (deepseek)</span>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 hidden sm:inline">🤖 GPT-4o + visión · igual que el vivo</span>
             </div>
 
             {/* Hilo de mensajes */}
@@ -541,8 +557,13 @@ export default function ViewEntrenamiento({
                 chatMessages.map((m, i) => (
                   m.role === 'user' ? (
                     <div key={i} className="flex justify-end">
-                      <div className="max-w-[80%] bg-[#FF6B00] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-xs leading-relaxed whitespace-pre-line shadow-sm">
-                        {m.content}
+                      <div className="max-w-[80%] flex flex-col items-end gap-1.5">
+                        {m.image && <img src={m.image} alt="foto" className="max-h-40 rounded-2xl border border-orange-200 shadow-sm" />}
+                        {m.content && (
+                          <div className="bg-[#FF6B00] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-xs leading-relaxed whitespace-pre-line shadow-sm">
+                            {m.content}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -555,6 +576,13 @@ export default function ViewEntrenamiento({
                           </div>
                           <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed">{m.content}</p>
                         </div>
+
+                        {/* Lo que "vio" la visión en la foto del cliente */}
+                        {m.visionDesc && (
+                          <div className="inline-flex items-start gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-medium border bg-sky-50 border-sky-200 text-sky-800 max-w-full">
+                            <span className="shrink-0">👁</span><span>La visión vio: {m.visionDesc}</span>
+                          </div>
+                        )}
 
                         {/* Indicador de media (compacto) */}
                         {m.mediaInfo && (m.mediaInfo.willSendImage || m.mediaInfo.willSendVideo) && (
@@ -628,18 +656,32 @@ export default function ViewEntrenamiento({
                 </button>
               </div>
             )}
+            {/* Preview de la foto adjunta */}
+            {simImage && (
+              <div className="px-4 pt-3 flex items-center gap-2">
+                <div className="relative">
+                  <img src={simImage} alt="adjunta" className="h-16 w-16 object-cover rounded-xl border border-slate-200" />
+                  <button onClick={() => setSimImage(null)} className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-slate-800 text-white flex items-center justify-center shadow" title="Quitar foto"><X size={12} /></button>
+                </div>
+                <span className="text-[11px] text-slate-500">Foto lista — el bot la va a "ver" con visión (gpt-4o-mini), igual que en vivo.</span>
+              </div>
+            )}
             <form onSubmit={handleSendChat} className="border-t border-slate-100 p-4 flex items-end gap-2">
+              <label className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl transition-all cursor-pointer shrink-0" title="Adjuntar foto (probar visión)">
+                <ImageIcon size={16} />
+                <input type="file" accept="image/*" onChange={handlePickSimImage} className="hidden" />
+              </label>
               <textarea
                 rows={1}
                 value={simInput}
                 onChange={(e) => setSimInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat(e); } }}
-                placeholder="Escribí como cliente…  (Enter para enviar, Shift+Enter para salto de línea)"
+                placeholder="Escribí como cliente…  (o adjuntá una foto)"
                 className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-purple-500 focus:bg-white transition-all resize-none max-h-32"
               />
               <button
                 type="submit"
-                disabled={simLoading || !simInput.trim()}
+                disabled={simLoading || (!simInput.trim() && !simImage)}
                 className="p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50 cursor-pointer shrink-0"
                 title="Enviar"
               >
