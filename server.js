@@ -49,7 +49,8 @@ console.log(`📌 Puerto detectado: ${port}`);
 console.log(`📌 Webhook detectado (fallback env): ${ENV_N8N_OUTBOUND_WEBHOOK}`);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));   // 15mb: permite fotos en base64 (Probador con visión)
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
 let currentToken = process.env.DASHBOARD_TOKEN || 'dev-insecure-token';
