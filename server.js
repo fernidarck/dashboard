@@ -4037,10 +4037,18 @@ app.get('/api/rag/context', async (req, res) => {
       // (ej. "noche" la comparten TODAS las mesas). Si la consulta trae una palabra DISTINTIVA
       // que no es del producto del anuncio (ej. "tapa elevable" = One Night, no modelo 1),
       // seguimos lo que pide el cliente y NO forzamos el del anuncio.
-      const GENERIC_CAT = new Set(['mesa','mesita','noche','mueble','muebles','control','controles','remoto','remotos','motor','motores','porton','portones','producto','productos','kit','foto','fotos','precio','info','informacion']);
+      const GENERIC_CAT = new Set(['mesa','mesita','noche','mueble','muebles','modelo','modelos','control','controles','remoto','remotos','motor','motores','porton','portones','producto','productos','kit','foto','fotos','precio','info','informacion']);
       const distinctiveKw = keywords.filter(kw => kw.length > 2 && !GENERIC_CAT.has(kw));
-      const adRelevante = distinctiveKw.length === 0
-        || distinctiveKw.some(kw => adProdNorm.includes(kw))
+      // ¿El cliente nombró un producto puntual (por NÚMERO de modelo o por NOMBRE distintivo)?
+      const nombroAlgo = distinctiveKw.length > 0 || modeloTokens.length > 0;
+      // ¿Eso que nombró ES el producto del anuncio?
+      const nombroElDelAnuncio = distinctiveKw.some(kw => adProdNorm.includes(kw)) || modeloTokens.some(t => adProdNorm.includes(t));
+      // El anuncio SOLO manda si: el cliente NO nombró nada puntual (consulta vaga → asumimos el
+      // del anuncio), o nombró justamente el del anuncio, o se refiere "al anuncio". Si nombró
+      // OTRO modelo/nombre (ej. anuncio modelo 1 pero pide "modelo 5" o "One Night"), seguimos
+      // lo que pide el cliente — el bot debe saber por cuál preguntan, por número o por nombre.
+      const adRelevante = !nombroAlgo
+        || nombroElDelAnuncio
         || /(anuncio|publicidad|\besa\b|\bese\b|la del|lo que sale|el que sale)/.test(qStrip);
       if (!adRelevante) { adNote = ""; adProdName = ""; }
     }
