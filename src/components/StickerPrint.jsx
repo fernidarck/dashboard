@@ -214,6 +214,7 @@ export default function StickerPrint({
   const [mobileTab, setMobileTab] = useState('preview'); // 'preview' | 'edit' (en móvil default 'preview' para ver el sticker de inmediato)
   const [windowWidth, setWindowWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
   const [isExportingImage, setIsExportingImage] = useState(false);
+  const [marklifeStatus, setMarklifeStatus] = useState('');
   const [showMarklifeModal, setShowMarklifeModal] = useState(false);
   const [showPrintChoiceModal, setShowPrintChoiceModal] = useState(false);
   const stickerCardRef = useRef(null);
@@ -869,33 +870,35 @@ export default function StickerPrint({
     });
   };
 
-  const handleShareToMarklife = async () => {
+  const handleSaveAndOpenMarklife = async () => {
     setIsExportingImage(true);
+    setMarklifeStatus('saving');
     try {
       const blob = await generateStickerPngBlob();
       const fileName = `sticker-pedido-${form.numeroPedido || 'envio'}.png`;
-      const file = new File([blob], fileName, { type: 'image/png' });
+      downloadBlob(blob, fileName);
 
-      // Si el navegador soporta compartir archivos directamente a apps (Android Chrome, iOS Safari)
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: `Sticker Pedido #${form.numeroPedido}`,
-            text: `Sticker de envío Pedido #${form.numeroPedido}`
-          });
-          return;
-        } catch (shareErr) {
-          if (shareErr.name === 'AbortError') return;
-          console.warn('Share error:', shareErr);
+      // Intentar copiar al portapapeles si está disponible
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
         }
+      } catch (clipErr) {
+        // Silencioso si el navegador no permite clipboard
       }
 
-      // Si el navegador no soporta Web Share con archivos o canceló, descargamos la imagen
-      downloadBlob(blob, fileName);
-      alert('¡Imagen guardada en tu teléfono! Abre la app Marklife y selecciona "Imprimir Imagen" o "Importar" para imprimir tu etiqueta por Bluetooth.');
+      setMarklifeStatus('saved');
+
+      // Abrir app Marklife en el teléfono tras guardar la imagen
+      setTimeout(() => {
+        handleOpenMarklifeApp();
+      }, 700);
+
     } catch (err) {
-      console.error('Error exportando para Marklife:', err);
+      console.error('Error preparando sticker para Marklife:', err);
+      setMarklifeStatus('error');
       alert('Error preparando sticker: ' + err.message);
     } finally {
       setIsExportingImage(false);
@@ -1772,7 +1775,7 @@ export default function StickerPrint({
                     <span className="text-[9px] bg-[#FF6B00] text-white px-1.5 py-0.5 rounded-md font-black">Recomendado</span>
                   </div>
                   <div className="text-[11px] text-orange-900/80 font-medium mt-0.5 leading-snug">
-                    Para mini impresoras térmicas portátiles conectadas por Bluetooth.
+                    Guarda la etiqueta en tu galería y abre Marklife para imprimir por Bluetooth.
                   </div>
                 </div>
               </button>
@@ -1820,67 +1823,99 @@ export default function StickerPrint({
                 </div>
               </div>
               <button
-                onClick={() => setShowMarklifeModal(false)}
+                onClick={() => {
+                  setShowMarklifeModal(false);
+                  setMarklifeStatus('');
+                }}
                 className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Guía rápida */}
-            <div className="bg-orange-50/70 border border-orange-200/80 rounded-2xl p-3.5 space-y-2 text-xs text-orange-950">
-              <div className="font-black text-orange-900 flex items-center gap-1.5">
-                <span>💡 ¿Cómo imprimir en tu celular?</span>
+            {/* Aclaración sobre el menú compartir */}
+            <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3 text-xs text-amber-950 space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                <HelpCircle size={14} className="text-amber-600 shrink-0" />
+                <span>¿Por qué Marklife no sale en "Compartir"?</span>
               </div>
-              <ol className="list-decimal list-inside space-y-1.5 font-medium leading-relaxed text-slate-700 text-[11.5px]">
-                <li>Toca el botón <strong>"Compartir a Marklife"</strong> abajo.</li>
-                <li>En el menú de aplicaciones que aparece en tu teléfono, selecciona <strong>Marklife</strong>.</li>
-                <li>La app Marklife se abrirá con el sticker cargado en pantalla listo para imprimir.</li>
-              </ol>
+              <p className="text-[11px] text-amber-900/85 leading-relaxed">
+                La app Marklife no está programada para recibir archivos compartidos desde el navegador web. 
+                Su forma oficial de imprimir es <strong>seleccionando la imagen desde tu galería</strong>.
+              </p>
             </div>
 
-            {/* Acciones principales */}
+            {/* Estado si acaba de guardar */}
+            {marklifeStatus === 'saved' && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900 flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                <span className="font-bold">¡Sticker guardado en tu teléfono! Abriendo Marklife...</span>
+              </div>
+            )}
+
+            {/* Botón principal todo-en-uno */}
             <div className="space-y-2.5 pt-1">
-              {/* Botón 1: Compartir directamente */}
               <button
                 type="button"
-                onClick={handleShareToMarklife}
+                onClick={handleSaveAndOpenMarklife}
                 disabled={isExportingImage}
-                className="w-full py-3 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                className="w-full py-3.5 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
               >
                 {isExportingImage ? (
                   <>
-                    <RefreshCw size={15} className="animate-spin" />
-                    <span>Preparando imagen en HD...</span>
+                    <RefreshCw size={16} className="animate-spin" />
+                    <span>Guardando y abriendo Marklife...</span>
                   </>
                 ) : (
                   <>
-                    <Share2 size={15} />
-                    <span>1. Compartir directo a Marklife</span>
+                    <Download size={16} />
+                    <span>1. Guardar Sticker y Abrir Marklife</span>
                   </>
                 )}
               </button>
 
-              {/* Botón 2: Guardar PNG en galería */}
-              <button
-                type="button"
-                onClick={handleDownloadStickerImage}
-                disabled={isExportingImage}
-                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <Download size={14} />
-                <span>2. Guardar Imagen en Teléfono (PNG)</span>
-              </button>
+              {/* 3 Pasos rápidos en Marklife */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
+                <div className="font-black text-slate-800 text-[11px] uppercase tracking-wider">
+                  Luego dentro de la app Marklife:
+                </div>
+                <div className="space-y-2 text-[11.5px] text-slate-700">
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-orange-100 text-[#FF6B00] font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <span>Toca en <strong>"Crear Etiqueta"</strong> o <strong>"Imagen"</strong> / <strong>"Insertar"</strong>.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-orange-100 text-[#FF6B00] font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                    <span>Elige el sticker recién guardado (es la primera foto de tu galería).</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-orange-100 text-[#FF6B00] font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                    <span>¡Toca el botón <strong>Imprimir</strong> por Bluetooth y listo!</span>
+                  </div>
+                </div>
+              </div>
 
-              {/* Botón 3: Abrir app Marklife */}
-              <button
-                type="button"
-                onClick={handleOpenMarklifeApp}
-                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <ExternalLink size={14} />
-                <span>3. Abrir App Marklife en este teléfono</span>
-              </button>
+              {/* Botones secundarios */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleDownloadStickerImage}
+                  disabled={isExportingImage}
+                  className="py-2.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-[11px] font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Download size={13} />
+                  <span>Solo Descargar PNG</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenMarklifeApp}
+                  className="py-2.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-[11px] font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <ExternalLink size={13} />
+                  <span>Abrir Marklife</span>
+                </button>
+              </div>
             </div>
 
             <div className="text-[10px] text-slate-400 text-center leading-normal pt-1">
