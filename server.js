@@ -4073,7 +4073,11 @@ app.get('/api/rag/context', async (req, res) => {
       // que no es del producto del anuncio (ej. "tapa elevable" = One Night, no modelo 1),
       // seguimos lo que pide el cliente y NO forzamos el del anuncio.
       const GENERIC_CAT = new Set(['mesa','mesita','noche','mueble','muebles','modelo','modelos','control','controles','remoto','remotos','motor','motores','porton','portones','producto','productos','kit','foto','fotos','precio','info','informacion']);
-      const distinctiveKw = keywords.filter(kw => kw.length > 2 && !GENERIC_CAT.has(kw));
+      // Vocabulario REAL del catálogo (nombres de productos/tarjetas). Una palabra solo cuenta
+      // como "pidió otro producto" si de verdad aparece en el catálogo — NO un saludo/relleno
+      // como "hello", "get", "this" (que antes borraban el anuncio y arruinaban la foto).
+      const catalogVocab = stripAcc(allKnowledge.map(d => d.name || '').join(' ').toLowerCase());
+      const distinctiveKw = keywords.filter(kw => kw.length > 2 && !GENERIC_CAT.has(kw) && catalogVocab.includes(kw));
       // ¿El cliente nombró un producto puntual (por NÚMERO de modelo o por NOMBRE distintivo)?
       const nombroAlgo = distinctiveKw.length > 0 || modeloTokens.length > 0;
       // ¿Eso que nombró ES el producto del anuncio?
