@@ -4,9 +4,10 @@ import {
   Tag, Truck, MapPin, Phone, User, Package,
   DollarSign, FileText, Calendar, ExternalLink, Sliders,
   CheckCircle2, Trash2, QrCode, Globe, Share2, MessageCircle,
-  HelpCircle, AlertTriangle, Eye
+  HelpCircle, AlertTriangle, Eye, Smartphone, Download
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import html2canvas from 'html2canvas';
 import { ONE_CONTROL_LOGO_BASE64 } from '../assets/logoBase64.js';
 
 // ── TAMAÑOS PREESTABLECIDOS DE STICKERS ─────────────────────────────────────
@@ -212,6 +213,10 @@ export default function StickerPrint({
   const [zoom, setZoom] = useState(1);
   const [mobileTab, setMobileTab] = useState('preview'); // 'preview' | 'edit' (en móvil default 'preview' para ver el sticker de inmediato)
   const [windowWidth, setWindowWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
+  const [isExportingImage, setIsExportingImage] = useState(false);
+  const [showMarklifeModal, setShowMarklifeModal] = useState(false);
+  const [showPrintChoiceModal, setShowPrintChoiceModal] = useState(false);
+  const stickerCardRef = useRef(null);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -755,15 +760,13 @@ export default function StickerPrint({
 </html>`;
   };
 
-  // ── IMPRESIÓN ADAPTATIVA (MÓVIL / ESCRITORIO) ───────────────────────────
-  const handlePrint = () => {
+  // ── IMPRESIÓN ESTÁNDAR / SISTEMA ──────────────────────────────────────────
+  const executeSystemPrint = () => {
     const html = generatePrintableHtml();
     const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (typeof window !== 'undefined' && window.innerWidth < 768);
 
     if (isMobileDevice) {
-      // En dispositivos móviles (Android / iOS / Chrome Mobile):
-      // Los iframes ocultos no pueden disparar la ventana nativa de impresión del sistema.
-      // Abrimos en una ventana limpia y ejecutamos print()
+      // En dispositivos móviles (Android / iOS): abrir ventana limpia y llamar a print()
       const win = window.open('', '_blank');
       if (win) {
         win.document.open();
@@ -781,7 +784,7 @@ export default function StickerPrint({
       }
     }
 
-    // En navegadores de escritorio (PC/Mac): impresión silenciosa vía iframe
+    // En computadoras de escritorio: impresión limpia vía iframe
     let iframe = document.getElementById('onecontrol-sticker-iframe');
     if (!iframe) {
       iframe = document.createElement('iframe');
@@ -807,6 +810,17 @@ export default function StickerPrint({
     }, 280);
   };
 
+  // Manejar clic en "Imprimir"
+  const handlePrint = () => {
+    const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (typeof window !== 'undefined' && window.innerWidth < 768);
+    if (isMobileDevice) {
+      // En móvil, preguntamos si desea imprimir con la app Marklife (Bluetooth) o con la impresora del sistema
+      setShowPrintChoiceModal(true);
+    } else {
+      executeSystemPrint();
+    }
+  };
+
   const handleOpenInNewTab = () => {
     const html = generatePrintableHtml();
     const win = window.open('', '_blank');
@@ -814,6 +828,105 @@ export default function StickerPrint({
       win.document.open();
       win.document.write(html);
       win.document.close();
+    }
+  };
+
+  // ── INTEGRACIÓN MARKLIFE & EXPORTACIÓN DE IMAGEN ─────────────────────────
+  const downloadBlob = (blob, fileName) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const generateStickerPngBlob = async () => {
+    if (!stickerCardRef.current) {
+      throw new Error('No se encontró el contenedor del sticker.');
+    }
+
+    const canvas = await html2canvas(stickerCardRef.current, {
+      scale: 3, // 300 DPI ultra-nítido para impresoras térmicas
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      onclone: (clonedDoc, clonedElement) => {
+        if (clonedElement.parentElement) {
+          clonedElement.parentElement.style.transform = 'none';
+          clonedElement.parentElement.style.marginBottom = '0px';
+        }
+      }
+    });
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('Error al convertir el sticker a imagen.'));
+      }, 'image/png', 1.0);
+    });
+  };
+
+  const handleShareToMarklife = async () => {
+    setIsExportingImage(true);
+    try {
+      const blob = await generateStickerPngBlob();
+      const fileName = `sticker-pedido-${form.numeroPedido || 'envio'}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+
+      // Si el navegador soporta compartir archivos directamente a apps (Android Chrome, iOS Safari)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `Sticker Pedido #${form.numeroPedido}`,
+            text: `Sticker de envío Pedido #${form.numeroPedido}`
+          });
+          return;
+        } catch (shareErr) {
+          if (shareErr.name === 'AbortError') return;
+          console.warn('Share error:', shareErr);
+        }
+      }
+
+      // Si el navegador no soporta Web Share con archivos o canceló, descargamos la imagen
+      downloadBlob(blob, fileName);
+      alert('¡Imagen guardada en tu teléfono! Abre la app Marklife y selecciona "Imprimir Imagen" o "Importar" para imprimir tu etiqueta por Bluetooth.');
+    } catch (err) {
+      console.error('Error exportando para Marklife:', err);
+      alert('Error preparando sticker: ' + err.message);
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
+  const handleDownloadStickerImage = async () => {
+    setIsExportingImage(true);
+    try {
+      const blob = await generateStickerPngBlob();
+      const fileName = `sticker-pedido-${form.numeroPedido || 'envio'}.png`;
+      downloadBlob(blob, fileName);
+    } catch (err) {
+      console.error('Error descargando imagen:', err);
+      alert('Error descargando imagen: ' + err.message);
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
+  const handleOpenMarklifeApp = () => {
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isAndroid) {
+      // Lanzar directamente la app Marklife en Android o redirigir a Play Store si no está instalada
+      window.location.href = 'intent:#Intent;package=com.feioou.deliprint.yxq;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.feioou.deliprint.yxq;end';
+    } else if (isIOS) {
+      window.open('https://apps.apple.com/app/marklife/id1535497463', '_blank');
+    } else {
+      window.open('https://play.google.com/store/apps/details?id=com.feioou.deliprint.yxq', '_blank');
     }
   };
 
@@ -866,6 +979,15 @@ export default function StickerPrint({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowMarklifeModal(true)}
+              className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-orange-50 hover:bg-orange-100 text-[#FF6B00] border border-orange-200 text-[11px] sm:text-xs font-black rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              title="Imprimir con aplicación Marklife (Bluetooth)"
+            >
+              <Smartphone size={14} />
+              <span>Marklife</span>
+            </button>
             <button
               onClick={handlePrint}
               className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
@@ -1396,13 +1518,14 @@ export default function StickerPrint({
               >
                 {/* REPRESENTACIÓN VISUAL EN PANTALLA */}
                 <div
+                  ref={stickerCardRef}
                   style={{
                     width: `${activeSize.widthMm * 3.78}px`,
                     height: `${activeSize.heightMm * 3.78}px`,
                     maxHeight: `${activeSize.heightMm * 3.78}px`,
                     padding: activeSize.density === 'tiny' ? '5px' : activeSize.density === 'compact' ? '8px' : '12px'
                   }}
-                  className="flex flex-col justify-between h-full text-slate-950 font-sans overflow-hidden"
+                  className="flex flex-col justify-between h-full text-slate-950 font-sans overflow-hidden bg-white"
                 >
                   {/* TOP HEADER */}
                   <div className="flex justify-between items-center border-b border-black pb-1 mb-1">
@@ -1549,15 +1672,25 @@ export default function StickerPrint({
             {/* BOTÓN INFERIOR DE IMPRESIÓN (DESKTOP) */}
             <div className="w-full hidden sm:flex items-center justify-between pt-4 border-t border-slate-200 shrink-0">
               <span className="text-xs text-slate-500 font-medium">
-                Compatible con impresoras térmicas (Zebra, MUNBYN, Xprinter) y hojas carta/A4.
+                Compatible con impresoras térmicas (Zebra, MUNBYN, Xprinter) y app Marklife.
               </span>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="px-6 py-2.5 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-orange-500/20 flex items-center gap-2 cursor-pointer transition-all"
-              >
-                <Printer size={16} /> Imprimir Ahora
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMarklifeModal(true)}
+                  className="px-4 py-2.5 bg-orange-50 hover:bg-orange-100 text-[#FF6B00] border border-orange-200 text-xs font-black rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-2xs"
+                  title="Exportar imagen o compartir con la app Marklife"
+                >
+                  <Smartphone size={15} /> App Marklife
+                </button>
+                <button
+                  type="button"
+                  onClick={executeSystemPrint}
+                  className="px-6 py-2.5 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-orange-500/20 flex items-center gap-2 cursor-pointer transition-all"
+                >
+                  <Printer size={16} /> Imprimir Ahora
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1565,37 +1698,37 @@ export default function StickerPrint({
         </div>
 
         {/* BARRA DE ACCIÓN FIJA EN MÓVIL (SIEMPRE VISIBLE ABAJO) */}
-        <div className="lg:hidden p-2.5 sm:p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0">
+        <div className="lg:hidden p-2 sm:p-2.5 bg-white border-t border-slate-200 flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => setMobileTab(t => t === 'preview' ? 'edit' : 'preview')}
-            className="py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+            className="py-2.5 px-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 flex items-center justify-center gap-1 shrink-0 cursor-pointer"
           >
             {mobileTab === 'preview' ? (
               <>
-                <Sliders size={14} />
+                <Sliders size={13} />
                 <span>Editar</span>
               </>
             ) : (
               <>
-                <Eye size={14} />
+                <Eye size={13} />
                 <span>Ver</span>
               </>
             )}
           </button>
           <button
             type="button"
-            onClick={handleOpenInNewTab}
-            className="py-2.5 px-3 rounded-xl border border-orange-200 text-xs font-bold text-[#FF6B00] bg-orange-50 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-            title="Abrir en pestaña nueva para imprimir o guardar PDF"
+            onClick={() => setShowMarklifeModal(true)}
+            className="py-2.5 px-3 rounded-xl border border-orange-200 text-xs font-black text-[#FF6B00] bg-orange-50 hover:bg-orange-100 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
+            title="Imprimir con aplicación Marklife por Bluetooth"
           >
-            <ExternalLink size={14} />
-            <span>PDF</span>
+            <Smartphone size={14} />
+            <span>Marklife</span>
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="flex-1 py-2.5 px-3 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+            className="flex-1 py-2.5 px-2.5 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Printer size={15} />
             <span>Imprimir</span>
@@ -1603,6 +1736,161 @@ export default function StickerPrint({
         </div>
 
       </div>
+
+      {/* ── MODAL: ELECCIÓN DE MÉTODO DE IMPRESIÓN (MÓVIL) ──────────────────── */}
+      {showPrintChoiceModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs z-60 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <span>¿Cómo deseas imprimir?</span>
+              </h3>
+              <button
+                onClick={() => setShowPrintChoiceModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {/* Opción Marklife */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPrintChoiceModal(false);
+                  setShowMarklifeModal(true);
+                }}
+                className="w-full p-3.5 rounded-2xl bg-orange-50 hover:bg-orange-100/90 border-2 border-[#FF6B00] text-left transition-all cursor-pointer flex items-center gap-3 shadow-xs"
+              >
+                <div className="w-10 h-10 rounded-xl bg-[#FF6B00] text-white flex items-center justify-center font-black shrink-0 shadow-sm shadow-orange-500/30">
+                  <Smartphone size={20} />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs font-black text-orange-950 flex items-center justify-between">
+                    <span>App Marklife (Bluetooth)</span>
+                    <span className="text-[9px] bg-[#FF6B00] text-white px-1.5 py-0.5 rounded-md font-black">Recomendado</span>
+                  </div>
+                  <div className="text-[11px] text-orange-900/80 font-medium mt-0.5 leading-snug">
+                    Para mini impresoras térmicas portátiles conectadas por Bluetooth.
+                  </div>
+                </div>
+              </button>
+
+              {/* Opción Impresora del Sistema / PDF */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPrintChoiceModal(false);
+                  executeSystemPrint();
+                }}
+                className="w-full p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-all cursor-pointer flex items-center gap-3"
+              >
+                <div className="w-10 h-10 rounded-xl bg-slate-800 text-white flex items-center justify-center font-black shrink-0">
+                  <Printer size={20} />
+                </div>
+                <div>
+                  <div className="text-xs font-black text-slate-900">
+                    Impresora del Teléfono / PDF
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-medium mt-0.5 leading-snug">
+                    Impresoras Wi-Fi, AirPrint de red o guardar archivo en PDF.
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: IMPRIMIR CON APPLICACIÓN MARKLIFE ────────────────────────── */}
+      {showMarklifeModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs z-60 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-[#FF6B00] flex items-center justify-center font-black">
+                  <Smartphone size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">Imprimir con App Marklife</h3>
+                  <p className="text-[11px] text-slate-500">Impresoras térmicas Bluetooth</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMarklifeModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Guía rápida */}
+            <div className="bg-orange-50/70 border border-orange-200/80 rounded-2xl p-3.5 space-y-2 text-xs text-orange-950">
+              <div className="font-black text-orange-900 flex items-center gap-1.5">
+                <span>💡 ¿Cómo imprimir en tu celular?</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1.5 font-medium leading-relaxed text-slate-700 text-[11.5px]">
+                <li>Toca el botón <strong>"Compartir a Marklife"</strong> abajo.</li>
+                <li>En el menú de aplicaciones que aparece en tu teléfono, selecciona <strong>Marklife</strong>.</li>
+                <li>La app Marklife se abrirá con el sticker cargado en pantalla listo para imprimir.</li>
+              </ol>
+            </div>
+
+            {/* Acciones principales */}
+            <div className="space-y-2.5 pt-1">
+              {/* Botón 1: Compartir directamente */}
+              <button
+                type="button"
+                onClick={handleShareToMarklife}
+                disabled={isExportingImage}
+                className="w-full py-3 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isExportingImage ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" />
+                    <span>Preparando imagen en HD...</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 size={15} />
+                    <span>1. Compartir directo a Marklife</span>
+                  </>
+                )}
+              </button>
+
+              {/* Botón 2: Guardar PNG en galería */}
+              <button
+                type="button"
+                onClick={handleDownloadStickerImage}
+                disabled={isExportingImage}
+                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Download size={14} />
+                <span>2. Guardar Imagen en Teléfono (PNG)</span>
+              </button>
+
+              {/* Botón 3: Abrir app Marklife */}
+              <button
+                type="button"
+                onClick={handleOpenMarklifeApp}
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <ExternalLink size={14} />
+                <span>3. Abrir App Marklife en este teléfono</span>
+              </button>
+            </div>
+
+            <div className="text-[10px] text-slate-400 text-center leading-normal pt-1">
+              Compatible con impresoras Marklife (P11, P12, P15, P50, M110, D110 y similares).
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
