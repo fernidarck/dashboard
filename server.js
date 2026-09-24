@@ -3932,6 +3932,7 @@ app.get('/api/rag/context', async (req, res) => {
     // anuncio está conectado a un producto. Así el bot sabe qué es "la del anuncio".
     let adNote = "";
     let adProdName = "";
+    let adProdCategoria = "";
     try {
       const phoneRaw = req.query.phone || req.query.from;
       if (phoneRaw) {
@@ -3964,7 +3965,8 @@ app.get('/api/rag/context', async (req, res) => {
           }
           if (adProd) {
             adProdName = adProd.nombre;
-            adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO (MÁXIMA PRIORIDAD): Este cliente llegó desde un anuncio de Meta del producto *${adProd.nombre}*. YA SABÉS qué le interesa: es *${adProd.nombre}*. Aunque abra genérico ("info", "precio", "más información") o diga "la del anuncio"/"esa", andá DIRECTO con *${adProd.nombre}*: dale su precio y su foto de una. TERMINANTEMENTE PROHIBIDO preguntar "¿qué producto le interesa?" o "¿cuál busca?" — ya lo sabés por el anuncio. Solo cambiá de producto si el cliente pide EXPLÍCITAMENTE otra cosa distinta.\n\n`;
+            adProdCategoria = adProd.categoria || '';
+            adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO (MÁXIMA PRIORIDAD): Este cliente llegó desde un anuncio de Meta del producto *${adProd.nombre}*. YA SABÉS qué le interesa: es *${adProd.nombre}*. Aunque abra genérico ("info", "precio", "más información") o diga "la del anuncio"/"esa", andá DIRECTO con *${adProd.nombre}*: dale su precio y su foto de una. TERMINANTEMENTE PROHIBIDO preguntar "¿qué producto le interesa?" o "¿cuál busca?" — ya lo sabés por el anuncio. PERO si el cliente pide ver OTROS modelos / alternativas / "algo diferente" / "no se parece a la del anuncio", SÍ mostrale los DEMÁS modelos disponibles (nombre + precio) y ofrecele el LINK de la tienda para ver el catálogo completo — NO lo obligues a quedarse solo con el del anuncio.\n\n`;
           } else if (lead.ad_headline) {
             // No calzó un producto exacto, pero le decimos al bot de qué era el anuncio.
             adNote = `⚠️ ATRIBUCIÓN DE ANUNCIO: Este cliente llegó desde un anuncio titulado "${lead.ad_headline}". Cuando diga "la del anuncio" o "esa", se refiere a lo de ese título. Ofrecele directo el producto que coincida con ese título (con su foto) — NO le pidas la marca ni le tires todos los modelos primero.\n\n`;
@@ -4060,6 +4062,10 @@ app.get('/api/rag/context', async (req, res) => {
     // cliente la describe así (sin nombrarla), boosteamos la One Night para que gane a las
     // otras mesas (que pegan por "mesita/noche") y sea SU foto la que se manda.
     if (/tapa\s*elevabl|elevabl|tapadera|se\s*levanta|levanta\s*la\s*tapa|caj[oó]n\s*oculto|oculto|nfc/.test(qStrip)) modeloTokens.push('one night');
+    // ¿El cliente pide VER OTROS modelos / alternativas? (ej. "tiene otros?", "algo diferente",
+    // "no se parece a la del anuncio"). Si sí, subimos los productos de la MISMA categoría del
+    // producto del anuncio para que el bot pueda ofrecer los demás modelos, no solo el del anuncio.
+    const pideAlternativas = /(otro|otros|otra|otras|diferente|distint|alternativ|no se parece|mas modelos|m[aá]s modelos|dem[aá]s|variedad|opciones|que\s*mas\s*tien)/.test(qStrip);
 
     // EL ANUNCIO SOLO MANDA SI VIENE AL CASO: si el cliente llegó de un anuncio (ej. de un
     // control) pero ahora pregunta por OTRA cosa (ej. "motor corredizo"), NO forzamos el
@@ -4122,6 +4128,9 @@ app.get('/api/rag/context', async (req, res) => {
       if (adProdName && stripAcc(String(doc.name || '').toLowerCase()) === stripAcc(String(adProdName).toLowerCase())) score += 100;
       // FOTO CITADA: el producto de la foto que el cliente citó va hasta arriba (su info+foto).
       if (citaProdName && stripAcc(String(doc.name || '').toLowerCase()) === stripAcc(String(citaProdName).toLowerCase())) score += 120;
+      // ALTERNATIVAS: si pidió "otros modelos", subimos los de la MISMA categoría del anuncio
+      // (para que el bot pueda mostrar los demás modelos, no solo el del anuncio).
+      if (pideAlternativas && adProdCategoria && stripAcc(String(doc.category || '').toLowerCase()) === stripAcc(String(adProdCategoria).toLowerCase())) score += 10;
       // MÁS PEDIDO: sube un poco (para que, entre productos parecidos, salgan primero los que
       // más se venden). Empate: gana el más pedido. No tapa un match fuerte de otra cosa.
       if (doc.mas_vendido && score > 0) score += 1.5;
