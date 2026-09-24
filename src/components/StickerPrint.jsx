@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, Printer, Save, Check, RefreshCw, ZoomIn, ZoomOut,
-  Maximize2, Tag, Truck, MapPin, Phone, User, Package,
+  Tag, Truck, MapPin, Phone, User, Package,
   DollarSign, FileText, Calendar, ExternalLink, Sliders,
-  CheckCircle2, AlertCircle, Building2, HelpCircle
+  CheckCircle2, Trash2, QrCode, Globe, Share2, MessageCircle
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { ONE_CONTROL_LOGO_BASE64 } from '../assets/logoBase64.js';
 
 // ── TAMAÑOS PREESTABLECIDOS DE STICKERS ─────────────────────────────────────
@@ -72,7 +73,6 @@ export const STICKER_SIZES = [
 ];
 
 // ── GENERADOR DE CÓDIGO DE BARRAS CODE 39 EN SVG PURO ───────────────────────
-// Code 39 es universal, súper robusto y legible por cualquier lector o celular.
 const CODE39_ENCODINGS = {
   '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
   '4': '000110001', '5': '100110000', '6': '001110000', '7': '000100101',
@@ -87,7 +87,7 @@ const CODE39_ENCODINGS = {
   '/': '010100010', '+': '010001010', '%': '000101010', '*': '010010100'
 };
 
-function generateBarcodeSvg(text, height = 36) {
+function generateBarcodeSvg(text, height = 30) {
   const clean = '*' + String(text || 'OC-PEDIDO').toUpperCase().replace(/[^0-9A-Z\-\. \$\/\+\%]/g, '') + '*';
   let narrow = 2;
   let wide = 5;
@@ -115,7 +115,14 @@ function generateBarcodeSvg(text, height = 36) {
   return `<svg viewBox="0 0 ${totalWidth} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px; display: block;">${rects.join('')}</svg>`;
 }
 
-// ── COMPONENTE PRINCIPAL MODAL STICKER PRINT ────────────────────────────────
+// Destinos predefinidos para el QR de Redes Sociales
+const QR_TARGETS = [
+  { id: 'web', label: 'Tienda & Redes (onecontrol.shop)', url: 'https://onecontrol.shop' },
+  { id: 'whatsapp', label: 'WhatsApp (+502 5965-8803)', url: 'https://wa.me/50259658803' },
+  { id: 'catalogo', label: 'Catálogo de Productos', url: 'https://onecontrol.shop/tienda/' },
+  { id: 'custom', label: 'Enlace Personalizado', url: '' }
+];
+
 export default function StickerPrint({
   isOpen,
   onClose,
@@ -126,7 +133,7 @@ export default function StickerPrint({
 }) {
   if (!isOpen || !pedido) return null;
 
-  // Encontrar lead asociado por teléfono (limpiando caracteres no numéricos)
+  // Encontrar lead asociado por teléfono
   const cleanDigits = (s) => String(s || '').replace(/\D/g, '');
   const matchedLead = useMemo(() => {
     if (!pedido?.phone) return null;
@@ -137,7 +144,7 @@ export default function StickerPrint({
       if (!lPhone) return false;
       return lPhone === pPhone || lPhone.endsWith(pPhone) || pPhone.endsWith(lPhone);
     }) || null;
-  }, [pedido, leads]);
+  }, [pedido?.phone, leads]);
 
   // Tamaño guardado o default
   const [sizeId, setSizeId] = useState(() => {
@@ -165,36 +172,43 @@ export default function StickerPrint({
     numeroPedido: ''
   });
 
-  // Opciones de visualización
+  // Opciones de visualización y redes sociales
   const [options, setOptions] = useState({
     showLogo: true,
     showSender: true,
     showBarcode: true,
     showPrice: true,
     showNit: true,
-    showNotes: true
+    showNotes: true,
+    showSocialQr: true,
+    socialQrTarget: 'web',
+    customQrUrl: '',
+    socialHandle: '@onecontrol.shop'
   });
 
+  const [qrBase64, setQrBase64] = useState('');
   const [savingLead, setSavingLead] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [zoom, setZoom] = useState(1);
 
-  // Inicializar el formulario cuando cambia el pedido o el lead coincidente
+  // Ref para EVITAR que el form se reinicie mientras el usuario escribe (causado por polling de leads)
+  const initializedPedidoIdRef = useRef(null);
+
+  // Inicializar formulario SOLO una vez al abrir el pedido o si cambia de pedido ID
   useEffect(() => {
     if (!pedido) return;
+    if (initializedPedidoIdRef.current === pedido.id) return;
+    initializedPedidoIdRef.current = pedido.id;
 
-    // Si el pedido tiene notas que parecen una dirección o zona, intentar extraer
     const notasText = (pedido.notas || '').trim();
     let initialDir = matchedLead?.direccion || '';
     let initialZona = matchedLead?.zona || '';
     let initialNit = matchedLead?.nit || 'C/F';
 
-    // Si no hay dirección en lead pero notas menciona dirección:
     if (!initialDir && notasText && /zona|calle|avenida|colonia|casa|lote|km|carretera/i.test(notasText)) {
       initialDir = notasText;
     }
 
-    // Detectar si notas menciona zona
     if (!initialZona && notasText) {
       const zMatch = notasText.match(/zona\s*(\d{1,2})/i);
       if (zMatch) initialZona = `Zona ${zMatch[1]}`;
@@ -220,15 +234,44 @@ export default function StickerPrint({
       fechaEntrega: pedido.fecha_entrega || '',
       numeroPedido: String(pedido.id || '')
     });
-  }, [pedido, matchedLead]);
+  }, [pedido?.id]);
 
-  // Manejar cambio de tamaño
+  // URL activa para el QR
+  const currentQrUrl = useMemo(() => {
+    if (options.socialQrTarget === 'custom') {
+      return options.customQrUrl.trim() || 'https://onecontrol.shop';
+    }
+    const found = QR_TARGETS.find(t => t.id === options.socialQrTarget);
+    return found ? found.url : 'https://onecontrol.shop';
+  }, [options.socialQrTarget, options.customQrUrl]);
+
+  // Generar QR en base64 cuando cambia la URL objetivo
+  useEffect(() => {
+    let isMounted = true;
+    QRCode.toDataURL(currentQrUrl, {
+      margin: 1,
+      width: 200,
+      color: {
+        dark: '#000000',
+        light: '#ffffff'
+      }
+    })
+      .then(url => {
+        if (isMounted) setQrBase64(url);
+      })
+      .catch(err => {
+        console.error('Error generando QR:', err);
+      });
+    return () => { isMounted = false; };
+  }, [currentQrUrl]);
+
+  // Manejar cambio de tamaño de sticker
   const handleSizeChange = (id) => {
     setSizeId(id);
     localStorage.setItem('onecontrol_sticker_size', id);
   };
 
-  // Configuración de dimensiones actuales
+  // Configuración de dimensiones activas
   const activeSize = useMemo(() => {
     const found = STICKER_SIZES.find(s => s.id === sizeId) || STICKER_SIZES[2];
     if (sizeId === 'custom') {
@@ -284,9 +327,8 @@ export default function StickerPrint({
   const generatePrintableHtml = () => {
     const { widthMm, heightMm, density } = activeSize;
     const barcodeNumber = `OC-${String(form.numeroPedido).padStart(4, '0')}`;
-    const barcodeSvgHtml = generateBarcodeSvg(barcodeNumber, density === 'tiny' ? 20 : density === 'compact' ? 24 : 32);
+    const barcodeSvgHtml = generateBarcodeSvg(barcodeNumber, density === 'tiny' ? 18 : density === 'compact' ? 22 : 28);
 
-    // Ajustes visuales según densidad/tamaño
     const isTiny = density === 'tiny';         // 5 x 2.5 cm
     const isCompact = density === 'compact';   // 7.5 x 5 cm
     const isNormal = density === 'normal';     // 10 x 7.5 cm
@@ -451,12 +493,50 @@ export default function StickerPrint({
       color: #000;
     }
     .notes-box {
+      font-size: ${isTiny ? '5.5pt' : isCompact ? '6.5pt' : '7.5pt'};
+      color: #222;
+      background: #f7f7f7;
+      border-left: 2px solid #000;
+      padding: 1mm 1.5mm;
+      margin-bottom: 1.5mm;
+      border-radius: 0.5mm;
+    }
+    .social-qr-banner {
+      display: flex;
+      align-items: center;
+      gap: 2mm;
+      border: 1px solid #222;
+      border-radius: 1.2mm;
+      padding: 1.2mm 2mm;
+      background: #fafafa;
+      margin-bottom: 1.5mm;
+    }
+    .qr-img {
+      width: ${isTiny ? '10mm' : isCompact ? '13mm' : isNormal ? '17mm' : '22mm'};
+      height: ${isTiny ? '10mm' : isCompact ? '13mm' : isNormal ? '17mm' : '22mm'};
+      object-fit: contain;
+      border: 0.5px solid #000;
+      background: #fff;
+    }
+    .social-info {
+      flex: 1;
+      line-height: 1.2;
+    }
+    .social-headline {
+      font-size: ${isTiny ? '5.5pt' : isCompact ? '6.5pt' : '7.5pt'};
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: -0.1px;
+    }
+    .social-link {
       font-size: ${isTiny ? '5pt' : isCompact ? '6pt' : '7pt'};
-      font-style: italic;
-      color: #333;
-      margin-bottom: 1mm;
-      border-left: 1.5px solid #000;
-      padding-left: 1.5mm;
+      font-weight: 700;
+      color: #000;
+    }
+    .social-handles {
+      font-size: ${isTiny ? '4.5pt' : isCompact ? '5.5pt' : '6pt'};
+      color: #444;
+      font-weight: 600;
     }
     .footer-bar {
       margin-top: auto;
@@ -521,10 +601,23 @@ export default function StickerPrint({
       </div>
     ` : ''}
 
-    <!-- NOTAS / REFERENCIAS -->
+    <!-- NOTAS / INSTRUCCIONES DE ENTREGA -->
     ${options.showNotes && form.notas && !isTiny ? `
       <div class="notes-box">
-        Ref: ${form.notas}
+        <strong>Notas / Ref:</strong> ${form.notas}
+      </div>
+    ` : ''}
+
+    <!-- BANNER: SÍGUENOS EN REDES SOCIALES & QR -->
+    ${options.showSocialQr && qrBase64 && !isTiny ? `
+      <div class="social-qr-banner">
+        <img src="${qrBase64}" class="qr-img" alt="QR Redes OneControl" />
+        <div class="social-info">
+          <div class="social-headline">📱 ¡SÍGUENOS EN REDES!</div>
+          <div class="social-link">🌐 www.onecontrol.shop</div>
+          <div class="social-handles">📸 ${options.socialHandle || '@onecontrol.shop'} · TikTok · FB · IG</div>
+          <div style="font-size: 5pt; color: #555; margin-top: 0.5mm;">¡Escanea para ver catálogo y ofertas!</div>
+        </div>
       </div>
     ` : ''}
 
@@ -566,14 +659,12 @@ export default function StickerPrint({
     doc.write(html);
     doc.close();
 
-    // Esperar a que rendericen fuentes e imágenes
     iframe.contentWindow.focus();
     setTimeout(() => {
       iframe.contentWindow.print();
     }, 280);
   };
 
-  // Abrir en pestaña nueva por si el usuario prefiere diálogo nativo directo
   const handleOpenInNewTab = () => {
     const html = generatePrintableHtml();
     const win = window.open('', '_blank');
@@ -590,6 +681,22 @@ export default function StickerPrint({
     'Zona 11', 'Zona 12', 'Zona 13', 'Zona 14', 'Zona 15',
     'Zona 16', 'Mixco', 'Villa Nueva', 'Carretera al Salvador'
   ];
+
+  // Atajos rápidos para Notas de entrega
+  const QUICK_NOTES = [
+    'Llamar antes de llegar',
+    'Entregar en garita',
+    'Pago contra entrega exacto',
+    'Portón color café',
+    'Envío por Guatex'
+  ];
+
+  const appendNote = (text) => {
+    setForm(prev => ({
+      ...prev,
+      notas: prev.notas ? `${prev.notas}, ${text}` : text
+    }));
+  };
 
   return (
     <div className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
@@ -609,7 +716,7 @@ export default function StickerPrint({
                 </span>
               </h2>
               <p className="text-xs text-slate-500">
-                Imprime la etiqueta con logo, datos de entrega y monto a cobrar para el paquete.
+                Imprime la etiqueta con logo, QR de redes, datos de entrega y cobro.
               </p>
             </div>
           </div>
@@ -672,7 +779,6 @@ export default function StickerPrint({
                 })}
               </div>
 
-              {/* Medida personalizada si selecciona "custom" */}
               {sizeId === 'custom' && (
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-3">
                   <div className="flex-1">
@@ -723,7 +829,7 @@ export default function StickerPrint({
                   <input
                     type="text"
                     value={form.cliente}
-                    onChange={e => setForm({ ...form, cliente: e.target.value })}
+                    onChange={e => setForm(prev => ({ ...prev, cliente: e.target.value }))}
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
                     placeholder="Nombre del cliente"
                   />
@@ -736,7 +842,7 @@ export default function StickerPrint({
                   <input
                     type="text"
                     value={form.phone}
-                    onChange={e => setForm({ ...form, phone: e.target.value })}
+                    onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))}
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
                     placeholder="Ej: 5555-5555"
                   />
@@ -750,7 +856,7 @@ export default function StickerPrint({
                 <textarea
                   rows={2}
                   value={form.direccion}
-                  onChange={e => setForm({ ...form, direccion: e.target.value })}
+                  onChange={e => setForm(prev => ({ ...prev, direccion: e.target.value }))}
                   className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-[#FF6B00]"
                   placeholder="Calle, avenida, número, colonia, garita, etc."
                 />
@@ -763,18 +869,17 @@ export default function StickerPrint({
                 <input
                   type="text"
                   value={form.zona}
-                  onChange={e => setForm({ ...form, zona: e.target.value })}
+                  onChange={e => setForm(prev => ({ ...prev, zona: e.target.value }))}
                   className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-800 focus:outline-none focus:border-[#FF6B00]"
                   placeholder="Ej: Zona 11, Mixco, Villa Nueva"
                 />
 
-                {/* Chips de Zonas Rápidas */}
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {QUICK_ZONAS.map(z => (
                     <button
                       key={z}
                       type="button"
-                      onClick={() => setForm({ ...form, zona: z })}
+                      onClick={() => setForm(prev => ({ ...prev, zona: z }))}
                       className="text-[9.5px] font-bold px-2 py-0.5 bg-white hover:bg-orange-50 hover:text-orange-700 text-slate-600 border border-slate-200 rounded-lg cursor-pointer transition-colors"
                     >
                       {z}
@@ -799,7 +904,7 @@ export default function StickerPrint({
                   <input
                     type="text"
                     value={form.producto}
-                    onChange={e => setForm({ ...form, producto: e.target.value })}
+                    onChange={e => setForm(prev => ({ ...prev, producto: e.target.value }))}
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
                   />
                 </div>
@@ -811,7 +916,7 @@ export default function StickerPrint({
                   <input
                     type="text"
                     value={form.cantidad}
-                    onChange={e => setForm({ ...form, cantidad: e.target.value })}
+                    onChange={e => setForm(prev => ({ ...prev, cantidad: e.target.value }))}
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
                   />
                 </div>
@@ -825,7 +930,7 @@ export default function StickerPrint({
                   <input
                     type="text"
                     value={form.precio}
-                    onChange={e => setForm({ ...form, precio: e.target.value })}
+                    onChange={e => setForm(prev => ({ ...prev, precio: e.target.value }))}
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-emerald-700 focus:outline-none focus:border-[#FF6B00]"
                     placeholder="Ej: Q250.00"
                   />
@@ -839,13 +944,13 @@ export default function StickerPrint({
                     <input
                       type="text"
                       value={form.nit}
-                      onChange={e => setForm({ ...form, nit: e.target.value })}
+                      onChange={e => setForm(prev => ({ ...prev, nit: e.target.value }))}
                       className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
                       placeholder="C/F o NIT"
                     />
                     <button
                       type="button"
-                      onClick={() => setForm({ ...form, nit: 'C/F' })}
+                      onClick={() => setForm(prev => ({ ...prev, nit: 'C/F' }))}
                       className="px-2 py-1 bg-slate-200 text-slate-700 text-[10px] font-black rounded-xl hover:bg-slate-300 cursor-pointer"
                     >
                       C/F
@@ -861,7 +966,7 @@ export default function StickerPrint({
                     type="radio"
                     name="tipoCobro"
                     checked={form.esContraEntrega}
-                    onChange={() => setForm({ ...form, esContraEntrega: true, pagado: false })}
+                    onChange={() => setForm(prev => ({ ...prev, esContraEntrega: true, pagado: false }))}
                     className="accent-[#FF6B00] cursor-pointer"
                   />
                   <span>⚠️ Cobrar Contra Entrega</span>
@@ -872,29 +977,132 @@ export default function StickerPrint({
                     type="radio"
                     name="tipoCobro"
                     checked={!form.esContraEntrega}
-                    onChange={() => setForm({ ...form, esContraEntrega: false, pagado: true })}
+                    onChange={() => setForm(prev => ({ ...prev, esContraEntrega: false, pagado: true }))}
                     className="accent-emerald-600 cursor-pointer"
                   />
                   <span>✓ Pagado (No cobrar)</span>
                 </label>
               </div>
 
-              {/* Notas de Entrega */}
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                  Notas / Instrucciones al Repartidor:
-                </label>
-                <input
-                  type="text"
-                  value={form.notas}
-                  onChange={e => setForm({ ...form, notas: e.target.value })}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#FF6B00]"
-                  placeholder="Ej: Llamar antes de llegar, entregar en garita"
-                />
+              {/* 4. NOTAS / INSTRUCCIONES AL REPARTIDOR (CON BORRADO SEGURO) */}
+              <div className="pt-2 border-t border-slate-200/60">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                    <FileText size={12} className="text-[#FF6B00]" />
+                    Notas / Instrucciones al Repartidor:
+                  </label>
+                  {form.notas && (
+                    <button
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, notas: '' }))}
+                      className="text-[10px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 hover:underline cursor-pointer"
+                      title="Borrar todo el texto de notas"
+                    >
+                      <Trash2 size={11} />
+                      <span>Limpiar notas</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <textarea
+                    rows={2}
+                    value={form.notas}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setForm(prev => ({ ...prev, notas: val }));
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF6B00] resize-y"
+                    placeholder="Escribe las notas de entrega o selecciona un atajo abajo..."
+                  />
+                </div>
+
+                {/* Atajos rápidos de notas */}
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {QUICK_NOTES.map(note => (
+                    <button
+                      key={note}
+                      type="button"
+                      onClick={() => appendNote(note)}
+                      className="text-[9.5px] font-medium px-2 py-0.5 bg-white hover:bg-orange-50 hover:text-orange-700 text-slate-600 border border-slate-200 rounded-lg cursor-pointer transition-colors"
+                    >
+                      + {note}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* BOTÓN: GUARDAR DATOS EN CRM */}
+            {/* 5. CONFIGURACIÓN DE REDES SOCIALES & QR */}
+            <div className="space-y-3 p-4 bg-orange-50/40 rounded-2xl border border-orange-200/70">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <QrCode size={14} className="text-[#FF6B00]" />
+                  QR de Redes Sociales & Web
+                </span>
+                <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={options.showSocialQr}
+                    onChange={e => setOptions({ ...options, showSocialQr: e.target.checked })}
+                    className="accent-[#FF6B00] rounded cursor-pointer"
+                  />
+                  <span>Mostrar en Sticker</span>
+                </label>
+              </div>
+
+              {options.showSocialQr && (
+                <div className="space-y-2.5 pt-1">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-1">
+                      Destino al Escanear el QR:
+                    </label>
+                    <select
+                      value={options.socialQrTarget}
+                      onChange={e => setOptions({ ...options, socialQrTarget: e.target.value })}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00] cursor-pointer"
+                    >
+                      {QR_TARGETS.map(t => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {options.socialQrTarget === 'custom' && (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Enlace personalizado (URL):</label>
+                      <input
+                        type="url"
+                        value={options.customQrUrl}
+                        onChange={e => setOptions({ ...options, customQrUrl: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium"
+                        placeholder="https://tu-pagina-o-redes.com"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                        Usuario de Redes:
+                      </label>
+                      <input
+                        type="text"
+                        value={options.socialHandle}
+                        onChange={e => setOptions({ ...options, socialHandle: e.target.value })}
+                        className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                        placeholder="@onecontrol.shop"
+                      />
+                    </div>
+                    <div className="flex items-end pb-1 text-[10px] text-slate-500 font-medium">
+                      IG · TikTok · Facebook · Web
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* BOTÓN: GUARDAR DATOS EN CRM Y PESTAÑA NUEVA */}
             <div className="flex items-center justify-between pt-1">
               <button
                 type="button"
@@ -1071,10 +1279,39 @@ export default function StickerPrint({
                     </div>
                   )}
 
-                  {/* NOTAS */}
+                  {/* NOTAS / REFERENCIAS */}
                   {options.showNotes && form.notas && activeSize.density !== 'tiny' && (
-                    <div className="text-[9.5px] italic text-slate-700 border-l-2 border-black pl-1.5 mb-2 leading-tight">
-                      Ref: {form.notas}
+                    <div className="text-[9.5px] text-slate-800 bg-slate-50 border-l-2 border-black p-1.5 mb-2 leading-tight rounded-xs">
+                      <strong>Notas / Ref:</strong> {form.notas}
+                    </div>
+                  )}
+
+                  {/* BANNER: SÍGUENOS EN REDES SOCIALES & QR */}
+                  {options.showSocialQr && qrBase64 && activeSize.density !== 'tiny' && (
+                    <div className="flex items-center gap-2 border border-slate-800 rounded-lg p-1.5 bg-slate-50/80 mb-2">
+                      <img
+                        src={qrBase64}
+                        alt="QR Code"
+                        style={{
+                          width: activeSize.density === 'compact' ? '48px' : '62px',
+                          height: activeSize.density === 'compact' ? '48px' : '62px'
+                        }}
+                        className="object-contain border border-black bg-white rounded-xs"
+                      />
+                      <div className="flex-1 leading-tight">
+                        <div className="text-[10px] font-black uppercase tracking-tight text-slate-900">
+                          📱 ¡SÍGUENOS EN REDES!
+                        </div>
+                        <div className="text-[9.5px] font-bold text-black">
+                          🌐 www.onecontrol.shop
+                        </div>
+                        <div className="text-[8.5px] font-bold text-slate-600">
+                          📸 {options.socialHandle || '@onecontrol.shop'} · TikTok · FB
+                        </div>
+                        <div className="text-[7.5px] text-slate-500 font-medium">
+                          Escanea para ofertas y catálogo
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1085,7 +1322,7 @@ export default function StickerPrint({
                         dangerouslySetInnerHTML={{
                           __html: generateBarcodeSvg(
                             `OC-${String(form.numeroPedido).padStart(4, '0')}`,
-                            activeSize.density === 'tiny' ? 20 : activeSize.density === 'compact' ? 24 : 32
+                            activeSize.density === 'tiny' ? 18 : activeSize.density === 'compact' ? 22 : 28
                           )
                         }}
                       />
