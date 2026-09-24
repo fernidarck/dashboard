@@ -3,8 +3,9 @@ import {
   X, Pencil, Trash2, Users, Phone, Plus, Search,
   ChevronLeft, ChevronRight, CheckCircle2, ShoppingBag,
   DollarSign, Clock, ArrowRight, MessageSquare, Truck, Package,
-  ExternalLink, Check, Calendar, CalendarPlus, CalendarClock
+  ExternalLink, Check, Calendar, CalendarPlus, CalendarClock, Tag, Printer
 } from 'lucide-react';
+import StickerPrint from '../StickerPrint.jsx';
 
 function getCleanWhatsAppUrl(phone) {
   if (!phone) return null;
@@ -33,9 +34,11 @@ export default function ViewPedidos({
   onUpdateEstado,
   onSavePedido,
   onDeletePedido,
-  onOpenConversation
+  onOpenConversation,
+  onUpdateLead
 }) {
   const [editingPedido, setEditingPedido] = useState(null);
+  const [stickerPedido, setStickerPedido] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [productCatalogSearch, setProductCatalogSearch] = useState('');
@@ -442,6 +445,14 @@ export default function ViewPedidos({
                         </span>
 
                         <div className="flex items-center space-x-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => setStickerPedido({ ...pedido })}
+                            className="p-1.5 rounded-lg bg-orange-50 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white transition-all cursor-pointer flex items-center gap-1"
+                            title="🏷️ Imprimir sticker de envío"
+                          >
+                            <Tag size={12} />
+                            <span className="text-[10px] font-black hidden sm:inline">Sticker</span>
+                          </button>
                           <button
                             onClick={() => setEditingPedido({ ...pedido })}
                             className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-600 hover:text-white transition-all cursor-pointer"
@@ -992,6 +1003,17 @@ export default function ViewPedidos({
               </div>
 
               <div className="flex space-x-3 pt-3">
+                {editingPedido?.id && (
+                  <button
+                    type="button"
+                    onClick={() => setStickerPedido({ ...editingPedido })}
+                    className="px-4 py-3 rounded-2xl bg-orange-50 border border-orange-200 text-xs font-black uppercase tracking-wider text-[#FF6B00] hover:bg-orange-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    title="Imprimir sticker de envío para este pedido"
+                  >
+                    <Tag size={14} />
+                    <span>Sticker</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setEditingPedido(null)}
@@ -1011,6 +1033,18 @@ export default function ViewPedidos({
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL: IMPRESIÓN DE STICKER DE ENVÍO */}
+      {stickerPedido && (
+        <StickerPrint
+          isOpen={Boolean(stickerPedido)}
+          onClose={() => setStickerPedido(null)}
+          pedido={stickerPedido}
+          leads={leads}
+          onUpdateLead={onUpdateLead}
+          onSavePedido={onSavePedido}
+        />
       )}
     </div>
   );
