@@ -447,11 +447,11 @@ export default function ViewPedidos({
                         <div className="flex items-center space-x-1 opacity-80 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => setStickerPedido({ ...pedido })}
-                            className="p-1.5 rounded-lg bg-orange-50 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-white transition-all cursor-pointer flex items-center gap-1"
+                            className="px-2 py-1 rounded-lg bg-orange-50 hover:bg-[#FF6B00] text-[#FF6B00] hover:text-white border border-orange-200/80 transition-all cursor-pointer flex items-center gap-1 text-[10px] font-black shadow-2xs"
                             title="🏷️ Imprimir sticker de envío"
                           >
-                            <Tag size={12} />
-                            <span className="text-[10px] font-black hidden sm:inline">Sticker</span>
+                            <Tag size={11} />
+                            <span>Sticker</span>
                           </button>
                           <button
                             onClick={() => setEditingPedido({ ...pedido })}
@@ -556,6 +556,17 @@ export default function ViewPedidos({
                           {pedido.notas}
                         </div>
                       )}
+
+                      {/* BOTÓN PROMINENTE DE STICKER (MÓVIL Y DESKTOP) */}
+                      <button
+                        type="button"
+                        onClick={() => setStickerPedido({ ...pedido })}
+                        className="w-full py-2.5 px-3 rounded-xl bg-orange-50 hover:bg-orange-100/90 active:bg-orange-200 text-[#FF6B00] border border-orange-200 text-xs font-black flex items-center justify-center gap-2 cursor-pointer transition-all shadow-2xs active:scale-[0.98]"
+                        title="Ver e imprimir sticker de envío para paquetería"
+                      >
+                        <Tag size={13} className="text-[#FF6B00]" />
+                        <span>🏷️ Imprimir Sticker de Envío</span>
+                      </button>
 
                       {/* Acciones de Estado Dinámicas */}
                       <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1">

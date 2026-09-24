@@ -4,7 +4,7 @@ import {
   Tag, Truck, MapPin, Phone, User, Package,
   DollarSign, FileText, Calendar, ExternalLink, Sliders,
   CheckCircle2, Trash2, QrCode, Globe, Share2, MessageCircle,
-  HelpCircle, AlertTriangle
+  HelpCircle, AlertTriangle, Eye
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { ONE_CONTROL_LOGO_BASE64 } from '../assets/logoBase64.js';
@@ -210,6 +210,14 @@ export default function StickerPrint({
   const [savingLead, setSavingLead] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [mobileTab, setMobileTab] = useState('preview'); // 'preview' | 'edit' (en móvil default 'preview' para ver el sticker de inmediato)
+  const [windowWidth, setWindowWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Ref para EVITAR que el form se reinicie mientras el usuario escribe (por polling de fondo)
   const initializedPedidoIdRef = useRef(null);
@@ -302,6 +310,13 @@ export default function StickerPrint({
     return found;
   }, [sizeId, customW, customH]);
 
+  // Escala adaptativa responsive para móviles (evita que el sticker de 100mm = 378px desborde pantallas de 360-390px)
+  const isSmallScreen = windowWidth < 640;
+  const stickerWidthPx = activeSize.widthMm * 3.78;
+  const availableWidth = isSmallScreen ? Math.max(260, windowWidth - 48) : 550;
+  const autoScaleRatio = isSmallScreen && stickerWidthPx > availableWidth ? (availableWidth / stickerWidthPx) : 1;
+  const effectiveScale = Number((autoScaleRatio * zoom).toFixed(2));
+
   // Guardar en el Lead (CRM) y Pedido
   const handleSaveToLeadAndPedido = async () => {
     setSavingLead(true);
@@ -356,6 +371,7 @@ export default function StickerPrint({
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sticker Pedido #${form.numeroPedido} - OneControl</title>
   <style>
     @page {
@@ -367,17 +383,75 @@ export default function StickerPrint({
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
+    @media print {
+      .screen-toolbar {
+        display: none !important;
+      }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: ${widthMm}mm !important;
+        height: ${heightMm}mm !important;
+        max-width: ${widthMm}mm !important;
+        max-height: ${heightMm}mm !important;
+        background: #ffffff !important;
+        overflow: hidden !important;
+      }
+      .sticker-container {
+        margin: 0 !important;
+        border: 1px solid #000 !important;
+        box-shadow: none !important;
+      }
+    }
+    @media screen {
+      .screen-toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: #0f172a;
+        color: white;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 99999;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      .screen-btn {
+        background: #FF6B00;
+        color: #ffffff;
+        font-weight: 900;
+        font-size: 13px;
+        padding: 8px 16px;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      body {
+        margin: 0 !important;
+        padding: 68px 12px 30px 12px !important;
+        background: #f1f5f9 !important;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 100vh;
+      }
+      .sticker-container {
+        background: #ffffff;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+        margin: 10px auto;
+        border-radius: 4px;
+      }
+    }
     html, body {
-      margin: 0 !important;
-      padding: 0 !important;
-      width: ${widthMm}mm !important;
-      height: ${heightMm}mm !important;
-      max-width: ${widthMm}mm !important;
-      max-height: ${heightMm}mm !important;
-      background: #ffffff;
       color: #000000;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      overflow: hidden !important;
       line-height: 1.15;
     }
     .sticker-container {
@@ -590,6 +664,18 @@ export default function StickerPrint({
   </style>
 </head>
 <body>
+  <div class="screen-toolbar">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size: 18px;">🏷️</span>
+      <div>
+        <div style="font-weight: 900; font-size: 12px; line-height: 1.2;">Sticker Pedido #${form.numeroPedido}</div>
+        <div style="font-size: 10px; color: #94a3b8;">${widthMm}x${heightMm}mm · OneControl</div>
+      </div>
+    </div>
+    <button class="screen-btn" onclick="window.print()">
+      🖨️ IMPRIMIR / PDF
+    </button>
+  </div>
   <div class="sticker-container">
     
     <!-- HEADER -->
@@ -669,10 +755,33 @@ export default function StickerPrint({
 </html>`;
   };
 
-  // ── IMPRESIÓN VÍA IFRAME AISLADO ──────────────────────────────────────────
+  // ── IMPRESIÓN ADAPTATIVA (MÓVIL / ESCRITORIO) ───────────────────────────
   const handlePrint = () => {
     const html = generatePrintableHtml();
+    const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (typeof window !== 'undefined' && window.innerWidth < 768);
 
+    if (isMobileDevice) {
+      // En dispositivos móviles (Android / iOS / Chrome Mobile):
+      // Los iframes ocultos no pueden disparar la ventana nativa de impresión del sistema.
+      // Abrimos en una ventana limpia y ejecutamos print()
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => {
+          try {
+            win.focus();
+            win.print();
+          } catch (e) {
+            console.warn('Auto print:', e);
+          }
+        }, 400);
+        return;
+      }
+    }
+
+    // En navegadores de escritorio (PC/Mac): impresión silenciosa vía iframe
     let iframe = document.getElementById('onecontrol-sticker-iframe');
     if (!iframe) {
       iframe = document.createElement('iframe');
@@ -734,38 +843,39 @@ export default function StickerPrint({
   const zonaVisual = extractOrCleanZona(form.zona, form.direccion, form.notas);
 
   return (
-    <div className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-6xl max-h-[95vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+    <div className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-5 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-6xl h-[95vh] sm:h-auto sm:max-h-[95vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
         
         {/* HEADER MODAL */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-[#FF6B00] flex items-center justify-center font-black">
-              <Tag size={20} />
+        <div className="flex items-center justify-between px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-slate-50/70 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-orange-500/10 text-[#FF6B00] flex items-center justify-center font-black shrink-0">
+              <Tag size={18} />
             </div>
-            <div>
-              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                Sticker de Envío & Despacho
-                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 font-bold">
-                  Pedido #{form.numeroPedido}
+            <div className="min-w-0">
+              <h2 className="text-xs sm:text-base font-black text-slate-900 flex items-center gap-1.5 truncate">
+                <span>Sticker de Envío</span>
+                <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 font-bold shrink-0">
+                  #{form.numeroPedido}
                 </span>
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-[10px] sm:text-xs text-slate-500 hidden sm:block">
                 Imprime la etiqueta con logo, QR de redes, datos de entrega y cobro.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={handlePrint}
-              className="px-4 py-2 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-2 transition-all cursor-pointer"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
             >
-              <Printer size={15} /> Imprimir Sticker
+              <Printer size={14} /> 
+              <span>Imprimir</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
               title="Cerrar"
             >
               <X size={18} />
@@ -773,11 +883,41 @@ export default function StickerPrint({
           </div>
         </div>
 
+        {/* SELECTOR DE PESTAÑAS PARA MÓVIL (VISIBLE EN PANTALLAS PEQUEÑAS) */}
+        <div className="lg:hidden flex border-b border-slate-200 bg-slate-100/90 p-1.5 gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab('preview')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              mobileTab === 'preview'
+                ? 'bg-white text-[#FF6B00] shadow-xs border border-orange-200 ring-1 ring-[#FF6B00]'
+                : 'text-slate-600 hover:text-slate-900 bg-transparent'
+            }`}
+          >
+            <Eye size={15} />
+            <span>👁️ Ver Sticker</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('edit')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              mobileTab === 'edit'
+                ? 'bg-white text-[#FF6B00] shadow-xs border border-orange-200 ring-1 ring-[#FF6B00]'
+                : 'text-slate-600 hover:text-slate-900 bg-transparent'
+            }`}
+          >
+            <Sliders size={15} />
+            <span>✏️ Editar Datos & Tamaño</span>
+          </button>
+        </div>
+
         {/* BODY (2 COLUMNAS: FORMULARIO Y VISTA PREVIA) */}
         <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
           
           {/* COLUMNA IZQUIERDA: CONFIGURACIÓN Y DATOS (7 COLS) */}
-          <div className="lg:col-span-6 xl:col-span-5 p-6 space-y-5 overflow-y-auto max-h-[82vh]">
+          <div className={`lg:col-span-6 xl:col-span-5 p-4 sm:p-6 space-y-5 overflow-y-auto max-h-[82vh] ${
+            mobileTab === 'preview' ? 'hidden lg:block' : 'block'
+          }`}>
             
             {/* AVISO TIP DE IMPRESIÓN PARA NINGÚN MARGEN */}
             <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
@@ -1179,36 +1319,47 @@ export default function StickerPrint({
                 title="Abrir vista de impresión en ventana separada"
               >
                 <ExternalLink size={13} />
-                <span>Pestaña nueva</span>
+                <span>Pestaña nueva / PDF</span>
               </button>
             </div>
 
+            {/* BOTÓN MÓVIL PARA VER EL STICKER TRAS EDITAR */}
+            <button
+              type="button"
+              onClick={() => setMobileTab('preview')}
+              className="lg:hidden w-full py-2.5 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 cursor-pointer mt-2"
+            >
+              <Eye size={15} />
+              <span>Ver Sticker Generado</span>
+            </button>
           </div>
 
-          {/* COLUMNA DERECHA: VISTA PREVIA WYSIWYG (5 COLS) */}
-          <div className="lg:col-span-6 xl:col-span-7 p-6 bg-slate-100 flex flex-col justify-between items-center overflow-y-auto max-h-[82vh]">
+          {/* COLUMNA DERECHA: VISTA PREVIA WYSIWYG */}
+          <div className={`lg:col-span-6 xl:col-span-7 p-3 sm:p-6 bg-slate-100 flex flex-col justify-between items-center overflow-y-auto max-h-[82vh] ${
+            mobileTab === 'edit' ? 'hidden lg:flex' : 'flex'
+          }`}>
             
             {/* BARRA DE ZOOM Y CONTROLES */}
-            <div className="w-full flex items-center justify-between mb-4 px-2">
-              <span className="text-xs font-black text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                Vista Previa de Impresión:
+            <div className="w-full flex items-center justify-between mb-3 px-1 sm:px-2 shrink-0">
+              <span className="text-[11px] sm:text-xs font-black text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                Vista Previa ({activeSize.widthMm}x{activeSize.heightMm}mm):
               </span>
 
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center gap-1 sm:gap-2 bg-white px-2 py-1 rounded-xl border border-slate-200 shadow-2xs">
                 <button
                   type="button"
-                  onClick={() => setZoom(z => Math.max(0.6, z - 0.1))}
+                  onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
                   className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
                   title="Alejar"
                 >
                   <ZoomOut size={13} />
                 </button>
-                <span className="text-[11px] font-black text-slate-700 w-10 text-center">
-                  {Math.round(zoom * 100)}%
+                <span className="text-[10px] sm:text-[11px] font-black text-slate-700 w-9 text-center">
+                  {Math.round(effectiveScale * 100)}%
                 </span>
                 <button
                   type="button"
-                  onClick={() => setZoom(z => Math.min(1.5, z + 0.1))}
+                  onClick={() => setZoom(z => Math.min(1.6, z + 0.1))}
                   className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
                   title="Acercar"
                 >
@@ -1217,22 +1368,31 @@ export default function StickerPrint({
                 <button
                   type="button"
                   onClick={() => setZoom(1)}
-                  className="text-[10px] font-bold text-slate-400 hover:text-slate-700 ml-1 cursor-pointer"
+                  className="text-[9.5px] font-bold text-slate-400 hover:text-slate-700 ml-0.5 cursor-pointer"
+                  title="Ajustar a 100%"
                 >
                   Reset
                 </button>
               </div>
             </div>
 
-            {/* CONTENEDOR VISUAL DEL STICKER (ESCALADO CON ZOOM) */}
-            <div className="flex-1 flex items-center justify-center p-2 w-full overflow-hidden">
+            {/* CONTENEDOR VISUAL DEL STICKER (AUTO-ESCALADO RESPONSIVE) */}
+            <div
+              className="flex-1 flex flex-col items-center justify-center p-1 sm:p-2 w-full overflow-x-auto"
+              style={{
+                minHeight: `${Math.round((activeSize.heightMm * 3.78 * effectiveScale) + 16)}px`
+              }}
+            >
               <div
                 style={{
-                  transform: `scale(${zoom})`,
+                  width: `${activeSize.widthMm * 3.78}px`,
+                  height: `${activeSize.heightMm * 3.78}px`,
+                  transform: `scale(${effectiveScale})`,
                   transformOrigin: 'top center',
-                  transition: 'transform 0.15s ease-out'
+                  transition: 'transform 0.15s ease-out',
+                  marginBottom: effectiveScale < 1 ? `-${Math.round((activeSize.heightMm * 3.78) * (1 - effectiveScale))}px` : '0px'
                 }}
-                className="bg-white text-black shadow-2xl rounded-sm border-2 border-black overflow-hidden flex flex-col justify-between select-none"
+                className="bg-white text-black shadow-2xl rounded-sm border-2 border-black overflow-hidden flex flex-col justify-between select-none shrink-0"
               >
                 {/* REPRESENTACIÓN VISUAL EN PANTALLA */}
                 <div
@@ -1386,8 +1546,8 @@ export default function StickerPrint({
               </div>
             </div>
 
-            {/* BOTÓN INFERIOR DE IMPRESIÓN */}
-            <div className="w-full flex items-center justify-between pt-4 border-t border-slate-200">
+            {/* BOTÓN INFERIOR DE IMPRESIÓN (DESKTOP) */}
+            <div className="w-full hidden sm:flex items-center justify-between pt-4 border-t border-slate-200 shrink-0">
               <span className="text-xs text-slate-500 font-medium">
                 Compatible con impresoras térmicas (Zebra, MUNBYN, Xprinter) y hojas carta/A4.
               </span>
@@ -1402,6 +1562,44 @@ export default function StickerPrint({
 
           </div>
 
+        </div>
+
+        {/* BARRA DE ACCIÓN FIJA EN MÓVIL (SIEMPRE VISIBLE ABAJO) */}
+        <div className="lg:hidden p-2.5 sm:p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab(t => t === 'preview' ? 'edit' : 'preview')}
+            className="py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            {mobileTab === 'preview' ? (
+              <>
+                <Sliders size={14} />
+                <span>Editar</span>
+              </>
+            ) : (
+              <>
+                <Eye size={14} />
+                <span>Ver</span>
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenInNewTab}
+            className="py-2.5 px-3 rounded-xl border border-orange-200 text-xs font-bold text-[#FF6B00] bg-orange-50 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+            title="Abrir en pestaña nueva para imprimir o guardar PDF"
+          >
+            <ExternalLink size={14} />
+            <span>PDF</span>
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="flex-1 py-2.5 px-3 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Printer size={15} />
+            <span>Imprimir</span>
+          </button>
         </div>
 
       </div>
