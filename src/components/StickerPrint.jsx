@@ -3,7 +3,8 @@ import {
   X, Printer, Save, Check, RefreshCw, ZoomIn, ZoomOut,
   Tag, Truck, MapPin, Phone, User, Package,
   DollarSign, FileText, Calendar, ExternalLink, Sliders,
-  CheckCircle2, Trash2, QrCode, Globe, Share2, MessageCircle
+  CheckCircle2, Trash2, QrCode, Globe, Share2, MessageCircle,
+  HelpCircle, AlertTriangle
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { ONE_CONTROL_LOGO_BASE64 } from '../assets/logoBase64.js';
@@ -38,7 +39,7 @@ export const STICKER_SIZES = [
     widthMm: 100,
     heightMm: 75,
     aspect: '100 / 75',
-    density: 'normal'
+    density: 'compact'
   },
   {
     id: '7.5x5',
@@ -68,7 +69,7 @@ export const STICKER_SIZES = [
     widthMm: 100,
     heightMm: 75,
     aspect: '100 / 75',
-    density: 'normal'
+    density: 'compact'
   }
 ];
 
@@ -87,14 +88,14 @@ const CODE39_ENCODINGS = {
   '/': '010100010', '+': '010001010', '%': '000101010', '*': '010010100'
 };
 
-function generateBarcodeSvg(text, height = 30) {
+function generateBarcodeSvg(text, height = 22) {
   const clean = '*' + String(text || 'OC-PEDIDO').toUpperCase().replace(/[^0-9A-Z\-\. \$\/\+\%]/g, '') + '*';
-  let narrow = 2;
-  let wide = 5;
-  let gap = 2;
+  let narrow = 1.6;
+  let wide = 4.2;
+  let gap = 1.6;
   
   let rects = [];
-  let currentX = 10;
+  let currentX = 8;
 
   for (let i = 0; i < clean.length; i++) {
     const char = clean[i];
@@ -111,8 +112,27 @@ function generateBarcodeSvg(text, height = 30) {
     currentX += gap;
   }
 
-  const totalWidth = currentX + 10;
+  const totalWidth = currentX + 8;
   return `<svg viewBox="0 0 ${totalWidth} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px; display: block;">${rects.join('')}</svg>`;
+}
+
+// ── LIMPIEZA INTELIGENTE DE ZONAS (EVITA "N/A" Y EXTRAE DE DIRECCIÓN) ───────
+function extractOrCleanZona(zona, direccion, notas) {
+  const raw = String(zona || '').trim();
+  if (raw && !/^(n\/?a|none|null|undefined|-|\.)$/i.test(raw)) {
+    return raw;
+  }
+  // Auto-detectar si la dirección o notas tienen zona (ej: "zona 14", "z. 14", "z14")
+  const combined = `${direccion || ''} ${notas || ''}`;
+  const m = combined.match(/\b(?:zona|z\.?)\s*(\d{1,2})\b/i);
+  if (m) {
+    return `Zona ${m[1]}`;
+  }
+  const mTown = combined.match(/\b(mixco|villa nueva|san crist[oó]bal|santa catarina|carretera al? salvador|san miguel petapa|amatitl[aá]n)\b/i);
+  if (mTown) {
+    return mTown[1];
+  }
+  return '';
 }
 
 // Destinos predefinidos para el QR de Redes Sociales
@@ -191,7 +211,7 @@ export default function StickerPrint({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [zoom, setZoom] = useState(1);
 
-  // Ref para EVITAR que el form se reinicie mientras el usuario escribe (causado por polling de leads)
+  // Ref para EVITAR que el form se reinicie mientras el usuario escribe (por polling de fondo)
   const initializedPedidoIdRef = useRef(null);
 
   // Inicializar formulario SOLO una vez al abrir el pedido o si cambia de pedido ID
@@ -202,18 +222,13 @@ export default function StickerPrint({
 
     const notasText = (pedido.notas || '').trim();
     let initialDir = matchedLead?.direccion || '';
-    let initialZona = matchedLead?.zona || '';
     let initialNit = matchedLead?.nit || 'C/F';
 
     if (!initialDir && notasText && /zona|calle|avenida|colonia|casa|lote|km|carretera/i.test(notasText)) {
       initialDir = notasText;
     }
 
-    if (!initialZona && notasText) {
-      const zMatch = notasText.match(/zona\s*(\d{1,2})/i);
-      if (zMatch) initialZona = `Zona ${zMatch[1]}`;
-    }
-
+    const initialZona = extractOrCleanZona(matchedLead?.zona, initialDir, notasText);
     const initialEsContraEntrega = !/completad/i.test(pedido.estado || '');
     const initialPagado = /completad/i.test(pedido.estado || '');
 
@@ -250,7 +265,7 @@ export default function StickerPrint({
     let isMounted = true;
     QRCode.toDataURL(currentQrUrl, {
       margin: 1,
-      width: 200,
+      width: 180,
       color: {
         dark: '#000000',
         light: '#ffffff'
@@ -275,11 +290,13 @@ export default function StickerPrint({
   const activeSize = useMemo(() => {
     const found = STICKER_SIZES.find(s => s.id === sizeId) || STICKER_SIZES[2];
     if (sizeId === 'custom') {
+      const w = Math.max(30, Math.min(250, Number(customW) || 100));
+      const h = Math.max(20, Math.min(300, Number(customH) || 75));
       return {
         ...found,
-        widthMm: Math.max(30, Math.min(250, Number(customW) || 100)),
-        heightMm: Math.max(20, Math.min(300, Number(customH) || 75)),
-        density: customH < 35 ? 'tiny' : customH < 60 ? 'compact' : customH < 120 ? 'normal' : 'spacious'
+        widthMm: w,
+        heightMm: h,
+        density: h < 35 ? 'tiny' : h <= 100 ? 'compact' : 'spacious'
       };
     }
     return found;
@@ -327,12 +344,13 @@ export default function StickerPrint({
   const generatePrintableHtml = () => {
     const { widthMm, heightMm, density } = activeSize;
     const barcodeNumber = `OC-${String(form.numeroPedido).padStart(4, '0')}`;
-    const barcodeSvgHtml = generateBarcodeSvg(barcodeNumber, density === 'tiny' ? 18 : density === 'compact' ? 22 : 28);
+    const barcodeSvgHtml = generateBarcodeSvg(barcodeNumber, density === 'tiny' ? 14 : density === 'compact' ? 18 : 24);
 
-    const isTiny = density === 'tiny';         // 5 x 2.5 cm
-    const isCompact = density === 'compact';   // 7.5 x 5 cm
-    const isNormal = density === 'normal';     // 10 x 7.5 cm
-    const isSpacious = density === 'spacious'; // 10 x 15 cm
+    const isTiny = density === 'tiny';           // < 35mm
+    const isCompact = density === 'compact';     // <= 100mm (ej: 10x7.5, 7.5x5)
+    const isSpacious = density === 'spacious';   // > 100mm (ej: 10x15)
+
+    const zonaLimpia = extractOrCleanZona(form.zona, form.direccion, form.notas);
 
     return `<!DOCTYPE html>
 <html>
@@ -342,7 +360,7 @@ export default function StickerPrint({
   <style>
     @page {
       size: ${widthMm}mm ${heightMm}mm;
-      margin: 0mm;
+      margin: 0mm !important;
     }
     * {
       box-sizing: border-box;
@@ -350,51 +368,54 @@ export default function StickerPrint({
       print-color-adjust: exact !important;
     }
     html, body {
-      margin: 0;
-      padding: 0;
-      width: ${widthMm}mm;
-      height: ${heightMm}mm;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: ${widthMm}mm !important;
+      height: ${heightMm}mm !important;
+      max-width: ${widthMm}mm !important;
+      max-height: ${heightMm}mm !important;
       background: #ffffff;
       color: #000000;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden !important;
       line-height: 1.15;
     }
     .sticker-container {
       width: ${widthMm}mm;
       height: ${heightMm}mm;
-      padding: ${isTiny ? '1.5mm' : isCompact ? '2.5mm' : '3.5mm'};
+      max-height: ${heightMm}mm;
+      padding: ${isTiny ? '1.5mm' : isCompact ? '2mm' : '3.5mm'};
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       overflow: hidden;
-      border: 1px solid #111;
+      border: 1px solid #000;
     }
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: ${isTiny ? '0.5px' : '1.5px'} solid #000;
-      padding-bottom: ${isTiny ? '1mm' : '1.5mm'};
-      margin-bottom: ${isTiny ? '1mm' : '1.5mm'};
+      border-bottom: 1px solid #000;
+      padding-bottom: ${isTiny ? '0.5mm' : '1mm'};
+      margin-bottom: ${isTiny ? '0.5mm' : '1mm'};
     }
     .logo-box {
       display: flex;
       align-items: center;
-      gap: 2mm;
+      gap: 1.5mm;
     }
     .logo-img {
-      height: ${isTiny ? '4.5mm' : isCompact ? '6mm' : '9mm'};
+      height: ${isTiny ? '4mm' : isCompact ? '5.5mm' : '8mm'};
       object-fit: contain;
     }
     .logo-title {
-      font-size: ${isTiny ? '7pt' : isCompact ? '8.5pt' : '10pt'};
+      font-size: ${isTiny ? '6.5pt' : isCompact ? '8pt' : '9.5pt'};
       font-weight: 900;
       letter-spacing: -0.2px;
       text-transform: uppercase;
     }
     .sender-sub {
-      font-size: ${isTiny ? '4.5pt' : isCompact ? '5.5pt' : '6.5pt'};
+      font-size: ${isTiny ? '4pt' : isCompact ? '5pt' : '6pt'};
       color: #333;
       font-weight: 600;
     }
@@ -404,154 +425,167 @@ export default function StickerPrint({
       font-weight: 900;
     }
     .dest-section {
-      border: ${isTiny ? '0.5px' : '1.2px'} solid #000;
-      border-radius: ${isTiny ? '1mm' : '1.5mm'};
-      padding: ${isTiny ? '1mm' : isCompact ? '1.5mm' : '2mm'};
-      margin-bottom: ${isTiny ? '1mm' : '1.5mm'};
+      border: 1px solid #000;
+      border-radius: 1mm;
+      padding: ${isTiny ? '0.8mm' : isCompact ? '1.2mm' : '1.8mm'};
+      margin-bottom: ${isTiny ? '0.5mm' : '1mm'};
       background: #fafafa;
     }
     .dest-label {
-      font-size: ${isTiny ? '5pt' : isCompact ? '6pt' : '7pt'};
+      font-size: ${isTiny ? '4.5pt' : '5.5pt'};
       font-weight: 800;
-      color: #444;
+      color: #333;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 0.5mm;
+      letter-spacing: 0.4px;
     }
     .dest-name {
-      font-size: ${isTiny ? '7.5pt' : isCompact ? '10pt' : isNormal ? '11.5pt' : '14pt'};
+      font-size: ${isTiny ? '7pt' : isCompact ? '9pt' : '12pt'};
       font-weight: 900;
       color: #000;
       text-transform: uppercase;
       line-height: 1.1;
-      margin-bottom: 0.5mm;
+      margin: 0.3mm 0;
     }
     .dest-phone {
-      font-size: ${isTiny ? '7pt' : isCompact ? '8.5pt' : isNormal ? '10pt' : '11pt'};
+      font-size: ${isTiny ? '6.5pt' : isCompact ? '8pt' : '9.5pt'};
       font-weight: 800;
       color: #000;
-      margin-bottom: 0.5mm;
     }
     .dest-address {
-      font-size: ${isTiny ? '6pt' : isCompact ? '7pt' : isNormal ? '8.5pt' : '9.5pt'};
+      font-size: ${isTiny ? '5.5pt' : isCompact ? '6.5pt' : '8pt'};
       font-weight: 700;
       color: #111;
-      line-height: 1.2;
+      line-height: 1.15;
+      margin-top: 0.3mm;
     }
     .zona-badge {
       display: inline-block;
+      border: 1px solid #000;
       background: #000;
       color: #fff;
       font-weight: 900;
-      font-size: ${isTiny ? '5.5pt' : isCompact ? '7pt' : '8pt'};
-      padding: 0.5mm 1.5mm;
-      border-radius: 0.8mm;
-      margin-top: 1mm;
+      font-size: ${isTiny ? '5pt' : isCompact ? '6pt' : '7.5pt'};
+      padding: 0.3mm 1.2mm;
+      border-radius: 0.6mm;
+      margin-top: 0.6mm;
       text-transform: uppercase;
     }
     .prod-box {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: ${isTiny ? '0.5mm 0' : '1.2mm 0'};
-      border-top: 0.5px dashed #666;
-      border-bottom: 0.5px dashed #666;
-      margin-bottom: ${isTiny ? '1mm' : '1.5mm'};
+      padding: ${isTiny ? '0.4mm 0' : '0.8mm 0'};
+      border-top: 0.5px dashed #444;
+      border-bottom: 0.5px dashed #444;
+      margin-bottom: ${isTiny ? '0.5mm' : '1mm'};
     }
     .prod-text {
-      font-size: ${isTiny ? '6pt' : isCompact ? '7.5pt' : '8.5pt'};
+      font-size: ${isTiny ? '5.5pt' : isCompact ? '6.5pt' : '8pt'};
       font-weight: 800;
-      max-width: 70%;
+      max-width: 75%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .prod-qty {
-      font-size: ${isTiny ? '6pt' : isCompact ? '7.5pt' : '8.5pt'};
+      font-size: ${isTiny ? '5.5pt' : isCompact ? '6.5pt' : '8pt'};
       font-weight: 900;
       background: #eee;
-      padding: 0.3mm 1mm;
-      border-radius: 0.5mm;
+      border: 0.5px solid #bbb;
+      padding: 0.2mm 0.8mm;
+      border-radius: 0.4mm;
+    }
+    
+    /* GRID DE 2 COLUMNAS PARA TAMAÑOS COMPACTOS (AHORRA 40mm DE ALTURA) */
+    .middle-grid {
+      display: grid;
+      grid-template-columns: ${options.showSocialQr && qrBase64 && !isTiny ? '1.1fr 0.9fr' : '1fr'};
+      gap: 1.5mm;
+      margin-bottom: ${isTiny ? '0.5mm' : '1mm'};
+      align-items: stretch;
     }
     .payment-box {
-      border: ${isTiny ? '1px' : '1.8px'} solid #000;
-      border-radius: ${isTiny ? '1mm' : '1.5mm'};
-      padding: ${isTiny ? '1mm' : isCompact ? '1.5mm' : '2mm'};
+      border: 1.2px solid #000;
+      border-radius: 1mm;
+      padding: ${isTiny ? '0.8mm' : '1.2mm'};
       text-align: center;
       background: #ffffff;
-      margin-bottom: ${isTiny ? '1mm' : '1.5mm'};
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
     .payment-title {
-      font-size: ${isTiny ? '5pt' : isCompact ? '6.5pt' : '7.5pt'};
+      font-size: ${isTiny ? '4.5pt' : isCompact ? '5.5pt' : '6.5pt'};
       font-weight: 800;
       text-transform: uppercase;
-      color: #333;
+      color: #222;
+      line-height: 1;
     }
     .payment-amount {
-      font-size: ${isTiny ? '8pt' : isCompact ? '11pt' : isNormal ? '13pt' : '16pt'};
+      font-size: ${isTiny ? '7.5pt' : isCompact ? '9.5pt' : '13pt'};
       font-weight: 900;
       color: #000;
-    }
-    .notes-box {
-      font-size: ${isTiny ? '5.5pt' : isCompact ? '6.5pt' : '7.5pt'};
-      color: #222;
-      background: #f7f7f7;
-      border-left: 2px solid #000;
-      padding: 1mm 1.5mm;
-      margin-bottom: 1.5mm;
-      border-radius: 0.5mm;
+      margin: 0.3mm 0;
+      line-height: 1.1;
     }
     .social-qr-banner {
       display: flex;
       align-items: center;
-      gap: 2mm;
-      border: 1px solid #222;
-      border-radius: 1.2mm;
-      padding: 1.2mm 2mm;
+      gap: 1.2mm;
+      border: 1px solid #000;
+      border-radius: 1mm;
+      padding: 1mm;
       background: #fafafa;
-      margin-bottom: 1.5mm;
     }
     .qr-img {
-      width: ${isTiny ? '10mm' : isCompact ? '13mm' : isNormal ? '17mm' : '22mm'};
-      height: ${isTiny ? '10mm' : isCompact ? '13mm' : isNormal ? '17mm' : '22mm'};
+      width: ${isTiny ? '8mm' : isCompact ? '11mm' : '16mm'};
+      height: ${isTiny ? '8mm' : isCompact ? '11mm' : '16mm'};
       object-fit: contain;
       border: 0.5px solid #000;
       background: #fff;
+      shrink: 0;
     }
     .social-info {
       flex: 1;
-      line-height: 1.2;
+      line-height: 1.15;
+      overflow: hidden;
     }
     .social-headline {
-      font-size: ${isTiny ? '5.5pt' : isCompact ? '6.5pt' : '7.5pt'};
+      font-size: ${isTiny ? '4.5pt' : isCompact ? '5.5pt' : '6.5pt'};
       font-weight: 900;
       text-transform: uppercase;
-      letter-spacing: -0.1px;
     }
     .social-link {
-      font-size: ${isTiny ? '5pt' : isCompact ? '6pt' : '7pt'};
+      font-size: ${isTiny ? '4pt' : isCompact ? '5pt' : '6pt'};
       font-weight: 700;
       color: #000;
     }
     .social-handles {
-      font-size: ${isTiny ? '4.5pt' : isCompact ? '5.5pt' : '6pt'};
-      color: #444;
+      font-size: ${isTiny ? '4pt' : isCompact ? '4.5pt' : '5.5pt'};
+      color: #333;
       font-weight: 600;
+    }
+    .notes-box {
+      font-size: ${isTiny ? '4.5pt' : isCompact ? '5.5pt' : '6.5pt'};
+      color: #222;
+      background: #f7f7f7;
+      border-left: 1.5px solid #000;
+      padding: 0.6mm 1mm;
+      margin-top: 0.6mm;
+      border-radius: 0.4mm;
+      text-align: left;
     }
     .footer-bar {
       margin-top: auto;
       text-align: center;
-    }
-    .barcode-container {
-      width: 100%;
-      margin: 0 auto;
+      padding-top: 0.5mm;
     }
     .tracking-label {
-      font-size: ${isTiny ? '4.5pt' : isCompact ? '5.5pt' : '6.5pt'};
+      font-size: ${isTiny ? '4pt' : isCompact ? '4.5pt' : '5.5pt'};
       font-family: monospace;
       font-weight: 800;
-      letter-spacing: 1px;
-      margin-top: 0.5mm;
+      letter-spacing: 0.8px;
+      margin-top: 0.3mm;
     }
   </style>
 </head>
@@ -568,8 +602,8 @@ export default function StickerPrint({
         </div>
       </div>
       <div class="order-badge">
-        <div>#${form.numeroPedido}</div>
-        ${form.fechaEntrega && !isTiny ? `<div style="font-size: 5.5pt; font-weight: 600; color: #555;">${form.fechaEntrega}</div>` : ''}
+        <div>PEDIDO #${form.numeroPedido}</div>
+        ${form.fechaEntrega && !isTiny ? `<div style="font-size: 5pt; font-weight: 600; color: #444;">${form.fechaEntrega}</div>` : ''}
       </div>
     </div>
 
@@ -579,7 +613,7 @@ export default function StickerPrint({
       <div class="dest-name">${form.cliente || 'CLIENTE FINAL'}</div>
       <div class="dest-phone">📞 TEL: ${form.phone || 'Sin número'}</div>
       <div class="dest-address">${form.direccion || 'Dirección pendiente de confirmación'}</div>
-      ${form.zona ? `<div class="zona-badge">📍 ${form.zona.toUpperCase()}${form.municipio && form.municipio !== 'Guatemala' ? ' · ' + form.municipio.toUpperCase() : ''}</div>` : ''}
+      ${zonaLimpia ? `<div class="zona-badge">📍 ${zonaLimpia.toUpperCase()}${form.municipio && form.municipio !== 'Guatemala' ? ' · ' + form.municipio.toUpperCase() : ''}</div>` : ''}
     </div>
 
     <!-- PRODUCTO -->
@@ -588,43 +622,42 @@ export default function StickerPrint({
       <div class="prod-qty">Cant: ${form.cantidad || '1'}</div>
     </div>
 
-    <!-- COBRO O PAGO -->
-    ${options.showPrice ? `
-      <div class="payment-box">
-        <div class="payment-title">
-          ${form.esContraEntrega ? '⚠️ COBRO CONTRA ENTREGA' : '✓ ESTADO DE CUENTA: PAGADO'}
+    <!-- MIDDLE: COBRO Y REDES SOCIALES EN 2 COLUMNAS (NO DESBORDA) -->
+    <div class="middle-grid">
+      
+      <!-- COLUMNA COBRO -->
+      ${options.showPrice ? `
+        <div class="payment-box">
+          <div class="payment-title">
+            ${form.esContraEntrega ? '⚠️ COBRO CONTRA ENTREGA' : '✓ ESTADO: PAGADO'}
+          </div>
+          <div class="payment-amount">
+            ${form.esContraEntrega ? (form.precio ? form.precio : 'A CONFIRMAR') : 'NO COBRAR'}
+          </div>
+          ${options.showNit && form.nit ? `<div style="font-size: 5pt; color: #333;">NIT: ${form.nit}</div>` : ''}
+          ${options.showNotes && form.notas && !isTiny ? `<div class="notes-box"><strong>Ref:</strong> ${form.notas}</div>` : ''}
         </div>
-        <div class="payment-amount">
-          ${form.esContraEntrega ? (form.precio ? form.precio : 'A CONFIRMAR') : 'NO COBRAR (PAGADO)'}
+      ` : ''}
+
+      <!-- COLUMNA QR Y REDES -->
+      ${options.showSocialQr && qrBase64 && !isTiny ? `
+        <div class="social-qr-banner">
+          <img src="${qrBase64}" class="qr-img" alt="QR" />
+          <div class="social-info">
+            <div class="social-headline">📱 SÍGUENOS</div>
+            <div class="social-link">onecontrol.shop</div>
+            <div class="social-handles">${options.socialHandle || '@onecontrol.shop'}</div>
+            <div style="font-size: 4.5pt; color: #555;">TikTok · FB · IG</div>
+          </div>
         </div>
-        ${options.showNit && form.nit ? `<div style="font-size: 5.5pt; color: #555; margin-top: 0.5mm;">NIT: ${form.nit}</div>` : ''}
-      </div>
-    ` : ''}
+      ` : ''}
 
-    <!-- NOTAS / INSTRUCCIONES DE ENTREGA -->
-    ${options.showNotes && form.notas && !isTiny ? `
-      <div class="notes-box">
-        <strong>Notas / Ref:</strong> ${form.notas}
-      </div>
-    ` : ''}
+    </div>
 
-    <!-- BANNER: SÍGUENOS EN REDES SOCIALES & QR -->
-    ${options.showSocialQr && qrBase64 && !isTiny ? `
-      <div class="social-qr-banner">
-        <img src="${qrBase64}" class="qr-img" alt="QR Redes OneControl" />
-        <div class="social-info">
-          <div class="social-headline">📱 ¡SÍGUENOS EN REDES!</div>
-          <div class="social-link">🌐 www.onecontrol.shop</div>
-          <div class="social-handles">📸 ${options.socialHandle || '@onecontrol.shop'} · TikTok · FB · IG</div>
-          <div style="font-size: 5pt; color: #555; margin-top: 0.5mm;">¡Escanea para ver catálogo y ofertas!</div>
-        </div>
-      </div>
-    ` : ''}
-
-    <!-- CODIGO DE BARRAS & FOOTER -->
+    <!-- FOOTER / CÓDIGO DE BARRAS -->
     ${options.showBarcode ? `
       <div class="footer-bar">
-        <div class="barcode-container">
+        <div>
           ${barcodeSvgHtml}
         </div>
         <div class="tracking-label">${barcodeNumber}</div>
@@ -698,6 +731,8 @@ export default function StickerPrint({
     }));
   };
 
+  const zonaVisual = extractOrCleanZona(form.zona, form.direccion, form.notas);
+
   return (
     <div className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl w-full max-w-6xl max-h-[95vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
@@ -742,8 +777,16 @@ export default function StickerPrint({
         <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
           
           {/* COLUMNA IZQUIERDA: CONFIGURACIÓN Y DATOS (7 COLS) */}
-          <div className="lg:col-span-6 xl:col-span-5 p-6 space-y-6 overflow-y-auto max-h-[82vh]">
+          <div className="lg:col-span-6 xl:col-span-5 p-6 space-y-5 overflow-y-auto max-h-[82vh]">
             
+            {/* AVISO TIP DE IMPRESIÓN PARA NINGÚN MARGEN */}
+            <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
+              <HelpCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="leading-snug">
+                <strong>Tip de Impresión:</strong> En la ventana de impresión (Chrome), en <strong>Márgenes</strong> selecciona <strong>"Ninguno"</strong> y activa la casilla <strong>"Gráficos de fondo"</strong> para que imprima al 100% de tu etiqueta.
+              </div>
+            </div>
+
             {/* 1. SELECTOR DE TAMAÑO DE STICKER */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
@@ -863,9 +906,16 @@ export default function StickerPrint({
               </div>
 
               <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                  Zona / Sector / Municipio:
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                    Zona / Sector / Municipio:
+                  </label>
+                  {zonaVisual && (
+                    <span className="text-[10px] font-bold text-emerald-600">
+                      Detectado: {zonaVisual}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="text"
                   value={form.zona}
@@ -984,7 +1034,7 @@ export default function StickerPrint({
                 </label>
               </div>
 
-              {/* 4. NOTAS / INSTRUCCIONES AL REPARTIDOR (CON BORRADO SEGURO) */}
+              {/* 4. NOTAS / INSTRUCCIONES AL REPARTIDOR */}
               <div className="pt-2 border-t border-slate-200/60">
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
@@ -1017,7 +1067,6 @@ export default function StickerPrint({
                   />
                 </div>
 
-                {/* Atajos rápidos de notas */}
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {QUICK_NOTES.map(note => (
                     <button
@@ -1189,28 +1238,29 @@ export default function StickerPrint({
                 <div
                   style={{
                     width: `${activeSize.widthMm * 3.78}px`,
-                    minHeight: `${activeSize.heightMm * 3.78}px`,
-                    padding: activeSize.density === 'tiny' ? '6px' : activeSize.density === 'compact' ? '10px' : '14px'
+                    height: `${activeSize.heightMm * 3.78}px`,
+                    maxHeight: `${activeSize.heightMm * 3.78}px`,
+                    padding: activeSize.density === 'tiny' ? '5px' : activeSize.density === 'compact' ? '8px' : '12px'
                   }}
-                  className="flex flex-col justify-between h-full text-slate-950 font-sans"
+                  className="flex flex-col justify-between h-full text-slate-950 font-sans overflow-hidden"
                 >
                   {/* TOP HEADER */}
-                  <div className="flex justify-between items-center border-b-2 border-black pb-1.5 mb-2">
-                    <div className="flex items-center gap-2">
+                  <div className="flex justify-between items-center border-b border-black pb-1 mb-1">
+                    <div className="flex items-center gap-1.5">
                       {options.showLogo && (
                         <img
                           src={ONE_CONTROL_LOGO_BASE64}
                           alt="OneControl"
                           style={{
-                            height: activeSize.density === 'tiny' ? '18px' : activeSize.density === 'compact' ? '24px' : '32px'
+                            height: activeSize.density === 'tiny' ? '14px' : activeSize.density === 'compact' ? '20px' : '28px'
                           }}
                           className="object-contain"
                         />
                       )}
                       <div>
-                        <div className="text-xs font-black tracking-tight uppercase">ONECONTROL</div>
+                        <div className="text-[11px] font-black tracking-tight uppercase leading-none">ONECONTROL</div>
                         {options.showSender && activeSize.density !== 'tiny' && (
-                          <div className="text-[9px] font-bold text-slate-600">
+                          <div className="text-[8px] font-bold text-slate-600 mt-0.5">
                             PBX: 5965-8803 · onecontrol.shop
                           </div>
                         )}
@@ -1218,9 +1268,9 @@ export default function StickerPrint({
                     </div>
 
                     <div className="text-right">
-                      <div className="text-xs font-black">#{form.numeroPedido}</div>
+                      <div className="text-[11px] font-black">PEDIDO #{form.numeroPedido}</div>
                       {form.fechaEntrega && activeSize.density !== 'tiny' && (
-                        <div className="text-[9px] font-semibold text-slate-500">
+                        <div className="text-[8px] font-semibold text-slate-500">
                           {form.fechaEntrega}
                         </div>
                       )}
@@ -1228,105 +1278,106 @@ export default function StickerPrint({
                   </div>
 
                   {/* DESTINATARIO */}
-                  <div className="border border-black rounded-lg p-2 bg-slate-50/70 mb-2">
-                    <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                  <div className="border border-black rounded p-1.5 bg-slate-50/70 mb-1">
+                    <div className="text-[7.5px] font-black text-slate-600 uppercase tracking-widest leading-none">
                       ENTREGAR A:
                     </div>
-                    <div className={`font-black uppercase tracking-tight leading-tight ${
-                      activeSize.density === 'tiny' ? 'text-xs' : activeSize.density === 'compact' ? 'text-sm' : 'text-base'
+                    <div className={`font-black uppercase tracking-tight leading-tight my-0.5 ${
+                      activeSize.density === 'tiny' ? 'text-[9.5px]' : activeSize.density === 'compact' ? 'text-xs' : 'text-sm'
                     }`}>
                       {form.cliente || 'CLIENTE FINAL'}
                     </div>
-                    <div className="text-xs font-bold text-slate-900 mt-0.5">
+                    <div className="text-[10px] font-bold text-slate-900 leading-tight">
                       📞 TEL: {form.phone || 'Sin número'}
                     </div>
-                    <div className="text-[11px] font-medium text-slate-800 leading-snug mt-1">
+                    <div className="text-[9.5px] font-medium text-slate-800 leading-snug mt-0.5">
                       {form.direccion || 'Dirección pendiente de confirmación'}
                     </div>
-                    {form.zona && (
-                      <div className="inline-block bg-black text-white text-[9.5px] font-black px-2 py-0.5 rounded-sm mt-1.5 uppercase">
-                        📍 {form.zona.toUpperCase()}{form.municipio && form.municipio !== 'Guatemala' ? ' · ' + form.municipio.toUpperCase() : ''}
+                    {zonaVisual && (
+                      <div className="inline-block bg-black text-white text-[8.5px] font-black px-1.5 py-0.2 rounded-sm mt-1 uppercase">
+                        📍 {zonaVisual.toUpperCase()}{form.municipio && form.municipio !== 'Guatemala' ? ' · ' + form.municipio.toUpperCase() : ''}
                       </div>
                     )}
                   </div>
 
                   {/* PRODUCTO */}
-                  <div className="flex justify-between items-center py-1.5 border-t border-b border-dashed border-slate-400 mb-2">
-                    <div className="text-xs font-bold truncate max-w-[75%]">
+                  <div className="flex justify-between items-center py-1 border-t border-b border-dashed border-slate-400 mb-1">
+                    <div className="text-[10px] font-bold truncate max-w-[75%] leading-none">
                       {form.producto || 'Producto sin especificar'}
                     </div>
-                    <div className="text-xs font-black bg-slate-100 px-1.5 py-0.5 rounded">
+                    <div className="text-[10px] font-black bg-slate-100 px-1 py-0.2 rounded leading-none">
                       Cant: {form.cantidad || '1'}
                     </div>
                   </div>
 
-                  {/* COBRO / PAGO */}
-                  {options.showPrice && (
-                    <div className="border-2 border-black rounded-lg p-2 text-center bg-white mb-2">
-                      <div className="text-[9px] font-black uppercase text-slate-700 tracking-wider">
-                        {form.esContraEntrega ? '⚠️ COBRO CONTRA ENTREGA' : '✓ ESTADO: PAGADO'}
-                      </div>
-                      <div className={`font-black tracking-tight leading-none my-0.5 ${
-                        activeSize.density === 'tiny' ? 'text-sm' : activeSize.density === 'compact' ? 'text-lg' : 'text-xl'
-                      }`}>
-                        {form.esContraEntrega ? (form.precio || 'A CONFIRMAR') : 'NO COBRAR (PAGADO)'}
-                      </div>
-                      {options.showNit && form.nit && (
-                        <div className="text-[9px] text-slate-600 font-bold">
-                          NIT: {form.nit}
+                  {/* MIDDLE: 2 COLUMNAS (COBRO A LA IZQUIERDA, QR A LA DERECHA) */}
+                  <div className="grid grid-cols-2 gap-1.5 mb-1 items-stretch">
+                    
+                    {/* COBRO */}
+                    {options.showPrice && (
+                      <div className="border border-black rounded p-1 text-center bg-white flex flex-col justify-center">
+                        <div className="text-[7.5px] font-black uppercase text-slate-700 tracking-wider leading-none">
+                          ${form.esContraEntrega ? '⚠️ COBRO CONTRA ENTREGA' : '✓ ESTADO: PAGADO'}
                         </div>
-                      )}
-                    </div>
-                  )}
+                        <div className="text-xs font-black tracking-tight leading-tight my-0.5">
+                          {form.esContraEntrega ? (form.precio || 'A CONFIRMAR') : 'NO COBRAR'}
+                        </div>
+                        {options.showNit && form.nit && (
+                          <div className="text-[7.5px] text-slate-600 font-bold leading-none">
+                            NIT: {form.nit}
+                          </div>
+                        )}
+                        {options.showNotes && form.notas && activeSize.density !== 'tiny' && (
+                          <div className="text-[7.5px] text-slate-700 italic border-t border-slate-200 pt-0.5 mt-0.5 truncate">
+                            Ref: {form.notas}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                  {/* NOTAS / REFERENCIAS */}
-                  {options.showNotes && form.notas && activeSize.density !== 'tiny' && (
-                    <div className="text-[9.5px] text-slate-800 bg-slate-50 border-l-2 border-black p-1.5 mb-2 leading-tight rounded-xs">
-                      <strong>Notas / Ref:</strong> {form.notas}
-                    </div>
-                  )}
-
-                  {/* BANNER: SÍGUENOS EN REDES SOCIALES & QR */}
-                  {options.showSocialQr && qrBase64 && activeSize.density !== 'tiny' && (
-                    <div className="flex items-center gap-2 border border-slate-800 rounded-lg p-1.5 bg-slate-50/80 mb-2">
-                      <img
-                        src={qrBase64}
-                        alt="QR Code"
-                        style={{
-                          width: activeSize.density === 'compact' ? '48px' : '62px',
-                          height: activeSize.density === 'compact' ? '48px' : '62px'
-                        }}
-                        className="object-contain border border-black bg-white rounded-xs"
-                      />
-                      <div className="flex-1 leading-tight">
-                        <div className="text-[10px] font-black uppercase tracking-tight text-slate-900">
-                          📱 ¡SÍGUENOS EN REDES!
-                        </div>
-                        <div className="text-[9.5px] font-bold text-black">
-                          🌐 www.onecontrol.shop
-                        </div>
-                        <div className="text-[8.5px] font-bold text-slate-600">
-                          📸 {options.socialHandle || '@onecontrol.shop'} · TikTok · FB
-                        </div>
-                        <div className="text-[7.5px] text-slate-500 font-medium">
-                          Escanea para ofertas y catálogo
+                    {/* QR REDES */}
+                    {options.showSocialQr && qrBase64 && activeSize.density !== 'tiny' && (
+                      <div className="flex items-center gap-1.5 border border-black rounded p-1 bg-slate-50/80">
+                        <img
+                          src={qrBase64}
+                          alt="QR"
+                          style={{
+                            width: activeSize.density === 'compact' ? '36px' : '46px',
+                            height: activeSize.density === 'compact' ? '36px' : '46px'
+                          }}
+                          className="object-contain border border-black bg-white rounded-xs shrink-0"
+                        />
+                        <div className="flex-1 leading-tight overflow-hidden">
+                          <div className="text-[8px] font-black uppercase tracking-tight text-slate-900">
+                            📱 SÍGUENOS
+                          </div>
+                          <div className="text-[7.5px] font-bold text-black truncate">
+                            onecontrol.shop
+                          </div>
+                          <div className="text-[7px] font-bold text-slate-600 truncate">
+                            {options.socialHandle || '@onecontrol.shop'}
+                          </div>
+                          <div className="text-[6.5px] text-slate-500">
+                            TikTok · FB · IG
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+
+                  </div>
 
                   {/* BARCODE FOOTER */}
                   {options.showBarcode && (
-                    <div className="mt-auto pt-1 text-center">
+                    <div className="mt-auto pt-0.5 text-center">
                       <div
                         dangerouslySetInnerHTML={{
                           __html: generateBarcodeSvg(
                             `OC-${String(form.numeroPedido).padStart(4, '0')}`,
-                            activeSize.density === 'tiny' ? 18 : activeSize.density === 'compact' ? 22 : 28
+                            activeSize.density === 'tiny' ? 14 : activeSize.density === 'compact' ? 18 : 22
                           )
                         }}
                       />
-                      <div className="text-[9px] font-mono font-bold tracking-widest text-slate-700 mt-0.5">
+                      <div className="text-[7.5px] font-mono font-bold tracking-widest text-slate-700 mt-0.5 leading-none">
                         *OC-{String(form.numeroPedido).padStart(4, '0')}*
                       </div>
                     </div>
