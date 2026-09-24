@@ -3074,7 +3074,13 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
     // WhatsApp RECHAZA media http:// → siempre https salvo en local.
     const protocol = isLocal ? 'http' : 'https';
-    const docUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    // URL PÚBLICA CONFIABLE para que WhatsApp/Meta pueda DESCARGAR el archivo. NO usar el host
+    // desde el que navega el dueño (ej. panel.onecontrol.shop, que no resuelve → 502). Usamos
+    // el dominio easypanel que sí sirve /uploads (configurable con el setting public_media_url).
+    let publicBase = (await getDynamicSetting('public_media_url', process.env.PUBLIC_MEDIA_URL)) || '';
+    publicBase = String(publicBase).trim().replace(/\/+$/, '');
+    if (!publicBase && !isLocal) publicBase = 'https://ycloud-dashboard.83aqlq.easypanel.host';
+    const docUrl = publicBase ? `${publicBase}/uploads/${req.file.filename}` : `${protocol}://${host}/uploads/${req.file.filename}`;
     const time = horaGuate();
     // Según el tipo: imagen → FOTO, video → VIDEO, resto → documento (tipos WhatsApp/Meta).
     const mime = String(req.file.mimetype || '');
