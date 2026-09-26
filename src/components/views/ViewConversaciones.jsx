@@ -1267,8 +1267,12 @@ export default function ViewConversaciones({
 
                           {/* Audio adjunto */}
                           {isAudio && (
-                            <div className="px-3 pt-2">
-                              <audio src={media.url} controls className="w-full max-w-sm" />
+                            <div className="px-3 pt-2 space-y-1">
+                              <audio src={media.url} controls preload="metadata" className="w-full max-w-sm" />
+                              {/* Respaldo: si el reproductor no anda en el teléfono (ej. .ogg), abrilo en el reproductor del sistema */}
+                              <a href={media.url} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-[#FF6B00] hover:underline inline-flex items-center gap-1">
+                                ▶️ Abrir / descargar audio
+                              </a>
                             </div>
                           )}
 
