@@ -527,8 +527,11 @@ async function setup() {
     // El sync NO lo pisa; si está, gana sobre el precio de la web.
     try { await db.exec("ALTER TABLE web_products ADD COLUMN precio_manual TEXT"); } catch(e){}
     try {
-      // Limpiar fotos asignadas por error al cliente (las fotos de /uploads/ son siempre del catalogo/bot)
-      await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%'");
+      // Limpiar SOLO fotos del catálogo/bot asignadas por error al cliente. OJO: la media que
+      // el CLIENTE realmente mandó (audios/fotos) se persiste en /uploads con prefijo "in_"
+      // (ej. in_1790447453120-xxx.ogg) — ESA NO se toca (antes se borraba en cada deploy y los
+      // audios del cliente quedaban sin enlace). Solo borramos las de /uploads que NO son "in_".
+      await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%' AND mediaUrl NOT LIKE '%/uploads/in\\_%' ESCAPE '\\'");
       // Eliminar mensajes vacios del bot que solo tenian imagen duplicada
       await db.run("DELETE FROM messages WHERE sender = 'bot' AND (text IS NULL OR text = '' OR trim(text) = '') AND mediaUrl IS NOT NULL");
     } catch(e){}
