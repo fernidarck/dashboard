@@ -1468,12 +1468,22 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
     );
     if (existingRecent) return null;
 
-    // Buscar producto coincidente del catálogo
+    // Buscar producto coincidente del catálogo. Buscamos primero en el mensaje actual y, si no
+    // hay match, en la conversación reciente (el turno que cierra suele ser un "gracias" sin el
+    // nombre del producto; el producto se nombró antes, ej. "control LiftMaster 893MAX").
+    let searchText = text;
+    try {
+      const convProd = await db.all(
+        "SELECT text FROM messages WHERE lead_id = ? AND text IS NOT NULL AND text != '' ORDER BY id DESC LIMIT 20",
+        leadId
+      );
+      searchText = (text + ' ' + convProd.map(r => String(r.text || '')).join(' ')).toLowerCase();
+    } catch (e) { /* si falla, usamos solo el mensaje actual */ }
     const prods = await db.all("SELECT * FROM products WHERE activo = 1");
     let matchedProduct = null;
     for (const p of prods) {
       const pName = String(p.nombre || '').toLowerCase();
-      if (text.includes(pName) || (pName.includes('one night') && text.includes('one night')) || (pName.includes('modelo') && text.includes((pName.match(/modelo\s*\d+/i) || [])[0]))) {
+      if (searchText.includes(pName) || (pName.includes('one night') && searchText.includes('one night')) || (pName.includes('modelo') && searchText.includes((pName.match(/modelo\s*\d+/i) || [])[0]))) {
         matchedProduct = p;
         break;
       }
