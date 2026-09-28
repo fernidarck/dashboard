@@ -1316,6 +1316,8 @@ export default function ViewConversaciones({
                 Tu última respuesta <b>NO le llegó</b> al cliente.
                 {deliveryWarn.ventana24h
                   ? ' WhatsApp la bloqueó por la ventana de 24h (pasó mucho desde que el cliente escribió). Escribile vos desde tu WhatsApp para reabrir la conversación.'
+                  : deliveryWarn.fallaMedia
+                  ? ` El archivo/foto no se pudo enviar${deliveryWarn.errorMessage ? ` (${deliveryWarn.errorMessage})` : ''}. Volvé a intentar en unos segundos; si sigue, reenvialo desde tu WhatsApp.`
                   : ` Motivo: ${deliveryWarn.errorMessage || 'rechazado por WhatsApp'}. Probá escribirle desde tu WhatsApp.`}
               </p>
             </div>

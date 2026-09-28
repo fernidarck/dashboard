@@ -806,22 +806,46 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
       link = link.replace(/^http:\/\//i, 'https://');
     }
 
+    // CONFIABILIDAD: en vez de mandar el link a nuestro dominio (WhatsApp lo tiene que bajar en
+    // el momento y si easypanel está frío/lento FALLA — caso 48573326: el PDF no llegó), primero
+    // SUBIMOS el archivo a YCloud y mandamos por document.id. YCloud aloja el archivo, así ya no
+    // depende de que WhatsApp alcance nuestro servidor. Si la subida falla por lo que sea, caemos
+    // al método viejo (link) para no dejar de enviar.
+    let mediaId = null;
+    try {
+      let bytes = null;
+      // Preferimos leer el archivo del disco local (más rápido y no depende del dominio público).
+      const base = String(docUrl || '').split('/uploads/')[1];
+      if (base) {
+        const localPath = join(__dirname, 'uploads', base.split('?')[0]);
+        if (fs.existsSync(localPath)) bytes = fs.readFileSync(localPath);
+      }
+      if (!bytes) { // si no está local, lo bajamos del link
+        const dl = await fetch(link);
+        if (dl.ok) bytes = Buffer.from(await dl.arrayBuffer());
+      }
+      if (bytes) {
+        const fd = new FormData();
+        fd.append('file', new Blob([bytes]), fileName);
+        const up = await fetch(`https://api.ycloud.com/v2/whatsapp/media/${encodeURIComponent(cleanFrom)}/upload`, {
+          method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd
+        });
+        if (up.ok) { const uj = await up.json().catch(() => ({})); if (uj && uj.id) mediaId = String(uj.id); }
+        else { console.error(`⚠️ Subida a YCloud falló (${up.status}), uso link como respaldo`); }
+      }
+    } catch (e) { console.error('⚠️ Subida a YCloud error, uso link:', e.message); }
+
+    const documentPayload = mediaId
+      ? { id: mediaId, filename: fileName, ...(caption ? { caption } : {}) }
+      : { link, filename: fileName, ...(caption ? { caption } : {}) };
+
     const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({
-        from: cleanFrom,
-        to: cleanTo,
-        type: 'document',
-        document: {
-          link,
-          filename: fileName,
-          ...(caption ? { caption } : {})
-        }
-      })
+      body: JSON.stringify({ from: cleanFrom, to: cleanTo, type: 'document', document: documentPayload })
     });
     if (!r.ok) { const t = await r.text(); console.error(`❌ Error documento YCloud: ${r.status} ${t}`); }
-    else console.log(`📄 Documento enviado a ${cleanTo} desde ${cleanFrom}: ${fileName}`);
+    else console.log(`📄 Documento enviado a ${cleanTo} desde ${cleanFrom}: ${fileName} (${mediaId ? 'por ID subido' : 'por link'})`);
   } catch(e) {
     console.error('❌ Error enviando documento via YCloud:', e.message);
   }
@@ -2644,15 +2668,25 @@ app.get('/api/delivery/last', async (req, res) => {
     if (!items.length) return res.json({ ok: true, found: false });
     const last = items[0];
     const failed = last.status === 'failed';
-    const ventana24h = /131047|131051|24 hours|24 horas|re-?engage|reengagement/i.test(String(last.errorCode || '') + ' ' + String(last.errorMessage || ''));
+    // YCloud anida el error en last.error.{code,title,message} (no en errorCode/errorMessage).
+    const errCode = last.error?.code || last.errorCode || null;
+    const errMsg  = last.error?.title || last.error?.message || last.errorMessage || null;
+    const errBlob = `${errCode || ''} ${errMsg || ''}`;
+    const ventana24h = /131047|131051|24 hours|24 horas|re-?engage|reengagement/i.test(errBlob);
+    // Fallo de media/documento (131053 = no se pudo descargar; o simplemente el tipo era doc/imagen
+    // y falló sin código de ventana). Así el aviso dice el motivo REAL, no "ventana 24h" por defecto.
+    const esMedia = ['document','image','video','audio','sticker'].includes(String(last.type || ''));
+    const fallaMedia = failed && !ventana24h && (esMedia || /131053|media|download|descarg/i.test(errBlob));
     res.json({
       ok: true, found: true,
       status: last.status,
+      type: last.type || null,
       delivered: last.status !== 'failed',
       failed,
       ventana24h: failed && ventana24h,
-      errorCode: last.errorCode || null,
-      errorMessage: last.errorMessage || null,
+      fallaMedia,
+      errorCode: errCode,
+      errorMessage: errMsg,
       createTime: last.createTime || last.sendTime || null
     });
   } catch (err) { res.json({ ok: false, error: err.message }); }
