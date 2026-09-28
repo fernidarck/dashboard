@@ -4076,6 +4076,21 @@ app.get('/api/rag/context', async (req, res) => {
     // producto del anuncio para que el bot pueda ofrecer los demás modelos, no solo el del anuncio.
     const pideAlternativas = /(otro|otros|otra|otras|diferente|distint|alternativ|no se parece|mas modelos|m[aá]s modelos|dem[aá]s|variedad|opciones|que\s*mas\s*tien)/.test(qStrip);
 
+    // CONTEXTO DEL LEAD (lo que ya dijo que le interesa, guardado en lead.motor): si en un mensaje
+    // genérico de seguimiento ("cuánto sale en total", "lo programan?") no viene la marca, usamos
+    // ese interés para SEGUIR trayendo ese producto y que el bot NO vuelva a preguntar la marca.
+    // Solo tokens distintivos (marca/modelo), no palabras genéricas.
+    let interesTokens = [];
+    try {
+      const phI = String(req.query.phone || req.query.from || '').replace(/\D/g, '');
+      if (phI) {
+        const lm = await db.get("SELECT motor FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", phI);
+        const motorN = stripAcc(String(lm?.motor || '').toLowerCase());
+        const GEN = new Set(['motor','control','controles','porton','portones','mesa','noche','muebles','mueble','consulta','general','null']);
+        interesTokens = motorN.split(/\s+/).filter(w => w.length > 3 && !GEN.has(w) && w !== 'n/a');
+      }
+    } catch (e) {}
+
     // EL ANUNCIO SOLO MANDA SI VIENE AL CASO: si el cliente llegó de un anuncio (ej. de un
     // control) pero ahora pregunta por OTRA cosa (ej. "motor corredizo"), NO forzamos el
     // producto del anuncio. Sin esto, el boost +100 tapaba TODO (para "motor corredizo"
@@ -4113,6 +4128,11 @@ app.get('/api/rag/context', async (req, res) => {
       let score = 0;
       // Boost fuerte si el nombre del doc contiene el modelo puntual pedido.
       if (modeloTokens.length && modeloTokens.some(t => nameL.includes(t))) score += 50;
+      // INTERÉS DEL LEAD: si el cliente ya dijo qué le interesa (guardado en lead.motor, ej.
+      // "Liftmaster") y este doc coincide, lo mantenemos en contexto aunque el mensaje actual
+      // sea genérico ("cuánto sale en total"). Así el bot SIGUE con ese producto y NO vuelve a
+      // preguntar la marca. Empuje moderado: no tapa un match fuerte de otra consulta puntual.
+      if (interesTokens.length && interesTokens.some(t => nameL.includes(t))) score += 4;
       keywords.forEach(kw => {
         // Un match en el NOMBRE pesa mucho más que en la descripción: así una consulta
         // con marca ("chamberlain") prioriza el producto correcto y no cualquiera que
