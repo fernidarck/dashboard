@@ -267,10 +267,11 @@ export default function App() {
     const selPhone = String(selectedChannel || '').replace(/\D/g, '');
     return cPhone === selPhone;
   });
-  const activeChannelPhone = currentChannelObj?.phone || (channels[0]?.phone);
+  const firstActiveChannel = channels.find(c => c.active !== 0) || channels[0];
+  const activeChannelPhone = currentChannelObj?.phone || (firstActiveChannel?.phone);
   const activeChannelBotEnabled = currentChannelObj
     ? currentChannelObj.bot_active !== 0
-    : (channels[0] ? channels[0].bot_active !== 0 : true);
+    : (firstActiveChannel ? firstActiveChannel.bot_active !== 0 : true);
 
   const SidebarItem = ({ icon: Icon, label, id }) => (
     <button
@@ -427,12 +428,12 @@ export default function App() {
                 }}
                 className={`bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-700 outline-none appearance-none pr-6 pl-1 truncate max-w-[42vw] md:max-w-none ${currentUser?.channel_phone ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
               >
-                {channels.map(chan => {
-                  const isMain = String(chan.phone).includes('59658803');
+                {channels.filter(c => c.active !== 0).map(chan => {
+                  const isMain = String(chan.phone).includes('59658666');
                   const isReach = String(chan.phone).includes('35154362');
                   return (
                     <option key={chan.id} value={chan.phone}>
-                      {isMain ? '🌟 OneControl (+502 5965-8803) · Principal [IA]' :
+                      {isMain ? '🌟 OneControl (+502 5965-8666) · Principal [IA]' :
                        isReach ? '📱 Reach Portones (+502 3515-4362) · Manual' :
                        `🟢 ${chan.name || 'Canal'} (${chan.phone})`}
                     </option>
