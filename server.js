@@ -6120,7 +6120,13 @@ app.get('/api/webchat/widget.js', (_req, res) => {
 app.post('/api/media/upload', productImagesUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo' });
-    const url = `https://${req.get('host')}/uploads/${req.file.filename}`;
+    // URL PÚBLICA CONFIABLE: NO usar req.get('host') (ej. panel.onecontrol.shop, que Meta/Facebook
+    // no puede bajar para anuncios). Usamos el dominio easypanel que sí sirve /uploads.
+    const host = req.get('host') || '';
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    let pub = String((await getDynamicSetting('public_media_url', process.env.PUBLIC_MEDIA_URL)) || '').trim().replace(/\/+$/, '');
+    if (!pub && !isLocal) pub = 'https://ycloud-dashboard.83aqlq.easypanel.host';
+    const url = `${pub || 'https://' + host}/uploads/${req.file.filename}`;
     const name = req.file.originalname || req.file.filename;
     const r = await db.run(
       "INSERT INTO media_files (name, url, mimetype, size) VALUES (?, ?, ?, ?)",
@@ -6149,7 +6155,11 @@ app.post('/api/media/upload-base64', async (req, res) => {
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
     const filePath = join(uploadsDir, cleanName);
     fs.writeFileSync(filePath, buffer);
-    const url = `https://${req.get('host')}/uploads/${cleanName}`;
+    const host = req.get('host') || '';
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    let pub = String((await getDynamicSetting('public_media_url', process.env.PUBLIC_MEDIA_URL)) || '').trim().replace(/\/+$/, '');
+    if (!pub && !isLocal) pub = 'https://ycloud-dashboard.83aqlq.easypanel.host';
+    const url = `${pub || 'https://' + host}/uploads/${cleanName}`;
     const r = await db.run(
       "INSERT INTO media_files (name, url, mimetype, size) VALUES (?, ?, ?, ?)",
       filename, url, mimetype, buffer.length
