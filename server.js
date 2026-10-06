@@ -763,7 +763,34 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
       link = String(link).replace(/^http:\/\//i, 'https://');
     }
 
-    console.log(`📸 Enviando imagen por YCloud desde ${cleanFrom} a ${cleanTo}: ${link}`);
+    // AUTO-COMPRIMIR imágenes grandes: WhatsApp RECHAZA fotos >5MB ("Image file has size ...
+    // must be at most 5242880 bytes"). Si la foto pesa de más (o es webp, que WhatsApp no
+    // acepta), la bajamos, la reducimos con jimp a <5MB en JPEG y la subimos a YCloud para
+    // enviarla por media id. Si algo falla, caemos al link normal (comportamiento viejo).
+    let imagePayload = { link, ...(caption ? { caption } : {}) };
+    try {
+      let bytes = null;
+      const base = String(imageUrl || '').split('/uploads/')[1];
+      if (base) {
+        const localPath = join(__dirname, 'uploads', base.split('?')[0]);
+        if (fs.existsSync(localPath)) bytes = fs.readFileSync(localPath);
+      }
+      if (!bytes) { const dl = await fetch(link); if (dl.ok) bytes = Buffer.from(await dl.arrayBuffer()); }
+      const MAX = 5 * 1024 * 1024;
+      const esWebp = /\.webp(\?|$)/i.test(link);
+      if (bytes && (bytes.length > MAX * 0.95 || esWebp)) {
+        const img = await Jimp.read(bytes);
+        if (img.bitmap.width > 1600) img.resize(1600, Jimp.AUTO);
+        let q = 80, out = await img.quality(q).getBufferAsync(Jimp.MIME_JPEG);
+        while (out.length > MAX * 0.9 && q > 35) { q -= 15; out = await img.quality(q).getBufferAsync(Jimp.MIME_JPEG); }
+        const fd = new FormData();
+        fd.append('file', new Blob([out], { type: 'image/jpeg' }), 'foto.jpg');
+        const up = await fetch(`https://api.ycloud.com/v2/whatsapp/media/${encodeURIComponent(cleanFrom)}/upload`, { method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd });
+        if (up.ok) { const uj = await up.json().catch(() => ({})); if (uj && uj.id) { imagePayload = { id: String(uj.id), ...(caption ? { caption } : {}) }; console.log(`🗜️ Imagen ${(bytes.length/1048576).toFixed(1)}MB → ${(out.length/1048576).toFixed(1)}MB, subida a YCloud (id ${uj.id})`); } }
+      }
+    } catch (e) { console.error('⚠️ No se pudo comprimir la imagen, uso link:', e.message); }
+
+    console.log(`📸 Enviando imagen por YCloud desde ${cleanFrom} a ${cleanTo}: ${imagePayload.id ? 'por id (comprimida)' : link}`);
     const res = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
@@ -771,10 +798,7 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
         from: cleanFrom,
         to: cleanTo,
         type: 'image',
-        image: {
-          link,
-          ...(caption ? { caption } : {})
-        }
+        image: imagePayload
       })
     });
     if (!res.ok) {
