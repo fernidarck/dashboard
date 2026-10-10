@@ -458,6 +458,10 @@ async function setup() {
     // Sirve para que, cuando un lead venga de ese anuncio y diga "la del anuncio",
     // el bot sepa exactamente qué producto/foto mandar.
     try { await db.exec("ALTER TABLE products ADD COLUMN ad_ids TEXT"); } catch(e){}
+    // post_ids: IDs de publicaciones/posts de FB/IG (separados por coma) que muestran ESTE
+    // producto. Sirve para que, cuando alguien comente en ese post, el bot sepa de qué producto
+    // es el comentario y lo mencione por nombre (sin dar precio) al invitar al WhatsApp.
+    try { await db.exec("ALTER TABLE products ADD COLUMN post_ids TEXT"); } catch(e){}
     // compatibilidad: con qué marcas/modelos de motor sirve este producto (controles,
     // botoneras, repuestos). Ej: "LiftMaster, Chamberlain". El bot lo usa para ofrecer
     // el producto correcto y para NO prometer compatibilidad que no existe.
@@ -3722,7 +3726,7 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, post_ids, compatibilidad } = req.body;
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     // Flags "más vendido" / "campaña activa": si no vienen en el body, se preservan (para no
@@ -3731,8 +3735,8 @@ app.put('/api/products/:id', async (req, res) => {
     const masVendido    = req.body.mas_vendido    !== undefined ? (req.body.mas_vendido    ? 1 : 0) : (existingFlags?.mas_vendido    || 0);
     const campanaActiva = req.body.campana_activa !== undefined ? (req.body.campana_activa ? 1 : 0) : (existingFlags?.campana_activa || 0);
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, compatibilidad=?, mas_vendido=?, campana_activa=? WHERE id=?",
-      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), compatibilidad ?? '', masVendido, campanaActiva, req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, post_ids=?, compatibilidad=?, mas_vendido=?, campana_activa=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), normalizeAdIds(post_ids), compatibilidad ?? '', masVendido, campanaActiva, req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -5505,7 +5509,7 @@ async function processIncomingMetaWebhook(body) {
           const sRow = await db.get("SELECT value FROM settings WHERE key = 'bot_comments_enabled'");
           if (sRow?.value === '1' && !delicado) {
             try {
-              const autoReply = await generateCommentReply(text, fromName, commentPlatform);
+              const autoReply = await generateCommentReply(text, fromName, commentPlatform, mediaId);
               await replyToComment(commentId, autoReply, commentPlatform);
               await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'respondido' WHERE comment_id = ?", autoReply, commentId);
               console.log(`🤖 [Auto-Respuesta Bot Comentarios] Respondido a ${fromName}: "${autoReply.slice(0, 60)}"`);
@@ -5557,7 +5561,7 @@ app.get('/api/webhook/meta', handleMetaWebhookGet);
 app.post('/api/webhook/meta', handleMetaWebhookPost);
 
 // Helper para generar respuesta inteligente a comentarios con RAG y Reglas
-async function generateCommentReply(commentText, fromName = '', platform = 'instagram') {
+async function generateCommentReply(commentText, fromName = '', platform = 'instagram', mediaId = '') {
   const nameTag = fromName ? `@${fromName.replace(/^@/, '')}` : '';
 
   // Obtener número de WhatsApp
@@ -5566,13 +5570,25 @@ async function generateCommentReply(commentText, fromName = '', platform = 'inst
   sRows.forEach(r => sMap[r.key] = r.value);
   const waPhone = sMap.comments_wa_phone || sMap.owner_phone || '35154362';
 
-  // IMPORTANTE: en un COMENTARIO el bot NO sabe en qué publicación está (solo ve el texto del
-  // comentario). Adivinar el producto por palabras clave daba precios EQUIVOCADOS en público
-  // (ej. comentario en post de bastones → respondía Q450 de "Batería para motor"). Por eso NO
-  // damos precio ni producto específico en comentarios: respondemos amable e invitamos al
-  // WhatsApp, donde el bot SÍ tiene todo el contexto y da el precio correcto. Nunca publicamos
-  // un precio en comentarios para no comprometer un monto equivocado frente a todos.
-  const reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! Te pasamos toda la info, precios y fotos por WhatsApp 📲 Escribinos al ${waPhone} y te atendemos de una — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
+  // MAPEO PUBLICACIÓN → PRODUCTO: si el post donde comentaron está mapeado (products.post_ids),
+  // mencionamos ESE producto por su nombre. Así la respuesta es relevante y específica.
+  // PERO nunca damos PRECIO en comentarios (adivinar precio en público daba montos equivocados,
+  // ej. post de bastones → "Batería para motor Q450"). El precio se da en el WhatsApp, donde el
+  // bot tiene todo el contexto y da el monto correcto.
+  let prodNombre = '';
+  if (mediaId) {
+    try {
+      const prod = await db.get(
+        "SELECT nombre FROM products WHERE activo = 1 AND post_ids IS NOT NULL AND post_ids != '' AND (',' || REPLACE(post_ids,' ','') || ',') LIKE ('%,' || ? || ',%')",
+        String(mediaId)
+      );
+      if (prod?.nombre) prodNombre = String(prod.nombre).trim();
+    } catch (e) {}
+  }
+
+  const reply = prodNombre
+    ? `¡Hola ${nameTag}! 👋 ¡Con gusto! Sí tenemos *${prodNombre}*. Te pasamos el precio y las fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`
+    : `¡Hola ${nameTag}! 👋 ¡Con gusto! Te pasamos toda la info, precios y fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
 
   return reply.trim();
 }
