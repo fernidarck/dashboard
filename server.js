@@ -5558,45 +5558,21 @@ app.post('/api/webhook/meta', handleMetaWebhookPost);
 
 // Helper para generar respuesta inteligente a comentarios con RAG y Reglas
 async function generateCommentReply(commentText, fromName = '', platform = 'instagram') {
-  const qClean = (commentText || '').toLowerCase();
   const nameTag = fromName ? `@${fromName.replace(/^@/, '')}` : '';
 
-  // 1. Obtener número de WhatsApp y configuraciones
-  const sRows = await db.all("SELECT key, value FROM settings WHERE key IN ('owner_phone', 'comments_wa_phone', 'bot_comments_prompt')");
+  // Obtener número de WhatsApp
+  const sRows = await db.all("SELECT key, value FROM settings WHERE key IN ('owner_phone', 'comments_wa_phone')");
   const sMap = {};
   sRows.forEach(r => sMap[r.key] = r.value);
   const waPhone = sMap.comments_wa_phone || sMap.owner_phone || '35154362';
 
-  // 2. Búsqueda en catálogo de productos con scoring inteligente
-  const products = await db.all("SELECT * FROM products WHERE activo = 1");
-  const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
-  const keywords = qClean.replace(/[¿?¡!.,;:()"'*\n]/g, ' ').split(/\s+/).filter(k => k.length > 2).map(normalizeKw);
-
-  const scoredProducts = products.map(p => {
-    const fullText = `${p.nombre} ${p.categoria || ''} ${p.descripcion || ''}`.toLowerCase();
-    let score = 0;
-    keywords.forEach(kw => {
-      if (fullText.includes(kw)) {
-        score += 2;
-        if ((p.nombre || '').toLowerCase().includes(kw)) score += 6;
-      }
-    });
-    return { ...p, score };
-  }).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
-
-  let reply = '';
-  if (scoredProducts.length > 0) {
-    const topProd = scoredProducts[0];
-    reply = `¡Hola ${nameTag}! 👋 Con gusto, ${topProd.nombre} tiene un precio de Q${topProd.precio} (por unidad). Se entrega completamente armado y listo para usar 🚚. Escribinos a nuestro WhatsApp al ${waPhone} para enviarte fotos y coordinar tu envío con pago contra entrega 😊`;
-  } else if (qClean.includes('precio') || qClean.includes('costo') || qClean.includes('cuanto') || qClean.includes('cuánto')) {
-    reply = `¡Hola ${nameTag}! 👋 Nuestras mesitas de noche estándar tienen un precio de Q550 cada una (el par sale en Q1,100) y modelos especiales como One Night en Q1,000. Se entregan armadas 🚚. ¿Te gustaría ver fotos por WhatsApp? Escribinos al ${waPhone} 🙌`;
-  } else if (qClean.includes('envio') || qClean.includes('envío') || qClean.includes('entrega') || qClean.includes('zona') || qClean.includes('departamento')) {
-    reply = `¡Hola ${nameTag}! 👋 Contamos con envíos a toda Guatemala y opción de pago contra entrega 🚚. Escribinos a nuestro WhatsApp al ${waPhone} indicándonos tu zona o municipio para confirmarte disponibilidad y detalles 😊`;
-  } else if (qClean.includes('medida') || qClean.includes('tama') || qClean.includes('dimension')) {
-    reply = `¡Hola ${nameTag}! 👋 Con gusto te compartimos las medidas exactas y fotos detalladas. Escribinos a nuestro WhatsApp al ${waPhone} para enviarte la ficha técnica completa 🙌`;
-  } else {
-    reply = `¡Hola ${nameTag}! 👋 Con mucho gusto te apoyamos con información, precios y fotos. Escribinos a nuestro WhatsApp al ${waPhone} para atenderte de inmediato 🙌`;
-  }
+  // IMPORTANTE: en un COMENTARIO el bot NO sabe en qué publicación está (solo ve el texto del
+  // comentario). Adivinar el producto por palabras clave daba precios EQUIVOCADOS en público
+  // (ej. comentario en post de bastones → respondía Q450 de "Batería para motor"). Por eso NO
+  // damos precio ni producto específico en comentarios: respondemos amable e invitamos al
+  // WhatsApp, donde el bot SÍ tiene todo el contexto y da el precio correcto. Nunca publicamos
+  // un precio en comentarios para no comprometer un monto equivocado frente a todos.
+  const reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! Te pasamos toda la info, precios y fotos por WhatsApp 📲 Escribinos al ${waPhone} y te atendemos de una — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
 
   return reply.trim();
 }
