@@ -4110,6 +4110,7 @@ app.get('/api/rag/context', async (req, res) => {
         name: p.nombre,
         category: p.categoria,
         __web: true,
+        permalink: p.permalink || '',
         // Precio efectivo: manual del dueño > precio de la web > "a confirmar con asesor".
         content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${(p.precio_manual && String(p.precio_manual).trim()) || (p.precio && String(p.precio).trim()) || 'a confirmar con un asesor (NO inventes un monto ni digas Q0)'} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link (SOLO texto, NUNCA como foto): ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda como TEXTO. ⚠️ Este producto de la web NO tiene foto para enviar por WhatsApp: NO uses [Ver Imagen] ni ENVIAR_IMAGEN con el link (el link es una página, no una imagen). Si el cliente quiere ver, decile que en el link ve las fotos. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.${p.compatibilidad && String(p.compatibilidad).trim() ? ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO lo ofrezcas como compatible.` : ''}${p.reglas_bot && String(p.reglas_bot).trim() ? ` - 🚫 REGLA IMPORTANTE (cumplila SIEMPRE): ${String(p.reglas_bot).trim()}` : ''}`
       }));
@@ -4147,6 +4148,12 @@ app.get('/api/rag/context', async (req, res) => {
     // "no se parece a la del anuncio"). Si sí, subimos los productos de la MISMA categoría del
     // producto del anuncio para que el bot pueda ofrecer los demás modelos, no solo el del anuncio.
     const pideAlternativas = /(otro|otros|otra|otras|diferente|distint|alternativ|no se parece|mas modelos|m[aá]s modelos|dem[aá]s|variedad|opciones|que\s*mas\s*tien)/.test(qStrip);
+
+    // LINK DEL CLIENTE: si el cliente pega un link de un producto de onecontrol.shop
+    // (ej. .../product/wifi-para-portones-electricos-guatemala/), sacamos el "slug" para
+    // relacionarlo con el producto EXACTO de la web → el bot responde sobre ESE, no adivina.
+    const urlSlugMatch = String(q || '').match(/onecontrol\.shop\/product\/([a-z0-9\-]+)/i);
+    const urlSlug = urlSlugMatch ? urlSlugMatch[1].toLowerCase() : '';
 
     // CONTEXTO DEL LEAD (lo que ya dijo que le interesa, guardado en lead.motor): si en un mensaje
     // genérico de seguimiento ("cuánto sale en total", "lo programan?") no viene la marca, usamos
@@ -4221,6 +4228,10 @@ app.get('/api/rag/context', async (req, res) => {
       // WEB RAG es secundario: pequeño castigo para que el RAG/catálogo curado gane
       // el mismo empate; el web solo asoma cuando el principal no cubre el producto.
       if (doc.__web) score -= 0.5;
+      // LINK EXACTO: si el cliente pegó el link de ESTE producto de la web, va HASTA ARRIBA
+      // (es justo lo que pidió). Supera el castigo del web para que sea el resultado principal
+      // y el bot responda sobre el producto correcto en vez de adivinar por palabras.
+      if (urlSlug && String(doc.permalink || '').toLowerCase().includes(urlSlug)) score += 200;
       // ANUNCIO (arreglo del "dice modelo 1 y manda foto del modelo 5"): si este doc ES el
       // producto del anuncio, va HASTA ARRIBA. Así su bloque (y su foto) es el que sobrevive
       // a la regla de "una sola foto" y COINCIDE con lo que el bot dice. Sin esto, el RAG
