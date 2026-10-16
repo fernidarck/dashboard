@@ -4249,7 +4249,20 @@ app.get('/api/rag/context', async (req, res) => {
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
-    if (scored.length === 0) return res.json({ context: (citaNote + adNote + "No se encontró información relevante para: " + q).trim(), found: !!(adNote || citaNote), sources: [] });
+    if (scored.length === 0) {
+      // FALLBACK INTELIGENTE: no hubo match por palabras, pero NO dejamos al bot ciego. Le damos
+      // el CATÁLOGO compacto (nombre + precio + link) para que la IA razone qué pide el cliente
+      // aunque use otras palabras (ej. "papel térmico" → "Etiquetas Térmicas", "wifi" → el módulo).
+      // Así el bot "sabe" de TODOS los productos sin mantener sinónimos uno por uno.
+      const linea = (name, content) => {
+        const precio = (String(content).match(/Precio:\s*([^\-|\n]+)/i) || [, ''])[1].trim();
+        const link = (String(content).match(/(https?:\/\/onecontrol\.shop\/[^\s|)]+)/i) || [, ''])[1];
+        return name ? `• ${name}${precio ? ' — ' + precio : ''}${link ? ' — ' + link : ''}` : '';
+      };
+      const cat = [...prods, ...webItems].map(d => linea(d.name, d.content)).filter(Boolean).join('\n').slice(0, (Number(maxChars) || 2500));
+      const ctx = (citaNote + adNote + `No hubo coincidencia exacta por palabras para "${q}". Acá está el CATÁLOGO completo — revisalo y, si algo de la lista es lo que el cliente pide (AUNQUE lo haya dicho con otras palabras, ej. "papel térmico" = "Etiquetas Térmicas", "tinta" para impresora térmica = el papel/etiqueta), ofrecelo con su precio y link. Si de verdad NO está en la lista, decilo con sinceridad y pasá con un asesor (NO inventes productos ni precios):\n` + cat).trim();
+      return res.json({ context: ctx, found: true, sources: [], fallback: true });
+    }
 
     // Construir respuesta: BLOQUES COMPLETOS de producto (sin cortar) hasta llenar el budget.
     // DECIDE EL BOT: a cada producto le dejamos SU foto (URL) etiquetada con su nombre, para
