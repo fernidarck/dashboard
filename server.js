@@ -5438,6 +5438,13 @@ async function processIncomingMetaWebhook(body) {
 
       const sender = isEcho ? 'agent' : 'client';
 
+      // ¿El eco es la PROPIA respuesta del bot volviendo de Meta (la enviamos por API y Meta
+      // nos la reenvía como is_echo), y NO un humano escribiendo desde Meta Business Suite / la
+      // app? Lo decidimos más abajo comparando el texto con los últimos mensajes del bot de este
+      // lead. Si es nuestro propio eco NO apagamos el bot ni duplicamos el mensaje: antes el bot
+      // se desactivaba solo después de CADA respuesta (su eco disparaba el handoff).
+      let isOwnEcho = false;
+
       // Buscar lead existente
       let existingLead = await db.get(
         "SELECT id, nombre, estado, score, botActive, origen FROM leads WHERE (whatsapp_id = ? OR phone = ?) AND (origen LIKE '%Instagram%' OR origen LIKE '%Facebook%')",
@@ -5453,10 +5460,20 @@ async function processIncomingMetaWebhook(body) {
       let leadId;
       if (existingLead) {
         leadId = existingLead.id;
+
+        if (isEcho && text) {
+          try {
+            const recent = await db.all("SELECT sender, text FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 4", leadId);
+            isOwnEcho = recent.some(m => m.sender === 'bot' && String(m.text || '').trim() === String(text).trim());
+          } catch (e) {}
+        }
+
         const updates = [];
         const params = [];
 
-        if (isEcho) {
+        // Solo apagamos el bot si el eco es de un HUMANO (desde Meta Business Suite / la app),
+        // no cuando es el eco de la propia respuesta del bot (isOwnEcho).
+        if (isEcho && !isOwnEcho) {
           updates.push("botActive = 0");
           updates.push("priority = 'normal'");
           updates.push("handoff_reason = NULL");
@@ -5488,8 +5505,9 @@ async function processIncomingMetaWebhook(body) {
         console.log(`🆕 [${platform}] Creado nuevo lead ID ${leadId} (${userName} - ${customerId})`);
       }
 
-      // Guardar mensaje en el historial
-      if (text || mediaUrl) {
+      // Guardar mensaje en el historial (menos si es el eco de la propia respuesta del bot,
+      // que ya quedó guardado como 'bot' al enviarla — evita el duplicado [bot]+[agent]).
+      if ((text || mediaUrl) && !isOwnEcho) {
         await saveSmartMessage(leadId, sender, text, time, mediaUrl, mediaType);
         console.log(`💾 [${platform}] Mensaje guardado para lead ${leadId} (${sender}): "${(text || mediaUrl)?.slice(0, 60)}"`);
       }
