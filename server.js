@@ -4259,7 +4259,12 @@ app.get('/api/rag/context', async (req, res) => {
         const link = (String(content).match(/(https?:\/\/onecontrol\.shop\/[^\s|)]+)/i) || [, ''])[1];
         return name ? `• ${name}${precio ? ' — ' + precio : ''}${link ? ' — ' + link : ''}` : '';
       };
-      const cat = [...prods, ...webItems].map(d => linea(d.name, d.content)).filter(Boolean).join('\n').slice(0, (Number(maxChars) || 2500));
+      // El catálogo compacto (solo nombre+precio+link) es barato en tokens, así que NO lo
+      // cortamos al presupuesto normal (maxChars 2500): eso dejaba fuera productos que van al
+      // final de la lista (ej. el "Zapatero Abatible" de la web) y el bot decía "no tengo info"
+      // de algo que SÍ está en la tienda. Usamos un presupuesto amplio para que vea TODOS.
+      const catBudget = Math.max(Number(maxChars) || 2500, 16000);
+      const cat = [...prods, ...webItems].map(d => linea(d.name, d.content)).filter(Boolean).join('\n').slice(0, catBudget);
       const ctx = (citaNote + adNote + `No hubo coincidencia exacta por palabras para "${q}". Acá está el CATÁLOGO completo — revisalo y, si algo de la lista es lo que el cliente pide (AUNQUE lo haya dicho con otras palabras, ej. "papel térmico" = "Etiquetas Térmicas", "tinta" para impresora térmica = el papel/etiqueta), ofrecelo con su precio y link. Si de verdad NO está en la lista, decilo con sinceridad y pasá con un asesor (NO inventes productos ni precios):\n` + cat).trim();
       return res.json({ context: ctx, found: true, sources: [], fallback: true });
     }
