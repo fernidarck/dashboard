@@ -5338,47 +5338,64 @@ app.get('/api/meta/followers-history', async (_req, res) => {
 
 // Helper para generar respuesta directa a mensajes de Messenger / Instagram con RAG
 async function generateDirectMessageReply(customerMsg, leadId, platform = 'Facebook Messenger') {
-  const qClean = (customerMsg || '').toLowerCase();
-  
-  // 1. Catálogo RAG de productos
-  const products = await db.all("SELECT * FROM products WHERE activo = 1");
-  const normalizeKw = (k) => k.replace(/es$/, '').replace(/s$/, '');
-  const keywords = qClean.replace(/[¿?¡!.,;:()"'*\n]/g, ' ').split(/\s+/).filter(k => k.length > 2).map(normalizeKw);
+  // CEREBRO INTELIGENTE (igual que WhatsApp): RAG + GPT-4o. Antes era un bot tonto por palabras
+  // clave que solo miraba el catálogo principal (no la web) y adivinaba mal (ej. "zapatera" →
+  // "control genius"). Ahora usa el MISMO RAG (con web + fallback) y el MISMO modelo que el vivo.
+  const S = {}; (await db.all("SELECT key, value FROM settings")).forEach(r => S[r.key] = r.value);
+  const waPhone = S.comments_wa_phone || S.owner_phone || '35154362';
+  const fallback = () => ({ text: `¡Hola! 👋 Con gusto te ayudamos con información, precios y fotos. Escribinos a nuestro WhatsApp al ${waPhone} y te atendemos de una 🙌`, mediaUrl: null, mediaType: 'image' });
 
-  const scoredProducts = products.map(p => {
-    const fullText = `${p.nombre} ${p.categoria || ''} ${p.descripcion || ''}`.toLowerCase();
-    let score = 0;
-    keywords.forEach(kw => {
-      if (fullText.includes(kw)) {
-        score += 2;
-        if ((p.nombre || '').toLowerCase().includes(kw)) score += 6;
-      }
+  try {
+    // 1. Historial breve del lead (para contexto de la conversación)
+    let history = [];
+    try {
+      const rows = await db.all("SELECT sender, text FROM messages WHERE lead_id=? AND text IS NOT NULL AND text!='' ORDER BY id DESC LIMIT 6", leadId);
+      history = rows.reverse().map(r => ({ role: r.sender === 'client' ? 'user' : 'assistant', content: String(r.text).slice(0, 500) }));
+    } catch (e) {}
+
+    // 2. Contexto del RAG (mismo endpoint que usa el bot de WhatsApp: catálogo + web + fallback)
+    let ragCtx = '';
+    try {
+      const lead = await db.get("SELECT phone FROM leads WHERE id=?", leadId);
+      const port = process.env.PORT || 3002;
+      const rr = await fetch(`http://127.0.0.1:${port}/api/rag/context?q=${encodeURIComponent(customerMsg)}&maxChars=2000${lead?.phone ? `&phone=${encodeURIComponent(lead.phone)}` : ''}`);
+      if (rr.ok) { const rj = await rr.json(); ragCtx = rj.context || ''; }
+    } catch (e) {}
+
+    // 3. Llamar al MISMO modelo que el vivo (GPT-4o si hay probador_openai_key, si no DeepSeek)
+    const useOpenAI = !!(S.probador_openai_key && String(S.probador_openai_key).trim());
+    const apiKey = useOpenAI ? S.probador_openai_key : S.deepseek_api_key;
+    if (!apiKey) return fallback();
+    const baseUrl = useOpenAI ? 'https://api.openai.com/v1' : String(S.deepseek_base_url || 'https://api.deepseek.com').replace(/\/+$/, '');
+    const model = useOpenAI ? 'gpt-4o' : (S.deepseek_model || 'deepseek-v4-pro');
+    const sys = `Eres ${S.agent_nombre || 'Fer'}, ${S.agent_rol || 'asistente virtual'} de ${S.agent_empresa || 'OneControl'}.\n${S.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${S.prompt_recepcionista || ''}\n\nEstás respondiendo por ${platform} (NO es WhatsApp). Sé breve (3-4 líneas). Si el cliente quiere comprar, coordinar envío, o pide algo que no está en la info, invitalo a escribir a nuestro WhatsApp al ${waPhone}. Usá SOLO la información de referencia; NO inventes productos ni precios. Si un producto tiene foto en la info ([Ver Imagen](URL) o Imagen: URL), podés incluir ESA URL exacta para que se envíe.${ragCtx ? `\n\n📚 INFORMACIÓN DE REFERENCIA:\n${ragCtx}` : ''}`;
+
+    const r = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ model, max_tokens: 400, temperature: 0.5, messages: [{ role: 'system', content: sys }, ...history, { role: 'user', content: customerMsg }] })
     });
-    return { ...p, score };
-  }).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
+    if (!r.ok) return fallback();
+    const j = await r.json();
+    let text = j.choices?.[0]?.message?.content || '';
+    if (!text.trim()) return fallback();
 
-  let replyText = "";
-  let mediaUrl = null;
-
-  if (scoredProducts.length > 0) {
-    const topProd = scoredProducts[0];
-    replyText = `¡Hola! 👋 Sí, contamos con **${topProd.nombre}**.\n\n💰 Precio: **Q${topProd.precio}** (por unidad).\n📦 Estado: ${topProd.stock || 'En stock'}.\n${topProd.descripcion ? `✨ ${topProd.descripcion}\n\n` : '\n'}Se entrega **completamente armado y listo para usar** con pago contra entrega 🚚. ¿Te gustaría que coordinemos tu envío o que te compartamos más fotos?`;
-    
-    const prodImages = normalizeProductImages(topProd);
-    if (prodImages.length > 0 && prodImages[0].url) {
-      mediaUrl = prodImages[0].url;
-    }
-  } else if (qClean.includes('mesa') || qClean.includes('mueble') || qClean.includes('noche')) {
-    replyText = "¡Hola! 👋 Nuestras mesitas de noche estándar tienen un precio de **Q550 cada una** (el par sale en Q1,100) y modelos especiales como One Night en **Q1,000**. Se entregan armadas con opción de pago contra entrega 🚚. ¿Qué modelo te gustaría conocer?";
-  } else if (qClean.includes('envio') || qClean.includes('costo') || qClean.includes('zona') || qClean.includes('departamento')) {
-    replyText = "Contamos con envíos a toda Guatemala 🚚. ¿En qué zona o municipio te encuentras para confirmarte cobertura y tiempo de entrega?";
-  } else if (qClean.includes('pago') || qClean.includes('tarjeta') || qClean.includes('visacuotas')) {
-    replyText = "Aceptamos pago contra entrega en efectivo, transferencia bancaria y Visacuotas 💳. ¿Cuál forma de pago te resulta más cómoda?";
-  } else {
-    replyText = "¡Hola! Con mucho gusto te apoyo con información, precios y detalles de nuestros productos de OneControl. ¿En qué te podemos asesorar hoy? 😊";
+    // Extraer foto si el bot la incluyó, y limpiar el texto (markdown de imagen, URLs, hashtags)
+    let mediaUrl = null;
+    const imgM = text.match(/\[(?:Ver Imagen|Ver Foto|Imagen|Foto)\]\((https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|jfif))(?:\?[^\s)]*)?\)/i)
+              || text.match(/(https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|jfif))(?:\?[^\s]*)?/i);
+    if (imgM && !/\.webp/i.test(imgM[1]) && !/\/product\//i.test(imgM[1])) mediaUrl = imgM[1];
+    text = text
+      .replace(/\[(?:Ver Imagen|Ver Foto|Imagen|Foto|Link|Ver más)\]\([^)]*\)/gi, '')
+      .replace(/https?:\/\/\S+\.(?:jpg|jpeg|png|jfif|webp|gif|mp4|mov)\S*/gi, '')
+      .replace(/#(?:PEDIDO_LISTO|SOLICITA_HUMANO|VENTA\w*|BODEGA|SOPORTE|FLUJO_NORMAL|PRODUCTO)\b/gi, '')
+      .replace(/\n{3,}/g, '\n\n').trim();
+    if (!text) text = `¡Hola! 👋 Con gusto te ayudamos. Escribinos a nuestro WhatsApp al ${waPhone} 🙌`;
+    return { text, mediaUrl, mediaType: 'image' };
+  } catch (e) {
+    console.error('Error en generateDirectMessageReply (IA):', e.message);
+    return fallback();
   }
-
-  return { text: replyText, mediaUrl, mediaType: 'image' };
 }
 
 // Procesador universal de Webhooks de Meta (Facebook Messenger, Instagram Direct & Comentarios)
