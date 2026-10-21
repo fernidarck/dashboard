@@ -1447,8 +1447,16 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
     // Indicadores de intención de pedido o compra
     const PEDIDO_KEYWORDS = /#pedido_listo|quiero\s+(pedir|ordenar|comprar|que\s+me\s+lo\s+env[ií]en|el\s+env[ií]o\s+a)|hacer\s+el\s+pedido|mi\s+direcci[oó]n\s+es|envi[aá]rmel[oa]|datos\s+para\s+el\s+env[ií]o|pago\s+contra\s+entrega|tomar\s+mis\s+datos/i;
 
-    // forced = n8n ya confirmó el pedido (etiqueta PEDIDO_LISTO). Si no viene forzado, exige keyword.
-    if (!forced && !PEDIDO_KEYWORDS.test(text)) return null;
+    // El bot a veces CIERRA una venta sin que el cliente use una palabra-clave de compra y sin
+    // emitir #PEDIDO_LISTO (el modelo no siempre obedece esa regla). Detectamos ese cierre en
+    // las PROPIAS palabras del bot (ej. "vamos a coordinar el envío", "lo enviamos el lunes",
+    // "ya tenemos tu guía") para no perder la venta en la lista de Pedidos.
+    const CIERRE_BOT = /coordinar\s+(el\s+|tu\s+)?env[ií]o|lo\s+enviamos|lo\s+mandamos|te\s+lo\s+env[ií]|queda\s+(registrad|anotad)|pago\s+contra\s+entrega|program(amos|ar[eé])\s+(el\s+|tu\s+)?env[ií]o|gu[ií]a\s+de\s+env[ií]o|agencia\s+de\s+encomienda|sale\s+el\s+(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado)/i;
+    const hayCierreBot = CIERRE_BOT.test(String(botMsg || ''));
+
+    // forced = n8n ya confirmó el pedido (etiqueta PEDIDO_LISTO). Si no viene forzado, exige
+    // keyword del cliente O un cierre detectado en el mensaje del bot.
+    if (!forced && !PEDIDO_KEYWORDS.test(text) && !hayCierreBot) return null;
 
     const cleanPh = String(clientPhone || '').replace(/\D/g, '');
     if (!cleanPh) return null;
@@ -1483,9 +1491,23 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
       const zona = String(info?.zona || '').trim();
       const bad = (v) => !v || /^(n\/a|null)$/i.test(v);
       if (bad(dir) && bad(zona)) {
-        console.log(`📋 [No es pedido] Lead ${leadId}: sin dirección/zona → es consulta, no pedido confirmado.`);
-        await db.run("UPDATE leads SET estado = 'Interesado' WHERE id = ? AND estado = 'PEDIDO_LISTO'", leadId);
-        return null;
+        // El bot a veces NO guarda la dirección en el campo del lead aunque el cliente SÍ la
+        // dio en el chat (ej. "lo recibo en la agencia de X", "mi dirección es..."). Antes eso
+        // botaba el pedido de una venta real. Ahora creamos el pedido igual si: (a) el bot cerró
+        // con #PEDIDO_LISTO (forced = su señal explícita de cierre), o (b) la conversación tiene
+        // señales claras de entrega. Solo lo tratamos como consulta si no hay NINGUNA de las dos.
+        let tieneEntregaEnChat = false;
+        try {
+          const convEntrega = await db.all("SELECT text FROM messages WHERE lead_id = ? AND sender = 'client' AND text IS NOT NULL AND text != '' ORDER BY id DESC LIMIT 15", leadId);
+          const ct = convEntrega.map(r => String(r.text || '')).join(' ').toLowerCase();
+          tieneEntregaEnChat = /(agencia|encomienda|cargo\s*expreso|guatex|\bforza\b|mi\s+direcci[oó]n|direcci[oó]n\s*(es|:)|lo\s+recibo|me\s+lo\s+env[ií]|entrega\s+en|lo\s+env[ií]an?\s+a|zona\s*\d{1,2}|residencial|colonia|aldea|cant[oó]n|\bkm\s*\d|calle\s+\d|avenida\s+\d)/i.test(ct);
+        } catch (e) { /* si falla, seguimos */ }
+        if (!forced && !tieneEntregaEnChat) {
+          console.log(`📋 [No es pedido] Lead ${leadId}: sin dirección/zona ni señal de entrega → es consulta, no pedido confirmado.`);
+          await db.run("UPDATE leads SET estado = 'Interesado' WHERE id = ? AND estado = 'PEDIDO_LISTO'", leadId);
+          return null;
+        }
+        console.log(`🛒 [Pedido sin dirección en campo] Lead ${leadId}: ${forced ? 'bot cerró con #PEDIDO_LISTO' : 'señal de entrega en el chat'} → se crea el pedido igual.`);
       }
     } catch (e) { /* si falla, seguimos normal */ }
 
