@@ -16,6 +16,7 @@ const fmtQ = (n) => new Intl.NumberFormat('es-GT', {
 export default function QuickQuoteDrawer({
   selectedLead = {},
   products = [],
+  webProducts = [],
   onClose,
   onSendMessage,
   onSendDocument,
@@ -49,17 +50,21 @@ export default function QuickQuoteDrawer({
 
   const searchInputRef = useRef(null);
 
-  // Filtrado de productos disponibles
+  // Filtrado de productos disponibles: catálogo principal + productos de la tienda web
+  // (RAG web). Así el cotizador también jala productos de onecontrol.shop, no solo el catálogo.
   const filteredProducts = useMemo(() => {
-    const list = products.filter(p => p.activo !== 0);
+    const list = [
+      ...products.filter(p => p.activo !== 0),
+      ...(webProducts || []).filter(p => p.activo !== 0)
+    ];
     if (!productSearch.trim()) return list.slice(0, 10);
     const q = productSearch.toLowerCase().trim();
     return list.filter(p =>
       (p.nombre || '').toLowerCase().includes(q) ||
       (p.categoria || '').toLowerCase().includes(q) ||
       (p.descripcion || '').toLowerCase().includes(q)
-    ).slice(0, 12);
-  }, [products, productSearch]);
+    ).slice(0, 20);
+  }, [products, webProducts, productSearch]);
 
   // Agregar producto desde catálogo
   const handleAddProduct = (prod) => {
@@ -632,10 +637,15 @@ export default function QuickQuoteDrawer({
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-black text-slate-800 truncate">{p.nombre}</p>
-                      <p className="text-[10px] text-slate-400">{p.categoria || 'General'}</p>
+                      <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                        {p.__web && (
+                          <span className="px-1 py-px bg-sky-100 text-sky-700 rounded text-[8px] font-black uppercase tracking-wide shrink-0">web</span>
+                        )}
+                        <span className="truncate">{p.categoria || 'General'}</span>
+                      </p>
                     </div>
                     <span className="text-xs font-black text-[#FF6B00] shrink-0">
-                      Q{fmtQ(p.precio_oferta || p.precio)}
+                      {(parseFloat(p.precio_oferta || p.precio) || 0) > 0 ? `Q${fmtQ(p.precio_oferta || p.precio)}` : 's/ precio'}
                     </span>
                   </button>
                 ))

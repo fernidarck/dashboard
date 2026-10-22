@@ -65,7 +65,7 @@ export default function App() {
 
   const {
     currentUser, users,
-    leads, messages, agenda, pedidos, documents, products,
+    leads, messages, agenda, pedidos, documents, products, webProducts,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
     trainingRules, trainingStats, metaInsights,
     agentConfig, setAgentConfig, prompts, setPrompts,
@@ -505,6 +505,7 @@ export default function App() {
                 leads={leads}
                 messages={messages}
                 products={products}
+                webProducts={webProducts}
                 selectedChatId={selectedChatId}
                 openChatNonce={openChatNonce}
                 selectedLead={selectedLead}

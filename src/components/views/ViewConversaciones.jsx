@@ -146,6 +146,7 @@ export default function ViewConversaciones({
   leads = [],
   messages = [],
   products = [],
+  webProducts = [],
   selectedChatId,
   selectedLead = {},
   onSelectChat,
@@ -1736,6 +1737,7 @@ export default function ViewConversaciones({
                 key={selectedChatId || selectedLead?.id || 'quote'}
                 selectedLead={selectedLead}
                 products={products}
+                webProducts={webProducts}
                 onClose={() => setShowRightPanel(false)}
                 onSendMessage={(a, b) => onSendMessage(selectedChatId, b || a)}
                 onSendDocument={(leadId, file, caption) => onSendDocument?.(leadId || selectedChatId, file, caption)}

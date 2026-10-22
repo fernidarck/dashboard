@@ -34,6 +34,7 @@ export function useAppData(apiBase, authToken) {
   const [pedidos, setPedidos] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [products, setProducts] = useState([]);
+  const [webProducts, setWebProducts] = useState([]);
   const [stats, setStats] = useState({ botMessages: 0 });
   const [captureStats, setCaptureStats] = useState([]);
   const [aiInsights, setAiInsights] = useState({ topics: [], stats: {} });
@@ -338,12 +339,37 @@ export function useAppData(apiBase, authToken) {
 
   const fetchRAG = useCallback(async () => {
     try {
-      const [docsRes, prodsRes] = await Promise.all([
+      const [docsRes, prodsRes, webRes] = await Promise.all([
         apiFetch(`${apiBase}/api/rag/documents`),
-        apiFetch(`${apiBase}/api/products`)
+        apiFetch(`${apiBase}/api/products`),
+        apiFetch(`${apiBase}/api/web-rag`).catch(() => null)
       ]);
       setDocuments(await docsRes.json());
       setProducts(await prodsRes.json());
+      // Productos de la tienda web (onecontrol.shop) para que el Cotizador Rápido también
+      // los encuentre. Se normalizan a la forma del catálogo (precio numérico: "Q80.00" → 80;
+      // el precio manual del dueño manda sobre el de la web).
+      if (webRes && webRes.ok) {
+        try {
+          const web = await webRes.json();
+          const norm = (Array.isArray(web) ? web : []).map(p => {
+            const raw = (p.precio_manual && String(p.precio_manual).trim()) || p.precio || '';
+            const precioNum = parseFloat(String(raw).replace(/[^0-9.]/g, '')) || 0;
+            return {
+              id: `web-${p.id}`,
+              nombre: p.nombre,
+              categoria: p.categoria || 'Tienda web',
+              descripcion: String(p.descripcion || '').slice(0, 140),
+              precio: precioNum,
+              imagen: '',
+              permalink: p.permalink || '',
+              activo: 1,
+              __web: true
+            };
+          });
+          setWebProducts(norm);
+        } catch (e) { /* si falla, seguimos sin productos web */ }
+      }
     } catch (err) { console.error(err); }
   }, [apiFetch, apiBase]);
 
@@ -996,7 +1022,7 @@ export function useAppData(apiBase, authToken) {
   return {
     // State
     currentUser, users, setCurrentUser,
-    leads, messages, agenda, pedidos, documents, products,
+    leads, messages, agenda, pedidos, documents, products, webProducts,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
     trainingRules, trainingStats, metaInsights,
     agentConfig, setAgentConfig, prompts, setPrompts,
