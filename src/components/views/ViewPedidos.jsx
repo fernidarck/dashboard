@@ -433,7 +433,15 @@ export default function ViewPedidos({
               <div className="space-y-3.5 overflow-y-auto max-h-[72vh] pr-0.5">
                 {colPedidos.map(pedido => {
                   const waUrl = getCleanWhatsAppUrl(pedido.phone);
-                  const matchingLead = leads.find(l => l.phone && String(l.phone).replace(/\D/g, '') === String(pedido.phone).replace(/\D/g, ''));
+                  // Ligamos el pedido a su chat por teléfono. Comparamos tolerante (igual limpio
+                  // O mismos últimos 8 dígitos) para que el botón "Chat" aparezca aunque un lado
+                  // tenga el prefijo 502 y el otro no (antes el exacto fallaba y no salía el acceso).
+                  const pedDigits = String(pedido.phone || '').replace(/\D/g, '');
+                  const matchingLead = leads.find(l => {
+                    const ld = String(l.phone || '').replace(/\D/g, '');
+                    if (!ld || !pedDigits) return false;
+                    return ld === pedDigits || (pedDigits.length >= 8 && ld.slice(-8) === pedDigits.slice(-8));
+                  });
 
                   return (
                     <div key={pedido.id} className="bg-white p-4.5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all space-y-3 group">

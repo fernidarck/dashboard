@@ -1461,6 +1461,27 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
     const cleanPh = String(clientPhone || '').replace(/\D/g, '');
     if (!cleanPh) return null;
 
+    // 🚫 NUNCA crear pedidos para NUESTROS PROPIOS números (canales del bot) ni para el dueño.
+    // El aviso "🛒 NUEVO PEDIDO DETECTADO" que se le manda al dueño puede volver como mensaje y,
+    // procesado sobre el "lead" del número del bot, generaba un pedido FANTASMA (ej. #40 "One
+    // Night" a nombre del 59658666). También ignoramos el propio texto del aviso por si acaso.
+    try {
+      const chans = await db.all("SELECT phone FROM whatsapp_channels");
+      const ownNums = new Set();
+      chans.forEach(c => ownNums.add(String(c.phone || '').replace(/\D/g, '')));
+      const sRows = await db.all("SELECT key, value FROM settings WHERE key IN ('owner_phone','ignored_phones')");
+      sRows.forEach(r => String(r.value || '').split(/[,;\s]+/).forEach(n => ownNums.add(String(n).replace(/\D/g, ''))));
+      ownNums.delete('');
+      if (ownNums.has(cleanPh)) {
+        console.log(`📋 [No es pedido] ${cleanPh} es un número propio/dueño → no se crea pedido (evita fantasmas del aviso).`);
+        return null;
+      }
+    } catch (e) { /* si falla, seguimos */ }
+    if (/nuevo pedido detectado por ia|solicitud de ayuda|🛒 \*nuevo pedido/i.test(text)) {
+      console.log(`📋 [No es pedido] El mensaje es un aviso interno del sistema, no una compra.`);
+      return null;
+    }
+
     // OPCIÓN A: las COTIZACIONES de motor / visita técnica NO son pedidos de compra
     // (son casos para el técnico, requieren visita + cotización). Si el contexto de la
     // conversación es de motor/portón/cotización/instalación y NO se trata de un
@@ -1530,14 +1551,23 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
       searchText = (text + ' ' + convProd.map(r => String(r.text || '')).join(' ')).toLowerCase();
     } catch (e) { /* si falla, usamos solo el mensaje actual */ }
     const prods = await db.all("SELECT * FROM products WHERE activo = 1");
-    let matchedProduct = null;
+    // Match por PUNTAJE, no por nombre completo exacto: antes exigía que el texto tuviera el
+    // nombre entero ("Bastones de trekking o senderismo"), así que un cliente que dijo solo
+    // "bastones" quedaba como "Producto por confirmar". Ahora puntuamos por palabras distintivas
+    // del nombre que aparezcan en la conversación y gana el de mayor puntaje.
+    const GEN_PROD = new Set(['mesa','noche','de','del','la','el','los','las','para','con','modelo','control','motor','porton','portón','remoto','mueble','kit','en','guatemala','una','uno','par','pieza']);
+    let matchedProduct = null, bestScore = 0;
     for (const p of prods) {
       const pName = String(p.nombre || '').toLowerCase();
-      if (searchText.includes(pName) || (pName.includes('one night') && searchText.includes('one night')) || (pName.includes('modelo') && searchText.includes((pName.match(/modelo\s*\d+/i) || [])[0]))) {
-        matchedProduct = p;
-        break;
-      }
+      let sc = 0;
+      if (pName && searchText.includes(pName)) sc += 100;                       // nombre completo = match fuerte
+      const toks = pName.split(/\s+/).filter(w => w.length > 3 && !GEN_PROD.has(w));
+      toks.forEach(t => { if (searchText.includes(t)) sc += 5; });              // cada palabra distintiva
+      const modelo = (pName.match(/modelo\s*\d+/i) || [])[0];
+      if (modelo && searchText.includes(modelo)) sc += 20;                       // "modelo 1/2/3..."
+      if (sc > bestScore) { bestScore = sc; matchedProduct = p; }
     }
+    if (bestScore === 0) matchedProduct = null;
 
     const productName = matchedProduct ? matchedProduct.nombre : 'Producto por confirmar';
     const productPrice = matchedProduct ? `Q${matchedProduct.precio}` : '';
