@@ -4080,7 +4080,7 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
-    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad, COALESCE(mas_vendido,0) as mas_vendido, COALESCE(campana_activa,0) as campana_activa FROM products WHERE activo = 1");
+    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(imagenes,'') as imagenes, COALESCE(imagenes_meta,'') as imagenes_meta, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad, COALESCE(mas_vendido,0) as mas_vendido, COALESCE(campana_activa,0) as campana_activa FROM products WHERE activo = 1");
     // Detecta agotado (sin stock inmediato). Los muebles se fabrican a pedido en ~4 días.
     // 3 estados de stock:
     //  - AGOTADO  → no se ofrece; solo aparece (a pedido) si el cliente lo nombra específicamente.

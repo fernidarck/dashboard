@@ -608,6 +608,20 @@ export default function ViewEntrenamiento({
                             ))}
                           </div>
                         )}
+                        {m.mediaInfo && m.mediaInfo.videos && m.mediaInfo.videos.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            {m.mediaInfo.videos.slice(0, 2).map((vid, idx) => (
+                              <video
+                                key={idx}
+                                src={vid.url}
+                                controls
+                                preload="metadata"
+                                className="h-36 w-auto max-w-[240px] rounded-lg border border-slate-200 bg-black"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                              />
+                            ))}
+                          </div>
+                        )}
 
                         {/* Reglas aplicadas (compacto) */}
                         {m.appliedRules && m.appliedRules.length > 0 && (
