@@ -4162,10 +4162,13 @@ app.get('/api/rag/context', async (req, res) => {
     const modeloTokens = [];
     (qStrip.match(/modelo\s*\d+/g) || []).forEach(t => modeloTokens.push(t.replace(/\s+/g, ' ').trim()));
     if (/one\s*night/.test(qStrip)) modeloTokens.push('one night');
-    // La "tapa elevable / se levanta la tapadera / cajón oculto / nfc" = One Night. Si el
-    // cliente la describe así (sin nombrarla), boosteamos la One Night para que gane a las
-    // otras mesas (que pegan por "mesita/noche") y sea SU foto la que se manda.
-    if (/tapa\s*elevabl|elevabl|tapadera|se\s*levanta|levanta\s*la\s*tapa|caj[oó]n\s*oculto|oculto|nfc/.test(qStrip)) modeloTokens.push('one night');
+    // La "tapa elevable / se levanta la tapadera / cajón oculto" = One Night (su mecanismo
+    // propio). Si el cliente la describe así (sin nombrarla), boosteamos la One Night para que
+    // gane a las otras mesas (que pegan por "mesita/noche") y sea SU foto la que se manda.
+    // OJO: ya NO incluimos "nfc" acá — hay DOS mesas con NFC (One Night y "Secret NFC"), así que
+    // "nfc" ya no significa One Night. Dejamos que gane por nombre/keyword (la Secret tiene "NFC"
+    // en su nombre) o por campaña activa / atribución de anuncio.
+    if (/tapa\s*elevabl|elevabl|tapadera|se\s*levanta|levanta\s*la\s*tapa|caj[oó]n\s*oculto/.test(qStrip)) modeloTokens.push('one night');
     // ¿El cliente pide VER OTROS modelos / alternativas? (ej. "tiene otros?", "algo diferente",
     // "no se parece a la del anuncio"). Si sí, subimos los productos de la MISMA categoría del
     // producto del anuncio para que el bot pueda ofrecer los demás modelos, no solo el del anuncio.
@@ -4268,6 +4271,10 @@ app.get('/api/rag/context', async (req, res) => {
       // MÁS PEDIDO: sube un poco (para que, entre productos parecidos, salgan primero los que
       // más se venden). Empate: gana el más pedido. No tapa un match fuerte de otra cosa.
       if (doc.mas_vendido && score > 0) score += 1.5;
+      // EN CAMPAÑA ACTIVA: el dueño marca lo que está promocionando AHORA. Entre productos
+      // parecidos (ej. dos mesas NFC), el de la campaña gana para que el bot muestre ESE. Un
+      // poco más fuerte que "más pedido" pero sin tapar un match directo por nombre (+50/+100).
+      if (doc.campana_activa && score > 0) score += 2.5;
       return { ...doc, score };
     }).filter(d => d.score > 0 || keywords.length === 0).sort((a, b) => b.score - a.score);
 
