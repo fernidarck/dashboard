@@ -32,20 +32,27 @@ self.addEventListener('notificationclick', (event) => {
   const url = notifData.url || '/';
   const chatId = notifData.chatId || null;
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const client of list) {
-        if ('focus' in client) {
-          if (client.postMessage) {
-            client.postMessage({ type: 'OPEN_CHAT', chatId, url });
-          }
-          if (client.navigate && client.url && !client.url.includes(`chat=${chatId}`)) {
-            client.navigate(url);
-          }
-          return client.focus();
+  event.waitUntil((async () => {
+    // Al tocar UNA notificación, limpiar TODAS las de OneControl de la barra (como WhatsApp).
+    // Antes solo se cerraba la tocada y las demás (sobre todo las urgentes, que quedan fijadas
+    // con requireInteraction) seguían ahí y había que borrarlas a mano.
+    try {
+      const abiertas = await self.registration.getNotifications();
+      abiertas.forEach((n) => n.close());
+    } catch (e) {}
+
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of list) {
+      if ('focus' in client) {
+        if (client.postMessage) {
+          client.postMessage({ type: 'OPEN_CHAT', chatId, url });
         }
+        if (client.navigate && client.url && !client.url.includes(`chat=${chatId}`)) {
+          try { await client.navigate(url); } catch (e) {}
+        }
+        return client.focus();
       }
-      if (self.clients.openWindow) return self.clients.openWindow(url);
-    })
-  );
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(url);
+  })());
 });
