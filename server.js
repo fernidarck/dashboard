@@ -3138,34 +3138,37 @@ app.post('/api/messages/send', async (req, res) => {
           // AHORA ESPERAMOS el envío real y capturamos el error, en vez de "fire-and-forget"
           // (antes el dashboard decía "enviado" aunque YCloud lo rechazara → el cliente no
           // recibía nada y no se veía el error).
-          if (outboundWebhook && outboundWebhook.trim() !== '') {
+          if (imageUrl) {
+            // LAS IMÁGENES SIEMPRE POR YCLOUD DIRECTO (no por el webhook de n8n): así se
+            // COMPRIMEN si pesan >5MB. Antes el envío manual con foto se mandaba por n8n como
+            // link crudo y WhatsApp rechazaba fotos grandes ("Image file has size 17190149
+            // bytes but must be at most 5242880"). El caption va en la misma imagen.
+            const r = await sendImageViaYCloud(formattedTargetPhone, imageUrl, cleanText, formattedChanPhone);
+            if (r && r.ok === false) deliveryError = r.error;
+          } else if (outboundWebhook && outboundWebhook.trim() !== '') {
+            // Solo TEXTO → por el webhook de n8n (como antes).
             try {
               const wr = await fetch(outboundWebhook, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: formattedTargetPhone, text: cleanText, image_url: imageUrl || null, channel_phone: formattedChanPhone })
+                body: JSON.stringify({ phone: formattedTargetPhone, text: cleanText, image_url: null, channel_phone: formattedChanPhone })
               });
               if (!wr.ok) deliveryError = `webhook n8n ${wr.status}`;
             } catch (err) { deliveryError = 'webhook n8n no responde: ' + err.message; }
-          } else {
-            // FALLBACK DIRECTO A YCLOUD: Si no hay webhook de n8n
-            if (imageUrl) {
-              const r = await sendImageViaYCloud(formattedTargetPhone, imageUrl, cleanText, formattedChanPhone);
-              if (r && r.ok === false) deliveryError = r.error;
-            } else if (cleanText) {
-              const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
-              if (!apiKey) {
-                deliveryError = 'el canal no tiene API key de YCloud configurada en el dashboard';
-              } else {
-                try {
-                  const yr = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-                    body: JSON.stringify({ from: formattedChanPhone, to: formattedTargetPhone, type: 'text', text: { body: cleanText, preview_url: true } })
-                  });
-                  if (!yr.ok) { const et = await yr.text(); deliveryError = `YCloud ${yr.status}: ${String(et).slice(0,200)}`; }
-                } catch (err) { deliveryError = 'YCloud no responde: ' + err.message; }
-              }
+          } else if (cleanText) {
+            // FALLBACK DIRECTO A YCLOUD (texto) si no hay webhook de n8n.
+            const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+            if (!apiKey) {
+              deliveryError = 'el canal no tiene API key de YCloud configurada en el dashboard';
+            } else {
+              try {
+                const yr = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+                  body: JSON.stringify({ from: formattedChanPhone, to: formattedTargetPhone, type: 'text', text: { body: cleanText, preview_url: true } })
+                });
+                if (!yr.ok) { const et = await yr.text(); deliveryError = `YCloud ${yr.status}: ${String(et).slice(0,200)}`; }
+              } catch (err) { deliveryError = 'YCloud no responde: ' + err.message; }
             }
           }
         }
