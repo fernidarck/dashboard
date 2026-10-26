@@ -916,7 +916,7 @@ async function sendVideoViaYCloud(toPhone, videoUrl, caption = '', channelPhone 
     const channel = await getChannelConfig(channelPhone);
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
-    if (!apiKey || !fromNum || !toPhone || !videoUrl) return;
+    if (!apiKey || !fromNum || !toPhone || !videoUrl) return { ok: false, error: 'faltan datos para enviar video' };
 
     const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
     const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
@@ -925,20 +925,34 @@ async function sendVideoViaYCloud(toPhone, videoUrl, caption = '', channelPhone 
       link = link.replace(/^http:\/\//i, 'https://');
     }
 
+    // CONFIABILIDAD: subimos el video a YCloud media y lo mandamos por id (no depende de que
+    // WhatsApp alcance nuestro servidor en el momento). Si la subida falla, caemos al link.
+    // Los videos ya se comprimen al subirse (<16MB), así que acá no comprimimos.
+    let videoPayload = { link, ...(caption ? { caption } : {}) };
+    try {
+      let bytes = null;
+      const base = String(videoUrl || '').split('/uploads/')[1];
+      if (base) { const localPath = join(__dirname, 'uploads', base.split('?')[0]); if (fs.existsSync(localPath)) bytes = fs.readFileSync(localPath); }
+      if (!bytes) { const dl = await fetch(link); if (dl.ok) bytes = Buffer.from(await dl.arrayBuffer()); }
+      if (bytes && bytes.length > 0 && bytes.length <= 16 * 1024 * 1024) {
+        const fd = new FormData();
+        fd.append('file', new Blob([bytes], { type: 'video/mp4' }), 'video.mp4');
+        const up = await fetch(`https://api.ycloud.com/v2/whatsapp/media/${encodeURIComponent(cleanFrom)}/upload`, { method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd });
+        if (up.ok) { const uj = await up.json().catch(() => ({})); if (uj && uj.id) videoPayload = { id: String(uj.id), ...(caption ? { caption } : {}) }; }
+      }
+    } catch (e) { /* si falla la subida, mandamos por link */ }
+
     const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({
-        from: cleanFrom,
-        to: cleanTo,
-        type: 'video',
-        video: { link, ...(caption ? { caption } : {}) }
-      })
+      body: JSON.stringify({ from: cleanFrom, to: cleanTo, type: 'video', video: videoPayload })
     });
-    if (!r.ok) { const t = await r.text(); console.error(`❌ Error video YCloud: ${r.status} ${t}`); }
-    else console.log(`🎬 Video enviado a ${cleanTo} desde ${cleanFrom}`);
+    if (!r.ok) { const t = await r.text(); console.error(`❌ Error video YCloud: ${r.status} ${String(t).slice(0,200)}`); return { ok: false, error: `YCloud ${r.status}` }; }
+    console.log(`🎬 Video enviado a ${cleanTo} desde ${cleanFrom}: ${videoPayload.id ? 'por id' : link}`);
+    return { ok: true };
   } catch(e) {
     console.error('❌ Error enviando video via YCloud:', e.message);
+    return { ok: false, error: e.message };
   }
 }
 
@@ -1884,6 +1898,25 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       if (cleanBot || botImageFinal) {
         await saveSmartMessage(leadId, 'bot', cleanBot || '', time, botImageFinal || null, botImageFinal ? 'image' : null);
       }
+    }
+
+    // 🎬 ENVIAR VIDEO del producto: el flujo de n8n solo manda FOTOS (saca .jpg del texto del bot),
+    // NUNCA videos. Así que el video etiquetado de un producto (ej. bastones) nunca llegaba. Acá,
+    // desde el dashboard, miramos si el producto EN JUEGO tiene un video que toca enviar según lo
+    // que pidió el CLIENTE, y lo mandamos por YCloud. Dedup: no reenviar el mismo video al lead.
+    if (isBotReport && parsed.mensajePrincipal) {
+      try {
+        const media = await computeAutoAttachMedia(parsed.mensajePrincipal, parsed.mensajeSecundario, cleanPhone);
+        for (const vurl of (media.videos || [])) {
+          const yaEnviado = await db.get("SELECT id FROM messages WHERE lead_id = ? AND mediaUrl = ? LIMIT 1", leadId, vurl);
+          if (yaEnviado) continue;
+          const r = await sendVideoViaYCloud(cleanPhone, vurl, '', cleanChannelPhone);
+          if (r && r.ok !== false) {
+            await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?,?,?,?,?,?)", leadId, 'bot', '', vurl, 'video', time);
+            console.log(`🎬 [Video auto] Enviado a lead ${leadId}: ${String(vurl).split('/').pop()}`);
+          }
+        }
+      } catch (e) { console.error('⚠️ Video auto-envío:', e.message); }
     }
 
     // Detección de Handoff automática en mensajes del cliente
@@ -3516,17 +3549,16 @@ app.delete('/api/rag/documents/:id', async (req, res) => {
 // coincide con lo que pide el cliente (ej: "cuando te pidan medidas").
 // Excluye SIEMPRE los productos AGOTADOS (nunca manda la foto de un agotado).
 // n8n lo llama para adjuntar esas fotos sin depender del criterio del LLM.
-app.post('/api/photos/auto-attach', async (req, res) => {
-  try {
-    const clientMsg = String(req.body.clientMsg || '').toLowerCase();
-    const botMsg    = String(req.body.botMsg || '').toLowerCase();
-    if (!clientMsg && !botMsg) return res.json({ urls: [], videos: [] });
+async function computeAutoAttachMedia(clientMsgRaw, botMsgRaw, phoneRaw) {
+    const clientMsg = String(clientMsgRaw || '').toLowerCase();
+    const botMsg    = String(botMsgRaw || '').toLowerCase();
+    if (!clientMsg && !botMsg) return { urls: [], videos: [] };
     // CONTEXTO: si viene el teléfono, sabemos de qué producto se viene hablando aunque el
     // mensaje ACTUAL no lo nombre (ej. ya dijo "One Night" antes y ahora pregunta "¿cómo
     // funciona el cajón?"). Así el producto sigue "en juego" y sí se manda su foto/video.
     let ctx = '';
     try {
-      const phone = String(req.body.phone || '').replace(/\D/g, '');
+      const phone = String(phoneRaw || '').replace(/\D/g, '');
       if (phone) {
         const lead = await db.get("SELECT id, motor FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1", phone);
         if (lead) {
@@ -3607,7 +3639,14 @@ app.post('/api/photos/auto-attach', async (req, res) => {
       }
     } catch (e) {}
 
-    res.json({ urls: [...new Set(urls)].slice(0, 4), videos: [...new Set(videos)].slice(0, 2) });
+    return { urls: [...new Set(urls)].slice(0, 4), videos: [...new Set(videos)].slice(0, 2) };
+}
+
+// n8n lo llama para adjuntar fotos sin depender del criterio del LLM.
+app.post('/api/photos/auto-attach', async (req, res) => {
+  try {
+    const r = await computeAutoAttachMedia(req.body.clientMsg, req.body.botMsg, req.body.phone);
+    res.json(r);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
