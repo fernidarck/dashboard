@@ -1910,13 +1910,21 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       try {
         const media = await computeAutoAttachMedia(parsed.mensajePrincipal, parsed.mensajeSecundario, cleanPhone);
         for (const vurl of (media.videos || [])) {
+          // ANTI-DOBLE ENVÍO: RESERVAMOS el mensaje ANTES de enviar. Si una segunda llamada
+          // (reintento de n8n o un aviso repetido) corre casi a la vez, ve esta reserva y NO
+          // reenvía el video (antes revisábamos después de enviar → se mandaba 2 veces).
           const yaEnviado = await db.get("SELECT id FROM messages WHERE lead_id = ? AND mediaUrl = ? LIMIT 1", leadId, vurl);
           if (yaEnviado) continue;
-          const r = await sendVideoViaYCloud(cleanPhone, vurl, '', cleanChannelPhone);
-          if (r && r.ok !== false) {
-            await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?,?,?,?,?,?)", leadId, 'bot', '', vurl, 'video', time);
-            console.log(`🎬 [Video auto] Enviado a lead ${leadId}: ${String(vurl).split('/').pop()}`);
-          }
+          const ins = await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?,?,?,?,?,?)", leadId, 'bot', '', vurl, 'video', time);
+          // Enviar en SEGUNDO PLANO: así el webhook responde rápido y n8n no lo reintenta (el
+          // reintento por respuesta lenta era lo que duplicaba el video). Si el envío falla,
+          // quitamos la reserva para que el dashboard no muestre un video que no se envió.
+          sendVideoViaYCloud(cleanPhone, vurl, '', cleanChannelPhone)
+            .then(r => {
+              if (r && r.ok === false) { db.run("DELETE FROM messages WHERE id = ?", ins.lastID).catch(() => {}); console.error(`⚠️ [Video auto] Falló envío a lead ${leadId}: ${r.error || ''}`); }
+              else console.log(`🎬 [Video auto] Enviado a lead ${leadId}: ${String(vurl).split('/').pop()}`);
+            })
+            .catch(e => { db.run("DELETE FROM messages WHERE id = ?", ins.lastID).catch(() => {}); console.error('⚠️ Video auto-envío:', e.message); });
         }
       } catch (e) { console.error('⚠️ Video auto-envío:', e.message); }
     }
