@@ -5745,24 +5745,36 @@ async function generateCommentReply(commentText, fromName = '', platform = 'inst
   const waPhone = sMap.comments_wa_phone || sMap.owner_phone || '35154362';
 
   // MAPEO PUBLICACIÓN → PRODUCTO: si el post donde comentaron está mapeado (products.post_ids),
-  // mencionamos ESE producto por su nombre. Así la respuesta es relevante y específica.
-  // PERO nunca damos PRECIO en comentarios (adivinar precio en público daba montos equivocados,
-  // ej. post de bastones → "Batería para motor Q450"). El precio se da en el WhatsApp, donde el
-  // bot tiene todo el contexto y da el monto correcto.
-  let prodNombre = '';
+  // sabemos EXACTAMENTE qué producto es. SOLO en ese caso damos el PRECIO en el comentario (es
+  // seguro: no estamos adivinando). Si el post NO está mapeado, NO damos precio (antes adivinar
+  // daba montos equivocados, ej. post de bastones → "Batería Q450") y mandamos al WhatsApp.
+  let prodNombre = '', prodPrecio = '';
   if (mediaId) {
     try {
       const prod = await db.get(
-        "SELECT nombre FROM products WHERE activo = 1 AND post_ids IS NOT NULL AND post_ids != '' AND (',' || REPLACE(post_ids,' ','') || ',') LIKE ('%,' || ? || ',%')",
+        "SELECT nombre, precio, precio_oferta FROM products WHERE activo = 1 AND post_ids IS NOT NULL AND post_ids != '' AND (',' || REPLACE(post_ids,' ','') || ',') LIKE ('%,' || ? || ',%')",
         String(mediaId)
       );
-      if (prod?.nombre) prodNombre = String(prod.nombre).trim();
+      if (prod?.nombre) {
+        prodNombre = String(prod.nombre).trim();
+        const raw = (prod.precio_oferta && String(prod.precio_oferta).trim()) || (prod.precio && String(prod.precio).trim()) || '';
+        const num = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+        if (num > 0) prodPrecio = 'Q' + String(raw).replace(/[^0-9.]/g, '');
+      }
     } catch (e) {}
   }
 
-  const reply = prodNombre
-    ? `¡Hola ${nameTag}! 👋 ¡Con gusto! Sí tenemos *${prodNombre}*. Te pasamos el precio y las fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`
-    : `¡Hola ${nameTag}! 👋 ¡Con gusto! Te pasamos toda la info, precios y fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
+  let reply;
+  if (prodNombre && prodPrecio) {
+    // Mapeado + con precio → damos el precio correcto E igual invitamos al WhatsApp (captura el lead).
+    reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! La *${prodNombre}* está en *${prodPrecio}* 🙌 Para ver más fotos y coordinar tu envío escribinos al WhatsApp 📲 ${waPhone} — envíos a toda Guatemala y pago contra entrega 🚚😊`;
+  } else if (prodNombre) {
+    // Mapeado pero sin precio cargado → mencionamos el producto, sin inventar precio.
+    reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! Sí tenemos *${prodNombre}*. Te pasamos el precio y las fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
+  } else {
+    // Sin mapeo → no sabemos el producto con certeza: no damos precio, mandamos al WhatsApp.
+    reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! Te pasamos toda la info, precios y fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
+  }
 
   return reply.trim();
 }
