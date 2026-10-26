@@ -52,6 +52,8 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [publishing, setPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+  // Mapeo publicación → producto (para que el bot responda el comentario con el precio correcto).
+  const [postMapOverride, setPostMapOverride] = useState({}); // { [postId]: productId }
 
   const [postForm, setPostForm] = useState({
     platform: 'both',
@@ -160,6 +162,27 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
     } catch { /* silencioso */ }
     setLoading(false);
   }, [apiFetch, apiBase]);
+
+  // ¿A qué producto está asignada una publicación? (según products.post_ids)
+  const productForPost = (postId) => {
+    const pid = String(postId || '');
+    const p = products.find(pr =>
+      String(pr.post_ids || '').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).includes(pid)
+    );
+    return p ? String(p.id) : '';
+  };
+
+  // Asignar/desasignar una publicación a un producto. El bot responderá sus comentarios con el
+  // precio de ESE producto (si tiene precio). Vacío = sin producto (vuelve a mandar al WhatsApp).
+  const handleMapPost = async (postId, productId) => {
+    setPostMapOverride(prev => ({ ...prev, [postId]: productId }));
+    try {
+      await apiFetch(`${apiBase}/api/products/map-post`, {
+        method: 'POST',
+        body: JSON.stringify({ post_id: postId, product_id: productId || null })
+      });
+    } catch { /* si falla, igual queda el override local */ }
+  };
 
   const loadMetaInsights = useCallback(async () => {
     setLoadingMeta(true);
@@ -1762,6 +1785,23 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                             Ver Post <ExternalLink size={10} />
                           </a>
                         )}
+                      </div>
+
+                      {/* Asignar esta publicación a un producto → el bot responde sus comentarios con el PRECIO correcto */}
+                      <div className="pt-2 border-t border-slate-100">
+                        <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1 mb-1">
+                          🛒 Producto de este post (precio en comentarios)
+                        </label>
+                        <select
+                          value={postMapOverride[item.id] ?? productForPost(item.id)}
+                          onChange={e => handleMapPost(item.id, e.target.value)}
+                          className="w-full text-[11px] font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-[#FF6B00] cursor-pointer"
+                        >
+                          <option value="">— Sin producto (manda al WhatsApp) —</option>
+                          {products.filter(p => p.activo !== 0).map(p => (
+                            <option key={p.id} value={p.id}>{p.nombre}{p.precio ? ` — Q${p.precio}` : ''}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </div>

@@ -5815,6 +5815,34 @@ app.get('/api/comments', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Mapear una PUBLICACIÓN (post/media id) a un PRODUCTO, para que el bot responda los comentarios
+// de ese post con el precio correcto. Un post = un solo producto: lo quitamos de cualquier otro
+// producto y lo asignamos al elegido. Si product_id viene vacío, solo lo desasigna.
+app.post('/api/products/map-post', async (req, res) => {
+  try {
+    const { post_id, product_id } = req.body;
+    const pid = String(post_id || '').trim();
+    if (!pid) return res.status(400).json({ error: 'Falta post_id' });
+    // 1) quitar este post de TODOS los productos que lo tengan
+    const all = await db.all("SELECT id, post_ids FROM products WHERE post_ids IS NOT NULL AND post_ids != ''");
+    for (const p of all) {
+      const ids = String(p.post_ids).split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+      if (ids.includes(pid)) {
+        await db.run("UPDATE products SET post_ids = ? WHERE id = ?", ids.filter(x => x !== pid).join(','), p.id);
+      }
+    }
+    // 2) asignar al producto elegido (si se eligió uno)
+    if (product_id) {
+      const prod = await db.get("SELECT post_ids FROM products WHERE id = ?", product_id);
+      if (!prod) return res.status(404).json({ error: 'Producto no encontrado' });
+      const ids = String(prod.post_ids || '').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+      if (!ids.includes(pid)) ids.push(pid);
+      await db.run("UPDATE products SET post_ids = ? WHERE id = ?", ids.join(','), product_id);
+    }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Responder un comentario desde el dashboard (manual)
 app.post('/api/comments/:id/reply', async (req, res) => {
   try {
