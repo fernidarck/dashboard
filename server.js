@@ -5245,8 +5245,14 @@ app.get('/api/rag/test-search', async (req, res) => {
     // Obtenemos todo el conocimiento disponible para filtrar en memoria con lógica inteligente
     const docs = await db.all("SELECT 'Tarjeta' as tipo, name as titulo, content as contenido FROM documents");
     const prods = await db.all("SELECT 'Producto' as tipo, nombre as titulo, descripcion || COALESCE('\nIMAGEN: ' || imagen, '') as contenido FROM products WHERE activo = 1");
-    
-    const allItems = [...docs, ...prods];
+    // También los productos de la tienda web (onecontrol.shop). Antes NO se buscaban acá, así que
+    // un producto solo-web (ej. "Motor Nice Robus 1000") no aparecía y salían mesas/controles sueltos.
+    let web = [];
+    try {
+      web = await db.all("SELECT 'Producto Web' as tipo, nombre as titulo, (COALESCE(descripcion,'') || ' - Precio: ' || COALESCE(NULLIF(TRIM(precio_manual),''), NULLIF(TRIM(precio),''), 'a confirmar con asesor') || COALESCE(' - ' || permalink, '')) as contenido FROM web_products");
+    } catch (e) { /* si falla, seguimos sin web */ }
+
+    const allItems = [...docs, ...prods, ...web];
     const results = smartSearch(query, allItems);
 
     res.json({ results: results.slice(0, 10) }); // Limitamos a los 10 mejores
