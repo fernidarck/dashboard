@@ -567,8 +567,10 @@ async function setup() {
       // (ej. in_1790447453120-xxx.ogg) — ESA NO se toca (antes se borraba en cada deploy y los
       // audios del cliente quedaban sin enlace). Solo borramos las de /uploads que NO son "in_".
       await db.run("UPDATE messages SET mediaUrl = NULL, mediaType = NULL WHERE sender = 'client' AND mediaUrl LIKE '%/uploads/%' AND mediaUrl NOT LIKE '%/uploads/in\\_%' ESCAPE '\\'");
-      // Eliminar mensajes vacios del bot que solo tenian imagen duplicada
-      await db.run("DELETE FROM messages WHERE sender = 'bot' AND (text IS NULL OR text = '' OR trim(text) = '') AND mediaUrl IS NOT NULL");
+      // Eliminar mensajes vacios del bot que solo tenian IMAGEN duplicada. OJO: NO tocamos los
+      // VIDEOS — el video del producto se guarda como mensaje del bot sin texto a propósito (para
+      // que en el chat del dashboard se VEA que se envió), y antes esta limpieza lo borraba.
+      await db.run("DELETE FROM messages WHERE sender = 'bot' AND (text IS NULL OR text = '' OR trim(text) = '') AND mediaUrl IS NOT NULL AND (mediaType IS NULL OR mediaType != 'video') AND mediaUrl NOT LIKE '%.mp4%' AND mediaUrl NOT LIKE '%.mov%' AND mediaUrl NOT LIKE '%.webm%' AND mediaUrl NOT LIKE '%.m4v%'");
     } catch(e){}
 
     // Migration of existing settings to whatsapp_channels
