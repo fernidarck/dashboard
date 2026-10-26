@@ -11,6 +11,8 @@ import fs from 'fs';
 import * as XLSX from 'xlsx';
 import crypto from 'crypto';
 import Jimp from 'jimp';
+import ffmpegPath from 'ffmpeg-static';
+import { spawnSync } from 'child_process';
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -146,6 +148,35 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads', { recursive: true });
 }
 const upload = multer({ dest: 'uploads/' });
+
+// Comprime un video recién subido si pesa de más para WhatsApp (límite 16MB). Lo reduce con
+// ffmpeg (H.264, máx 1280px, CRF 28) y reemplaza el archivo original (misma URL). Así el dueño
+// sube cualquier video pesado y el bot igual lo puede enviar. Si ffmpeg falla, deja el original.
+function compressVideoIfBig(filePath, origName = '') {
+  try {
+    if (!ffmpegPath || !filePath || !fs.existsSync(filePath)) return;
+    const esVideo = /\.(mp4|mov|webm|avi|m4v|mkv|3gp)$/i.test(filePath) || /\.(mp4|mov|webm|avi|m4v|mkv|3gp)$/i.test(origName);
+    if (!esVideo) return;
+    const sizeBytes = fs.statSync(filePath).size;
+    if (sizeBytes <= 15 * 1024 * 1024) return;   // ya cabe en WhatsApp
+    const out = filePath + '.cmp.mp4';
+    const r = spawnSync(ffmpegPath, [
+      '-y', '-i', filePath,
+      '-vf', "scale='min(1280,iw)':-2",
+      '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast',
+      '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
+      out
+    ], { timeout: 180000, maxBuffer: 1024 * 1024 * 64 });
+    if (r.status === 0 && fs.existsSync(out) && fs.statSync(out).size > 0 && fs.statSync(out).size < sizeBytes) {
+      fs.copyFileSync(out, filePath);   // reemplaza el original (conserva la MISMA URL)
+      try { fs.unlinkSync(out); } catch (e) {}
+      console.log(`🗜️ Video comprimido ${(sizeBytes/1048576).toFixed(1)}MB → ${(fs.statSync(filePath).size/1048576).toFixed(1)}MB`);
+    } else {
+      try { if (fs.existsSync(out)) fs.unlinkSync(out); } catch (e) {}
+      console.warn('⚠️ No se pudo comprimir el video (se deja el original):', r.error?.message || ('ffmpeg status ' + r.status));
+    }
+  } catch (e) { console.error('compressVideoIfBig:', e.message); }
+}
 const productImagesUpload = multer({ 
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, 'uploads/'),
@@ -6249,6 +6280,10 @@ app.get('/api/webchat/widget.js', (_req, res) => {
 app.post('/api/media/upload', productImagesUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo' });
+    // Si es un video pesado (>16MB WhatsApp), lo comprimimos acá mismo antes de guardar la URL,
+    // así el dueño sube cualquier video y el bot igual lo puede enviar.
+    compressVideoIfBig(req.file.path, req.file.originalname);
+    try { req.file.size = fs.statSync(req.file.path).size; } catch (e) {}
     // URL PÚBLICA CONFIABLE: NO usar req.get('host') (ej. panel.onecontrol.shop, que Meta/Facebook
     // no puede bajar para anuncios). Usamos el dominio easypanel que sí sirve /uploads.
     const host = req.get('host') || '';

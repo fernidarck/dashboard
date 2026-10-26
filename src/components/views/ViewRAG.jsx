@@ -257,7 +257,7 @@ export default function ViewRAG({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) { alert('El video es muy grande (máximo 15 MB para WhatsApp).'); return; }
+    if (file.size > 100 * 1024 * 1024) { alert('El video es demasiado grande (máximo 100 MB). Recortalo un poco e intentá de nuevo.'); return; }
     const url = await onUploadMediaFile?.(file);
     if (!url) return;
     setter(prev => {
