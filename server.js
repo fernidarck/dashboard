@@ -4161,14 +4161,25 @@ app.get('/api/rag/context', async (req, res) => {
     let webItems = [];
     try {
       const webRows = await db.all("SELECT nombre, categoria, precio, precio_manual, stock, permalink, descripcion, reglas_bot, compatibilidad FROM web_products");
-      webItems = webRows.map(p => ({
-        name: p.nombre,
-        category: p.categoria,
-        __web: true,
-        permalink: p.permalink || '',
-        // Precio efectivo: manual del dueño > precio de la web > "a confirmar con asesor".
-        content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${(p.precio_manual && String(p.precio_manual).trim()) || (p.precio && String(p.precio).trim()) || 'a confirmar con un asesor (NO inventes un monto ni digas Q0)'} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link (SOLO texto, NUNCA como foto): ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda como TEXTO. ⚠️ Este producto de la web NO tiene foto para enviar por WhatsApp: NO uses [Ver Imagen] ni ENVIAR_IMAGEN con el link (el link es una página, no una imagen). Si el cliente quiere ver, decile que en el link ve las fotos. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.${p.compatibilidad && String(p.compatibilidad).trim() ? ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO lo ofrezcas como compatible.` : ''}${p.reglas_bot && String(p.reglas_bot).trim() ? ` - 🚫 REGLA IMPORTANTE (cumplila SIEMPRE): ${String(p.reglas_bot).trim()}` : ''}`
-      }));
+      webItems = webRows.map(p => {
+        const precioEf = (p.precio_manual && String(p.precio_manual).trim()) || (p.precio && String(p.precio).trim()) || '';
+        const sinPrecio = !precioEf || parseFloat(String(precioEf).replace(/[^0-9.]/g, '')) === 0;
+        // Si el producto NO tiene precio (ej. motores que se cotizan), el bot NO debe quedarse
+        // repitiendo la descripción cuando el cliente pide el precio/cotización (bug real: se
+        // trababa). Le damos un GUION claro: pasar con asesor, pedir zona + tipo de portón y
+        // cerrar con #PEDIDO_LISTO, SIN repetir lo ya dicho.
+        const guionSinPrecio = sinPrecio
+          ? ` 🚫 ESTE PRODUCTO NO TIENE PRECIO FIJO EN EL SISTEMA. Si el cliente pide el precio o la cotización: NO repitas la descripción (ya la diste). Decile UNA vez que es un producto que se cotiza y que un asesor le pasa el precio exacto; pedile su ZONA/municipio y, si es motor, el tipo y tamaño del portón; y cerrá con #PEDIDO_LISTO para que un asesor lo contacte. NUNCA repitas el mismo mensaje dos veces.`
+          : '';
+        return {
+          name: p.nombre,
+          category: p.categoria,
+          __web: true,
+          permalink: p.permalink || '',
+          // Precio efectivo: manual del dueño > precio de la web > "a confirmar con asesor".
+          content: `FUENTE: CATÁLOGO WEB onecontrol.shop (tienda en línea). Precio: ${precioEf || 'a confirmar con un asesor (NO inventes un monto ni digas Q0)'} | Stock: ${p.stock}${p.descripcion ? ' | ' + p.descripcion : ''}${p.permalink ? ' | Link (SOLO texto, NUNCA como foto): ' + p.permalink : ''}. Usá este dato SOLO si el producto NO está en el catálogo principal de arriba: dale el precio y compartí el link de la tienda como TEXTO. ⚠️ Este producto de la web NO tiene foto para enviar por WhatsApp: NO uses [Ver Imagen] ni ENVIAR_IMAGEN con el link (el link es una página, no una imagen). Si el cliente quiere ver, decile que en el link ve las fotos. NO inventes compatibilidad ni detalles que no estén aquí; para más detalle, pasá con un asesor.${guionSinPrecio}${p.compatibilidad && String(p.compatibilidad).trim() ? ` - ✅ COMPATIBLE SOLO CON: ${String(p.compatibilidad).trim()}. Si el motor del cliente NO es de esa marca/sistema, NO lo ofrezcas como compatible.` : ''}${p.reglas_bot && String(p.reglas_bot).trim() ? ` - 🚫 REGLA IMPORTANTE (cumplila SIEMPRE): ${String(p.reglas_bot).trim()}` : ''}`
+        };
+      });
     } catch (e) { /* si falla, seguimos sin web */ }
 
     const allKnowledge = [...docs, ...prods, ...webItems];
