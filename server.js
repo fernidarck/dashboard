@@ -5783,6 +5783,42 @@ app.post('/api/webhook/facebook', handleMetaWebhookPost);
 app.get('/api/webhook/meta', handleMetaWebhookGet);
 app.post('/api/webhook/meta', handleMetaWebhookPost);
 
+// Trae el texto (caption/message) de una publicación de IG o FB por su id.
+async function fetchPostCaption(mediaId) {
+  try {
+    const token = await getDynamicSetting('meta_page_token', process.env.META_PAGE_TOKEN);
+    if (!token || !mediaId) return '';
+    const r = await (await fetch(`${META_GRAPH}/${mediaId}?fields=caption,message&access_token=${token}`)).json();
+    return r.caption || r.message || '';
+  } catch (e) { return ''; }
+}
+
+// Detecta el PRODUCTO a partir del texto de un post (caption), SOLO con alta confianza.
+// Devuelve el producto o null. No adivina: si el post no nombra claramente el producto, o si
+// hay empate entre varios, devuelve null para que el bot NO dé un precio equivocado.
+async function matchProductFromText(text) {
+  const searchText = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (!searchText.trim()) return null;
+  const prods = await db.all("SELECT nombre, precio, precio_oferta FROM products WHERE activo = 1");
+  const GEN_PROD = new Set(['mesa','noche','de','del','la','el','los','las','para','con','modelo','control','motor','porton','remoto','mueble','kit','en','guatemala','una','uno','par','pieza','oferta','precio','envio','nuevo','nueva','color','set']);
+  let best = null, bestScore = 0, secondScore = 0;
+  for (const p of prods) {
+    const pName = String(p.nombre || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    if (!pName) continue;
+    let sc = 0, toksMatched = 0;
+    if (searchText.includes(pName)) sc += 100;                                    // nombre completo en el caption
+    const toks = pName.split(/\s+/).filter(w => w.length > 3 && !GEN_PROD.has(w));
+    toks.forEach(t => { if (searchText.includes(t)) { sc += 5; toksMatched++; } }); // palabras distintivas
+    const modelo = (pName.match(/modelo\s*\d+/i) || [])[0];
+    if (modelo && searchText.includes(modelo)) sc += 20;
+    if (sc > bestScore) { secondScore = bestScore; bestScore = sc; best = { ...p, _toks: toksMatched }; }
+    else if (sc > secondScore) { secondScore = sc; }
+  }
+  // Confianza: nombre completo (>=100), o >=2 palabras distintivas; y ganador claro sobre el 2º.
+  const confident = best && (bestScore >= 100 || (best._toks >= 2 && bestScore >= 10)) && bestScore >= secondScore + 10;
+  return confident ? best : null;
+}
+
 // Helper para generar respuesta inteligente a comentarios con RAG y Reglas
 async function generateCommentReply(commentText, fromName = '', platform = 'instagram', mediaId = '') {
   const nameTag = fromName ? `@${fromName.replace(/^@/, '')}` : '';
@@ -5809,6 +5845,18 @@ async function generateCommentReply(commentText, fromName = '', platform = 'inst
         const raw = (prod.precio_oferta && String(prod.precio_oferta).trim()) || (prod.precio && String(prod.precio).trim()) || '';
         const num = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
         if (num > 0) prodPrecio = 'Q' + String(raw).replace(/[^0-9.]/g, '');
+      }
+      // Si el post NO está mapeado a mano, intentamos detectar el producto SOLO por el texto del
+      // post (caption), con alta confianza. Así el bot sabe el producto sin que el dueño mapee
+      // cada publicación. Si no está seguro, matchProductFromText devuelve null → no da precio.
+      if (!prodNombre) {
+        const caption = await fetchPostCaption(mediaId);
+        const m = await matchProductFromText(caption);
+        if (m?.nombre) {
+          prodNombre = String(m.nombre).trim();
+          const raw = (m.precio_oferta && String(m.precio_oferta).trim()) || (m.precio && String(m.precio).trim()) || '';
+          if (parseFloat(String(raw).replace(/[^0-9.]/g, '')) > 0) prodPrecio = 'Q' + String(raw).replace(/[^0-9.]/g, '');
+        }
       }
     } catch (e) {}
   }
