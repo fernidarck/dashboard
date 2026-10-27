@@ -365,20 +365,20 @@ export default function ViewRAG({
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header */}
       <div className="flex flex-wrap gap-4 justify-between items-center">
-        <div className="flex items-center space-x-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 w-full lg:w-auto">
           <div>
-            <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Base de Conocimiento RAG</h2>
-            <p className="text-xs text-slate-400 font-medium mt-1">Entrena a la IA con productos, precios, fotos y reglas de venta</p>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Base de Conocimiento RAG</h2>
+            <p className="text-[11px] sm:text-xs text-slate-400 font-medium mt-1">Entrena a la IA con productos, precios, fotos y reglas de venta</p>
           </div>
-          <div className="flex space-x-1 bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
-            <button onClick={() => setRagSubTab('conocimiento')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'conocimiento' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Conocimiento</button>
-            <button onClick={() => setRagSubTab('catalogo')}     className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'catalogo'     ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Catálogo</button>
-            <button onClick={() => setRagSubTab('webrag')}       className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'webrag'       ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Web RAG</button>
+          <div className="flex flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-100 shadow-sm w-full sm:w-auto">
+            <button onClick={() => setRagSubTab('conocimiento')} className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'conocimiento' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Conocimiento</button>
+            <button onClick={() => setRagSubTab('catalogo')}     className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'catalogo'     ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Catálogo</button>
+            <button onClick={() => setRagSubTab('webrag')}       className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ragSubTab === 'webrag'       ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-600'}`}>Web RAG</button>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           {/* Inline search */}
-          <div className="relative group flex items-center bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="relative group flex items-center bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden flex-1 sm:flex-none min-w-0">
             <Search size={16} className="absolute left-4 text-slate-400 group-focus-within:text-[#FF6B00] transition-colors pointer-events-none" />
             <input
               type="text"
@@ -386,7 +386,7 @@ export default function ViewRAG({
               onChange={e => { setTestQuery(e.target.value); if (!e.target.value.trim()) setTestResults([]); }}
               onKeyDown={e => e.key === 'Enter' && handleRunSearch()}
               placeholder="Buscar en RAG..."
-              className="pl-10 pr-2 py-3 bg-transparent text-xs font-bold outline-none italic w-44"
+              className="pl-10 pr-2 py-3 bg-transparent text-xs font-bold outline-none italic w-full sm:w-44 min-w-0"
             />
             <button
               onClick={handleRunSearch}
