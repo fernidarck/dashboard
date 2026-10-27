@@ -30,7 +30,8 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [botSettings, setBotSettings] = useState({
     bot_comments_enabled: '0',
     comments_wa_phone: '35154362',
-    bot_comments_prompt: ''
+    bot_comments_prompt: '',
+    comments_price_mode: 'whatsapp' // 'whatsapp' | 'public' | 'private'
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState('');
@@ -1887,6 +1888,43 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:border-purple-600"
                 />
                 <p className="text-[10px] text-slate-400">El número que el bot adjuntará en las respuestas para que los clientes continúen por chat.</p>
+              </div>
+
+              {/* ¿Cómo dar el PRECIO en comentarios? */}
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  🛒 ¿Cómo responder el precio?
+                </label>
+                <div className="space-y-2">
+                  {[
+                    { id: 'whatsapp', titulo: '💬 Solo mandar al WhatsApp', desc: 'No da precio en la red. Invita a escribir por WhatsApp. (Actual)' },
+                    { id: 'private', titulo: '✉️ Precio por mensaje privado (DM)', desc: 'En público lo manda al WhatsApp; y le escribe el precio por privado a quien comentó.' },
+                    { id: 'public', titulo: '📢 Precio en el comentario público', desc: 'Responde el precio a la vista de todos (solo si el producto se detecta con seguridad).' }
+                  ].map(opt => {
+                    const active = (botSettings.comments_price_mode || 'whatsapp') === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setBotSettings({ ...botSettings, comments_price_mode: opt.id })}
+                        className={`w-full text-left p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                          active ? 'border-purple-500 bg-purple-50/60 ring-2 ring-purple-200' : 'border-slate-200 bg-white hover:border-purple-300'
+                        }`}
+                      >
+                        <span className={`mt-0.5 h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center ${active ? 'border-purple-600' : 'border-slate-300'}`}>
+                          {active && <span className="h-2 w-2 rounded-full bg-purple-600" />}
+                        </span>
+                        <span>
+                          <span className="block text-xs font-black text-slate-900">{opt.titulo}</span>
+                          <span className="block text-[11px] text-slate-500 mt-0.5 leading-snug">{opt.desc}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-slate-400 leading-snug">
+                  El precio sale del producto en el dashboard (o se detecta por el texto del anuncio). Si el producto no tiene precio o no se detecta con seguridad, siempre manda al WhatsApp.
+                </p>
               </div>
 
               {/* Filtro de Seguridad Delicados */}

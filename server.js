@@ -5736,6 +5736,8 @@ async function processIncomingMetaWebhook(body) {
               await replyToComment(commentId, autoReply, commentPlatform);
               await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'respondido' WHERE comment_id = ?", autoReply, commentId);
               console.log(`🤖 [Auto-Respuesta Bot Comentarios] Respondido a ${fromName}: "${autoReply.slice(0, 60)}"`);
+              // En modo 'private' además mandamos el precio por mensaje privado (DM).
+              await sendCommentPrivatePrice(commentId, commentPlatform, mediaId, fromName);
             } catch (replyErr) {
               console.error('Error enviando auto-respuesta a comentario:', replyErr.message);
             }
@@ -5820,67 +5822,112 @@ async function matchProductFromText(text) {
 }
 
 // Helper para generar respuesta inteligente a comentarios con RAG y Reglas
+// Obtiene el producto (nombre + precio) de la publicación donde se comentó: primero por mapeo
+// manual (products.post_ids), y si no, detectándolo por el texto del post con alta confianza.
+// Devuelve { nombre, precio } (precio = 'Q..' o '') o null si no se sabe con certeza.
+async function getCommentProduct(mediaId) {
+  if (!mediaId) return null;
+  const toPrecio = (p) => {
+    const raw = (p.precio_oferta && String(p.precio_oferta).trim()) || (p.precio && String(p.precio).trim()) || '';
+    const num = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+    return num > 0 ? 'Q' + String(raw).replace(/[^0-9.]/g, '') : '';
+  };
+  try {
+    // 1) Mapeo manual explícito (products.post_ids)
+    const prod = await db.get(
+      "SELECT nombre, precio, precio_oferta FROM products WHERE activo = 1 AND post_ids IS NOT NULL AND post_ids != '' AND (',' || REPLACE(post_ids,' ','') || ',') LIKE ('%,' || ? || ',%')",
+      String(mediaId)
+    );
+    if (prod?.nombre) return { nombre: String(prod.nombre).trim(), precio: toPrecio(prod) };
+    // 2) Detección automática por el TEXTO del post (caption), solo con alta confianza.
+    const caption = await fetchPostCaption(mediaId);
+    const m = await matchProductFromText(caption);
+    if (m?.nombre) return { nombre: String(m.nombre).trim(), precio: toPrecio(m) };
+  } catch (e) {}
+  return null;
+}
+
+// Modo de precio en comentarios (setting 'comments_price_mode'):
+//   'whatsapp' (default) → no damos precio; el comentario público manda al WhatsApp.
+//   'public'            → el comentario público lleva el precio.
+//   'private'           → comentario público al WhatsApp + DM privado con el precio.
+async function getCommentPriceMode() {
+  try {
+    const r = await db.get("SELECT value FROM settings WHERE key = 'comments_price_mode'");
+    const v = (r?.value || '').trim();
+    return (v === 'public' || v === 'private') ? v : 'whatsapp';
+  } catch (e) { return 'whatsapp'; }
+}
+
+async function getCommentsWaPhone() {
+  const sRows = await db.all("SELECT key, value FROM settings WHERE key IN ('owner_phone', 'comments_wa_phone')");
+  const sMap = {}; sRows.forEach(r => sMap[r.key] = r.value);
+  return sMap.comments_wa_phone || sMap.owner_phone || '35154362';
+}
+
+// Genera la respuesta PÚBLICA a un comentario. Solo incluye precio en modo 'public'.
 async function generateCommentReply(commentText, fromName = '', platform = 'instagram', mediaId = '') {
   const nameTag = fromName ? `@${fromName.replace(/^@/, '')}` : '';
-
-  // Obtener número de WhatsApp
-  const sRows = await db.all("SELECT key, value FROM settings WHERE key IN ('owner_phone', 'comments_wa_phone')");
-  const sMap = {};
-  sRows.forEach(r => sMap[r.key] = r.value);
-  const waPhone = sMap.comments_wa_phone || sMap.owner_phone || '35154362';
-
-  // MAPEO PUBLICACIÓN → PRODUCTO: si el post donde comentaron está mapeado (products.post_ids),
-  // sabemos EXACTAMENTE qué producto es. SOLO en ese caso damos el PRECIO en el comentario (es
-  // seguro: no estamos adivinando). Si el post NO está mapeado, NO damos precio (antes adivinar
-  // daba montos equivocados, ej. post de bastones → "Batería Q450") y mandamos al WhatsApp.
-  let prodNombre = '', prodPrecio = '';
-  if (mediaId) {
-    try {
-      const prod = await db.get(
-        "SELECT nombre, precio, precio_oferta FROM products WHERE activo = 1 AND post_ids IS NOT NULL AND post_ids != '' AND (',' || REPLACE(post_ids,' ','') || ',') LIKE ('%,' || ? || ',%')",
-        String(mediaId)
-      );
-      if (prod?.nombre) {
-        prodNombre = String(prod.nombre).trim();
-        const raw = (prod.precio_oferta && String(prod.precio_oferta).trim()) || (prod.precio && String(prod.precio).trim()) || '';
-        const num = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
-        if (num > 0) prodPrecio = 'Q' + String(raw).replace(/[^0-9.]/g, '');
-      }
-      // Si el post NO está mapeado a mano, intentamos detectar el producto SOLO por el texto del
-      // post (caption), con alta confianza. Así el bot sabe el producto sin que el dueño mapee
-      // cada publicación. Si no está seguro, matchProductFromText devuelve null → no da precio.
-      if (!prodNombre) {
-        const caption = await fetchPostCaption(mediaId);
-        const m = await matchProductFromText(caption);
-        if (m?.nombre) {
-          prodNombre = String(m.nombre).trim();
-          const raw = (m.precio_oferta && String(m.precio_oferta).trim()) || (m.precio && String(m.precio).trim()) || '';
-          if (parseFloat(String(raw).replace(/[^0-9.]/g, '')) > 0) prodPrecio = 'Q' + String(raw).replace(/[^0-9.]/g, '');
-        }
-      }
-    } catch (e) {}
-  }
+  const waPhone = await getCommentsWaPhone();
+  const mode = await getCommentPriceMode();
+  const product = mode === 'public' ? await getCommentProduct(mediaId) : null;
 
   let reply;
-  if (prodNombre && prodPrecio) {
-    // Mapeado + con precio → damos el precio correcto E igual invitamos al WhatsApp (captura el lead).
-    reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! La *${prodNombre}* está en *${prodPrecio}* 🙌 Para ver más fotos y coordinar tu envío escribinos al WhatsApp 📲 ${waPhone} — envíos a toda Guatemala y pago contra entrega 🚚😊`;
-  } else if (prodNombre) {
-    // Mapeado pero sin precio cargado → mencionamos el producto, sin inventar precio.
-    reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! Sí tenemos *${prodNombre}*. Te pasamos el precio y las fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
+  if (mode === 'public' && product?.nombre && product?.precio) {
+    reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! La *${product.nombre}* está en *${product.precio}* 🙌 Para ver más fotos y coordinar tu envío escribinos al WhatsApp 📲 ${waPhone} — envíos a toda Guatemala y pago contra entrega 🚚😊`;
+  } else if (mode === 'public' && product?.nombre) {
+    reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! Sí tenemos *${product.nombre}*. Te pasamos el precio y las fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
   } else {
-    // Sin mapeo → no sabemos el producto con certeza: no damos precio, mandamos al WhatsApp.
+    // Modo whatsapp o private → público sin precio, al WhatsApp (el precio en private va por DM).
     reply = `¡Hola ${nameTag}! 👋 ¡Con gusto! Te pasamos toda la info, precios y fotos por WhatsApp 📲 Escribinos al ${waPhone} — con envíos a toda Guatemala y pago contra entrega 🚚😊`;
   }
-
   return reply.trim();
+}
+
+// Envía un MENSAJE PRIVADO (DM) en respuesta a un comentario.
+//   Facebook:  POST /{comment_id}/private_replies
+//   Instagram: POST /{ig_user_id}/messages  con recipient.comment_id
+async function sendPrivateReply(platform, commentId, message) {
+  const { token, igUserId } = await getMetaConfig();
+  if (!token) throw new Error('No hay token de Meta configurado');
+  let endpoint, body;
+  if (platform === 'facebook') {
+    endpoint = `${META_GRAPH}/${commentId}/private_replies`;
+    body = { message, access_token: token };
+  } else {
+    endpoint = `${META_GRAPH}/${igUserId}/messages`;
+    body = { recipient: { comment_id: commentId }, message: { text: message }, access_token: token };
+  }
+  const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.error) throw new Error(`Meta ${r.status}: ${(data.error?.message || JSON.stringify(data)).slice(0, 200)}`);
+  return data;
+}
+
+// Si el modo es 'private' y conocemos el producto CON precio, manda el precio por DM al que comentó.
+// Devuelve el texto enviado o null si no aplica. Nunca lanza (los errores solo se registran).
+async function sendCommentPrivatePrice(commentId, platform, mediaId, fromName = '') {
+  try {
+    if (await getCommentPriceMode() !== 'private') return null;
+    const product = await getCommentProduct(mediaId);
+    if (!product?.precio) return null; // sin precio seguro → no mandamos nada por privado
+    const nameTag = fromName ? `@${fromName.replace(/^@/, '')}` : '';
+    const waPhone = await getCommentsWaPhone();
+    const dm = `¡Hola ${nameTag}! 👋 Vi tu comentario 😊 La *${product.nombre}* está en *${product.precio}*. Hacemos envíos a toda Guatemala con pago contra entrega 🚚 Si querés más fotos o coordinar el tuyo, escribinos por aquí o al WhatsApp 📲 ${waPhone}`;
+    await sendPrivateReply(platform, commentId, dm);
+    console.log(`✉️ [DM precio] Enviado a ${fromName}: ${product.nombre} ${product.precio}`);
+    return dm;
+  } catch (e) {
+    console.error('Error enviando precio por privado:', e.message);
+    return null;
+  }
 }
 
 // Configuración de Auto-Respuesta a comentarios
 app.get('/api/comments/settings', async (req, res) => {
   try {
-    const rows = await db.all("SELECT key, value FROM settings WHERE key IN ('bot_comments_enabled', 'comments_wa_phone', 'bot_comments_prompt')");
-    const s = { bot_comments_enabled: '0', comments_wa_phone: '35154362', bot_comments_prompt: '' };
+    const rows = await db.all("SELECT key, value FROM settings WHERE key IN ('bot_comments_enabled', 'comments_wa_phone', 'bot_comments_prompt', 'comments_price_mode')");
+    const s = { bot_comments_enabled: '0', comments_wa_phone: '35154362', bot_comments_prompt: '', comments_price_mode: 'whatsapp' };
     rows.forEach(r => s[r.key] = r.value);
     res.json(s);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -5888,10 +5935,14 @@ app.get('/api/comments/settings', async (req, res) => {
 
 app.post('/api/comments/settings', async (req, res) => {
   try {
-    const { bot_comments_enabled, comments_wa_phone, bot_comments_prompt } = req.body;
+    const { bot_comments_enabled, comments_wa_phone, bot_comments_prompt, comments_price_mode } = req.body;
     if (bot_comments_enabled !== undefined) await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('bot_comments_enabled', ?)", String(bot_comments_enabled));
     if (comments_wa_phone !== undefined) await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('comments_wa_phone', ?)", String(comments_wa_phone));
     if (bot_comments_prompt !== undefined) await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('bot_comments_prompt', ?)", String(bot_comments_prompt));
+    if (comments_price_mode !== undefined) {
+      const m = ['whatsapp', 'public', 'private'].includes(String(comments_price_mode)) ? String(comments_price_mode) : 'whatsapp';
+      await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('comments_price_mode', ?)", m);
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -5968,7 +6019,9 @@ app.post('/api/comments/:id/ai-reply', async (req, res) => {
 
     await replyToComment(c.comment_id, generatedReply, c.platform || 'instagram');
     await db.run("UPDATE redes_comments SET bot_reply = ?, status = 'respondido' WHERE id = ?", generatedReply, req.params.id);
-    res.json({ success: true, reply: generatedReply });
+    // En modo 'private' además mandamos el precio por mensaje privado (DM).
+    const privateDm = await sendCommentPrivatePrice(c.comment_id, c.platform || 'instagram', c.media_id || '', c.from_name);
+    res.json({ success: true, reply: generatedReply, privateSent: !!privateDm, privateReply: privateDm || null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
