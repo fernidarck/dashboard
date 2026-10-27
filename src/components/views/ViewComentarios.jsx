@@ -1547,6 +1547,28 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                       </div>
                     )}
 
+                    {/* Asignar el PRODUCTO de este post → el bot responde con el PRECIO correcto (sin confundirse) */}
+                    {c.media_id && (
+                      <div className="p-2.5 rounded-2xl bg-orange-50/60 border border-orange-200 space-y-1.5">
+                        <label className="text-[9px] font-black uppercase tracking-wider text-orange-700 flex items-center gap-1">
+                          🛒 Producto de esta publicación (para dar el precio en comentarios)
+                        </label>
+                        <select
+                          value={postMapOverride[c.media_id] ?? productForPost(c.media_id)}
+                          onChange={e => handleMapPost(c.media_id, e.target.value)}
+                          className="w-full text-[11px] font-bold text-slate-700 bg-white border border-orange-200 rounded-lg px-2 py-1.5 outline-none focus:border-[#FF6B00] cursor-pointer"
+                        >
+                          <option value="">— Sin producto (manda al WhatsApp) —</option>
+                          {products.filter(p => p.activo !== 0).map(p => (
+                            <option key={p.id} value={p.id}>{p.nombre}{p.precio ? ` — Q${p.precio}` : ''}</option>
+                          ))}
+                        </select>
+                        <p className="text-[9px] text-orange-700/80 leading-snug">
+                          Si eliges un producto con precio, el bot responderá los comentarios de ESTE post con ese precio. Aplica a todos los comentarios de la misma publicación.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Caja de Respuesta Manual / IA */}
                     <div className="pt-2 border-t border-slate-100 space-y-2">
                       <div className="flex items-center justify-between">

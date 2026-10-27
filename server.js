@@ -5910,7 +5910,9 @@ app.post('/api/comments/:id/ai-reply', async (req, res) => {
   try {
     const c = await db.get("SELECT * FROM redes_comments WHERE id = ?", req.params.id);
     if (!c) return res.status(404).json({ error: 'Comentario no encontrado' });
-    const generatedReply = await generateCommentReply(c.text, c.from_name, c.platform || 'instagram');
+    // Pasamos c.media_id (el post donde comentaron) para que, si ese post está mapeado a un
+    // producto, la respuesta incluya el PRECIO correcto — igual que en la auto-respuesta en vivo.
+    const generatedReply = await generateCommentReply(c.text, c.from_name, c.platform || 'instagram', c.media_id || '');
 
     if (req.body.preview) {
       return res.json({ success: true, reply: generatedReply });
