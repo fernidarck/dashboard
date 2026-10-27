@@ -85,10 +85,23 @@ export default function ViewArchivos({ apiBase, authToken }) {
         {files.map((f) => {
           const Icon = iconFor(f.mimetype);
           const isImg = (f.mimetype || '').startsWith('image/');
+          const isVid = (f.mimetype || '').startsWith('video/') || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(f.url || '');
           return (
             <div key={f.id} className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl p-3">
-              <div className="h-14 w-14 rounded-xl bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center border border-slate-100">
-                {isImg ? <img src={f.url} alt={f.name} className="w-full h-full object-cover" /> : <Icon size={22} className="text-slate-400" />}
+              <div className="h-14 w-14 rounded-xl bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center border border-slate-100 relative">
+                {isImg ? (
+                  <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                ) : isVid ? (
+                  <>
+                    {/* Miniatura del video: mostramos su primer cuadro (#t=0.5 fuerza un frame visible) */}
+                    <video src={`${f.url}#t=0.5`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+                      <Film size={15} className="text-white drop-shadow" />
+                    </span>
+                  </>
+                ) : (
+                  <Icon size={22} className="text-slate-400" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-slate-700 text-sm truncate">{f.name}</p>
