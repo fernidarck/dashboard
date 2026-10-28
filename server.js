@@ -1913,12 +1913,18 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
       try {
         const media = await computeAutoAttachMedia(parsed.mensajePrincipal, parsed.mensajeSecundario, cleanPhone);
         for (const vurl of (media.videos || [])) {
-          // ANTI-DOBLE ENVÍO: RESERVAMOS el mensaje ANTES de enviar. Si una segunda llamada
-          // (reintento de n8n o un aviso repetido) corre casi a la vez, ve esta reserva y NO
-          // reenvía el video (antes revisábamos después de enviar → se mandaba 2 veces).
-          const yaEnviado = await db.get("SELECT id FROM messages WHERE lead_id = ? AND mediaUrl = ? LIMIT 1", leadId, vurl);
-          if (yaEnviado) continue;
-          const ins = await db.run("INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) VALUES (?,?,?,?,?,?)", leadId, 'bot', '', vurl, 'video', time);
+          // ANTI-DOBLE ENVÍO: RESERVAMOS el mensaje ANTES de enviar, en UN SOLO paso atómico.
+          // Antes revisábamos (SELECT) y reservábamos (INSERT) por separado: si dos llamadas
+          // (reintento de n8n o un aviso repetido) corrían casi a la vez, las DOS pasaban el
+          // SELECT antes de que cualquiera insertara → las dos mandaban el video. Ahora el
+          // INSERT ... WHERE NOT EXISTS reserva y verifica a la vez (SQLite serializa escrituras),
+          // así la segunda llamada ve la reserva y NO reenvía. Si no insertó nada, saltamos.
+          const ins = await db.run(
+            "INSERT INTO messages (lead_id, sender, text, mediaUrl, mediaType, timestamp) " +
+            "SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM messages WHERE lead_id = ? AND mediaUrl = ?)",
+            leadId, 'bot', '', vurl, 'video', time, leadId, vurl
+          );
+          if (!ins.changes) continue;
           // Enviar en SEGUNDO PLANO: así el webhook responde rápido y n8n no lo reintenta (el
           // reintento por respuesta lenta era lo que duplicaba el video). Si el envío falla,
           // quitamos la reserva para que el dashboard no muestre un video que no se envió.
