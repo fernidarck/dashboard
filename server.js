@@ -1129,6 +1129,43 @@ async function detectHandoff(text) {
   return null;
 }
 
+// ─── HANDOFF POR ACEPTACIÓN ───────────────────────────────────────────────────
+// Caso real: el BOT ofrece "le paso con un asesor / ¿le gustaría que un asesor lo
+// contacte?" y el cliente solo contesta "Vaya / sí / dale". detectHandoff NO lo
+// agarra porque la palabra clave ("asesor") está en el mensaje del BOT, no del
+// cliente → el bot seguía respondiendo en bucle. Esto lo arregla SIN tocar nada de
+// lo anterior: es un disparador ADICIONAL de handoff.
+
+// Afirmaciones cortas con las que un cliente acepta una oferta. Debe EMPEZAR así.
+const AFIRMACION_RE = /^(s+i+|sip|claro( que si)?|dale|de una|deuna|va|vaya|vale|ok(ey|ay)?|oka|bueno|buenisimo|perfecto|listo|sale|de acuerdo|adelante|hagale|hagalo|me parece|me gustaria|esta bien|ta bien|por ?favor|porfa|afirmativo|exacto|correcto|asi es)\b/;
+
+// ¿Alguno de los últimos mensajes del bot ofreció asesor/humano o coordinar visita?
+async function ultimoBotOfrecioAsesor(leadId) {
+  try {
+    const rows = await db.all(
+      "SELECT text FROM messages WHERE lead_id = ? AND sender = 'bot' AND text IS NOT NULL AND TRIM(text) != '' ORDER BY id DESC LIMIT 2",
+      leadId
+    );
+    for (const r of rows) {
+      const t = normalize(r.text);
+      if (/asesor/.test(t) || (/visita/.test(t) && /(coordin|agend|program)/.test(t))) return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
+// El cliente ACEPTA la oferta de asesor/visita que acaba de hacer el bot → handoff.
+// Devuelve el motivo o null. Solo entra con respuestas cortas: un mensaje largo con
+// una palabra clave real ya lo cubre detectHandoff por su cuenta.
+async function detectHandoffAceptacion(leadId, clientText) {
+  if (!clientText) return null;
+  const t = normalize(clientText);
+  if (!t || t.length > 40) return null;
+  if (!AFIRMACION_RE.test(t)) return null;
+  if (!(await ultimoBotOfrecioAsesor(leadId))) return null;
+  return 'Cliente aceptó hablar con un asesor';
+}
+
 // Función inteligente para guardar mensajes y actualizar leads
 // Descarga un audio/foto de YCloud (URL firmada que caduca) y lo guarda en /uploads,
 // para que quede PERMANENTE y se pueda reproducir/ver siempre en el dashboard.
@@ -1943,8 +1980,9 @@ async function processIncomingMessageWebhook(req, res, sourceName = 'WhatsApp') 
     }
 
     // Detección de Handoff automática en mensajes del cliente
-    if (!parsed.isEcho && (data.solicita_humano || data.etiqueta === 'SOLICITA_HUMANO' || await detectHandoff(parsed.mensajePrincipal))) {
-      const handoffReason = data.handoff_reason || (data.solicita_humano ? 'Cliente pidió hablar con un humano' : await detectHandoff(parsed.mensajePrincipal));
+    // (+ NUEVO: el cliente ACEPTA la oferta de asesor que hizo el bot → detectHandoffAceptacion)
+    if (!parsed.isEcho && (data.solicita_humano || data.etiqueta === 'SOLICITA_HUMANO' || await detectHandoff(parsed.mensajePrincipal) || await detectHandoffAceptacion(leadId, parsed.mensajePrincipal))) {
+      const handoffReason = data.handoff_reason || (data.solicita_humano ? 'Cliente pidió hablar con un humano' : (await detectHandoff(parsed.mensajePrincipal) || await detectHandoffAceptacion(leadId, parsed.mensajePrincipal) || 'Cliente aceptó hablar con un asesor'));
       await db.run(
         "UPDATE leads SET botActive = 0, priority = 'urgent', handoff_reason = ?, estado = 'Intervención Requerida' WHERE id = ?",
         handoffReason, leadId
