@@ -2793,20 +2793,37 @@ app.get('/api/settings', async (req, res) => {
           const permitidas = approvedRules.filter(r => r.type !== 'prohibido');
 
           let trainingSection = "\n\n🧠 REGLAS DE ENTRENAMIENTO Y APRENDIZAJE SUPERVISADO (MÁXIMA PRIORIDAD):\n";
+          // El dueño a veces llena UN solo campo (ej. solo "¿qué aprendió?"). Para que la regla
+          // igual funcione, tomamos el mejor texto disponible de CUALQUIER campo y nunca dejamos
+          // la instrucción vacía. Las reglas ya bien llenas se comportan igual que antes.
+          const mejorTexto = (r) =>
+            r.prompt_instruction
+            || (r.rule && r.rule !== r.title ? r.rule : '')
+            || r.what_learned
+            || r.what_not_to_say
+            || r.title;
           if (prohibidas.length > 0) {
             trainingSection += "⛔ LO QUE TIENES ESTRICTAMENTE PROHIBIDO (NO DECIR / NO ASUMIR):\n";
             prohibidas.forEach(r => {
-              const noSay = r.what_not_to_say || r.rule;
-              const promptInst = r.prompt_instruction ? ` 👉 EN SU LUGAR DECIR: ${r.prompt_instruction}` : '';
-              trainingSection += `- 🚫 ${r.title}: PROHIBIDO: "${noSay}".${promptInst}${r.example_question ? ` (Si el cliente dice: "${r.example_question}")` : ''}\n`;
+              let cuerpo;
+              if (r.what_not_to_say) {
+                // Llenó "qué NO decir": comportamiento de siempre.
+                const enLugar = r.prompt_instruction ? ` 👉 EN SU LUGAR DECIR: ${r.prompt_instruction}` : '';
+                cuerpo = `PROHIBIDO: "${r.what_not_to_say}".${enLugar}`;
+                if (r.what_learned && r.what_learned !== r.what_not_to_say) cuerpo += ` [Contexto: ${r.what_learned}]`;
+              } else {
+                // No llenó "qué NO decir": usamos lo que SÍ escribió como regla a cumplir.
+                cuerpo = `REGLA (cumplir siempre): ${mejorTexto(r)}.`;
+              }
+              trainingSection += `- 🚫 ${r.title}: ${cuerpo}${r.example_question ? ` (Si el cliente dice: "${r.example_question}")` : ''}\n`;
             });
           }
           if (permitidas.length > 0) {
             trainingSection += "\n✅ NUEVOS PROMPTS Y GUÍAS DE RESPUESTA APROBADAS:\n";
             permitidas.forEach(r => {
-              const promptInst = r.prompt_instruction || r.rule;
-              const learned = r.what_learned ? ` [Contexto/Lección: ${r.what_learned}]` : '';
-              trainingSection += `- ✨ ${r.title}: ${promptInst}${learned}${r.example_question ? ` (Si pregunta: "${r.example_question}" → Decir: "${r.example_response || promptInst}")` : ''}\n`;
+              const inst = mejorTexto(r);
+              const learned = (r.what_learned && r.what_learned !== inst) ? ` [Contexto/Lección: ${r.what_learned}]` : '';
+              trainingSection += `- ✨ ${r.title}: ${inst}${learned}${r.example_question ? ` (Si pregunta: "${r.example_question}" → Decir: "${r.example_response || inst}")` : ''}\n`;
             });
           }
 
