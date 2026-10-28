@@ -15,6 +15,8 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState({});
   const [sending, setSending] = useState({});
+  const [privateText, setPrivateText] = useState({});
+  const [sendingPrivate, setSendingPrivate] = useState({});
   const [generatingAI, setGeneratingAI] = useState({});
   const [filter, setFilter] = useState('todos');
   const [platformFilter, setPlatformFilter] = useState('todos');
@@ -267,6 +269,20 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
       else { const d = await res.json().catch(() => ({})); alert('Error: ' + (d.error || 'no se pudo enviar')); }
     } catch { alert('Error de conexión'); }
     setSending((s) => ({ ...s, [id]: false }));
+  };
+
+  const enviarPrivado = async (id) => {
+    const message = (privateText[id] || '').trim();
+    if (!message) return;
+    setSendingPrivate((s) => ({ ...s, [id]: true }));
+    try {
+      const res = await apiFetch(`${apiBase}/api/comments/${id}/private-reply`, {
+        method: 'POST', body: JSON.stringify({ message }),
+      });
+      if (res.ok) { setPrivateText((r) => ({ ...r, [id]: '' })); loadComments(); }
+      else { const d = await res.json().catch(() => ({})); alert('No se pudo enviar el privado: ' + (d.error || 'error') + '\n\n(Meta solo deja mandar privado poco después de que comentaron y una sola vez.)'); }
+    } catch { alert('Error de conexión'); }
+    setSendingPrivate((s) => ({ ...s, [id]: false }));
   };
 
   const sugerirRespuestaIA = async (id) => {
@@ -1621,6 +1637,34 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                           <Send size={12} />
                           <span>{sending[c.id] ? 'Enviando...' : 'Enviar'}</span>
                         </button>
+                      </div>
+
+                      {/* Mensaje PRIVADO manual (Messenger / Instagram Direct) */}
+                      <div className="pt-2 mt-1 border-t border-dashed border-slate-200 space-y-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 flex items-center gap-1">
+                          ✉️ Mensaje privado {isIG ? '(Instagram Direct)' : '(Messenger)'}:
+                        </span>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={privateText[c.id] || ''}
+                            onChange={(e) => setPrivateText({ ...privateText, [c.id]: e.target.value })}
+                            placeholder="Escribe un mensaje privado para esta persona..."
+                            className="flex-1 text-xs px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/40 focus:outline-none focus:border-emerald-500"
+                            onKeyDown={(e) => e.key === 'Enter' && enviarPrivado(c.id)}
+                          />
+                          <button
+                            onClick={() => enviarPrivado(c.id)}
+                            disabled={sendingPrivate[c.id] || !(privateText[c.id] || '').trim()}
+                            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1 shadow-sm disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                          >
+                            <Send size={12} />
+                            <span>{sendingPrivate[c.id] ? 'Enviando...' : 'Enviar privado'}</span>
+                          </button>
+                        </div>
+                        <p className="text-[9px] text-slate-400 leading-snug">
+                          Le llega por {isIG ? 'Instagram Direct' : 'Messenger'}. Meta solo permite el privado poco después de que comentaron y una sola vez.
+                        </p>
                       </div>
                     </div>
                   </div>

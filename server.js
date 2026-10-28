@@ -6030,6 +6030,20 @@ app.post('/api/comments/:id/ai-reply', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Enviar un MENSAJE PRIVADO (DM) escrito a mano, en respuesta a un comentario.
+// Facebook → Messenger; Instagram → Instagram Direct. Lo registra para mostrarlo en el dashboard.
+app.post('/api/comments/:id/private-reply', async (req, res) => {
+  try {
+    const message = String(req.body.message || '').trim();
+    if (!message) return res.status(400).json({ error: 'Falta el mensaje' });
+    const c = await db.get("SELECT * FROM redes_comments WHERE id = ?", req.params.id);
+    if (!c) return res.status(404).json({ error: 'Comentario no encontrado' });
+    await sendPrivateReply(c.platform || 'instagram', c.comment_id, message);
+    await db.run("UPDATE redes_comments SET private_reply = ? WHERE id = ?", message, req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Cambiar estado de un comentario (visto/resuelto)
 app.post('/api/comments/:id/status', async (req, res) => {
   try {
