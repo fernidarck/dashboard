@@ -515,6 +515,9 @@ async function setup() {
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
+    // Texto del mensaje PRIVADO (DM con el precio) enviado en respuesta a un comentario, para
+    // poder mostrar en el dashboard si ya se respondió por privado y con qué.
+    try { await db.exec("ALTER TABLE redes_comments ADD COLUMN private_reply TEXT"); } catch(e){}
     // Mapeo foto enviada → producto: cuando el bot manda una foto, guardamos su wamid de
     // WhatsApp junto al producto. Si luego el cliente RESPONDE a esa foto ("¿esta es la X?"),
     // resolvemos context.id (wamid citado) → producto, y el bot sabe de qué foto habla
@@ -5915,6 +5918,8 @@ async function sendCommentPrivatePrice(commentId, platform, mediaId, fromName = 
     const waPhone = await getCommentsWaPhone();
     const dm = `¡Hola ${nameTag}! 👋 Vi tu comentario 😊 La *${product.nombre}* está en *${product.precio}*. Hacemos envíos a toda Guatemala con pago contra entrega 🚚 Si querés más fotos o coordinar el tuyo, escribinos por aquí o al WhatsApp 📲 ${waPhone}`;
     await sendPrivateReply(platform, commentId, dm);
+    // Lo registramos para que el dashboard muestre que ya se respondió por privado y con qué.
+    try { await db.run("UPDATE redes_comments SET private_reply = ? WHERE comment_id = ?", dm, commentId); } catch (e) {}
     console.log(`✉️ [DM precio] Enviado a ${fromName}: ${product.nombre} ${product.precio}`);
     return dm;
   } catch (e) {

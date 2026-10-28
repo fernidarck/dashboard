@@ -1548,6 +1548,16 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                       </div>
                     )}
 
+                    {/* Si además se envió el PRECIO por mensaje privado (DM) */}
+                    {c.private_reply && (
+                      <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-1">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 flex items-center gap-1">
+                          <Send size={11} /> Precio enviado por privado {isIG ? '(Instagram Direct)' : '(Messenger)'}:
+                        </span>
+                        <p className="text-xs text-emerald-950 font-medium leading-relaxed">{c.private_reply}</p>
+                      </div>
+                    )}
+
                     {/* Asignar el PRODUCTO de este post → el bot responde con el PRECIO correcto (sin confundirse) */}
                     {c.media_id && (
                       <div className="p-2.5 rounded-2xl bg-orange-50/60 border border-orange-200 space-y-1.5">
