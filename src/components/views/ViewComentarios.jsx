@@ -1568,7 +1568,7 @@ export default function ViewComentarios({ apiBase, authToken, products = [] }) {
                     {c.private_reply && (
                       <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-1">
                         <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 flex items-center gap-1">
-                          <Send size={11} /> Precio enviado por privado {isIG ? '(Instagram Direct)' : '(Messenger)'}:
+                          <Send size={11} /> Mensaje privado enviado {isIG ? '(Instagram Direct)' : '(Messenger)'}:
                         </span>
                         <p className="text-xs text-emerald-950 font-medium leading-relaxed">{c.private_reply}</p>
                       </div>
