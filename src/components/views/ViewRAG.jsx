@@ -43,7 +43,8 @@ const emptyProduct = {
   catalog_link: '',
   whatsapp_link: '',
   ad_ids: '',
-  compatibilidad: ''
+  compatibilidad: '',
+  tabla_precios: ''
 };
 
 // Helper para obtener fotos con descripción de cualquier producto o tarjeta
@@ -59,6 +60,58 @@ function getImagesMeta(item) {
     return [{ url: item.imagen, desc: '' }];
   }
   return [];
+}
+
+// Editor OPCIONAL de tabla de precios por medida (ancho x alto → precio).
+// Solo se usa en productos con muchas variantes que solo cambian de medida (ej. portones).
+// Si el producto no tiene tabla, no afecta nada de lo que ya funciona.
+function TablaPreciosEditor({ value, onChange }) {
+  const [bulk, setBulk] = useState('');
+  let rows = [];
+  try { const p = JSON.parse(value || '[]'); if (Array.isArray(p)) rows = p; } catch { rows = []; }
+  const setRows = (next) => onChange(JSON.stringify(next));
+  const update = (i, k, v) => setRows(rows.map((r, j) => j === i ? { ...r, [k]: v } : r));
+  const add = () => setRows([...rows, { ancho: '', alto: '', precio: '' }]);
+  const remove = (i) => setRows(rows.filter((_, j) => j !== i));
+  const importBulk = () => {
+    const parsed = [];
+    bulk.split(/\n/).forEach(line => {
+      const m = line.match(/(\d{1,3}(?:[.,]\d{1,2})?)\s*[x×*]\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*[=:]\s*(.+)/i);
+      if (m) parsed.push({ ancho: m[1].replace(',', '.'), alto: m[2].replace(',', '.'), precio: m[3].trim() });
+    });
+    if (parsed.length) { setRows([...rows, ...parsed]); setBulk(''); }
+    else alert('No se reconoció ninguna línea.\nUsá el formato (una por línea):\n10 x 8.0 = Q9,800');
+  };
+  return (
+    <div className="space-y-2 bg-sky-50/70 p-4 rounded-3xl border border-sky-200">
+      <label className="text-[10px] font-black text-sky-900 uppercase tracking-widest block">📐 Tabla de precios por medida (opcional)</label>
+      <p className="text-[9px] text-sky-700/80 italic">Solo para productos iguales que cambian de medida (ej. portones). Si no lo necesitás, dejalo vacío y el producto funciona normal. El bot pide ancho y alto y da el precio EXACTO de la tabla.</p>
+      {rows.length > 0 && (
+        <div className="space-y-1">
+          <div className="grid grid-cols-[1fr_1fr_1.4fr_auto] gap-2 px-1">
+            <span className="text-[8px] font-black text-sky-700 uppercase">Ancho</span>
+            <span className="text-[8px] font-black text-sky-700 uppercase">Alto</span>
+            <span className="text-[8px] font-black text-sky-700 uppercase">Precio</span>
+            <span></span>
+          </div>
+          {rows.map((r, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_1.4fr_auto] gap-2 items-center">
+              <input value={r.ancho || ''} onChange={e => update(i, 'ancho', e.target.value)} className="px-3 py-2 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:border-sky-400" placeholder="10" />
+              <input value={r.alto || ''} onChange={e => update(i, 'alto', e.target.value)} className="px-3 py-2 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:border-sky-400" placeholder="8.0" />
+              <input value={r.precio || ''} onChange={e => update(i, 'precio', e.target.value)} className="px-3 py-2 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:border-sky-400" placeholder="Q9,800" />
+              <button type="button" onClick={() => remove(i)} className="px-2 py-1 text-sky-300 hover:text-red-500 font-black" title="Quitar">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button type="button" onClick={add} className="text-[10px] font-black text-sky-700 bg-sky-100 px-3 py-1.5 rounded-xl hover:bg-sky-200 transition-all">+ Agregar medida</button>
+      <div className="pt-2 border-t border-sky-100">
+        <label className="text-[9px] font-black text-sky-700 uppercase tracking-widest block mb-1">Pegar lista (rápido)</label>
+        <textarea rows={3} value={bulk} onChange={e => setBulk(e.target.value)} className="w-full px-3 py-2 bg-white border border-sky-200 rounded-xl text-[11px] font-mono outline-none focus:border-sky-400 resize-none" placeholder={"Una por línea:\n10 x 8.0 = Q9,800\n10 x 8.3 = Q10,100"} />
+        <button type="button" onClick={importBulk} className="mt-1 text-[10px] font-black text-white bg-sky-600 px-3 py-1.5 rounded-xl hover:bg-sky-700 transition-all">Importar lista</button>
+      </div>
+    </div>
+  );
 }
 
 export default function ViewRAG({
@@ -817,6 +870,8 @@ export default function ViewRAG({
                 <p className="text-[9px] text-emerald-700/80 italic ml-2">Para controles/botoneras/repuestos: con qué marcas de motor SÍ sirve. El bot solo lo ofrece a esos motores y no promete lo que no funciona.</p>
               </div>
 
+              <TablaPreciosEditor value={newProduct.tabla_precios || ''} onChange={v => setNewProduct({...newProduct, tabla_precios: v})} />
+
               {/* Subida de fotos con especificación para el producto */}
               {renderImageManager(newProduct, 'new', false)}
 
@@ -907,6 +962,8 @@ export default function ViewRAG({
                 <input type="text" value={editingProduct.compatibilidad || ''} onChange={e => setEditingProduct({...editingProduct, compatibilidad: e.target.value})} className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all text-emerald-900 placeholder:text-emerald-400" placeholder="Ej: LiftMaster, Chamberlain  ·  o: Genius  ·  o: Universal" />
                 <p className="text-[9px] text-emerald-700/80 italic ml-2">Para controles/botoneras/repuestos: con qué marcas de motor SÍ sirve. El bot solo lo ofrece a esos motores y no promete lo que no funciona.</p>
               </div>
+
+              <TablaPreciosEditor value={editingProduct.tabla_precios || ''} onChange={v => setEditingProduct({...editingProduct, tabla_precios: v})} />
 
               {/* Subida de fotos con especificación para el producto */}
               {renderImageManager(editingProduct, 'edit', false)}

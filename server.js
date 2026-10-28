@@ -506,6 +506,10 @@ async function setup() {
     // "los más pedidos") y CAMPAÑA ACTIVA (marca que ese producto está en una campaña que corre).
     try { await db.exec("ALTER TABLE products ADD COLUMN mas_vendido INTEGER DEFAULT 0"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN campana_activa INTEGER DEFAULT 0"); } catch(e){}
+    // TABLA DE PRECIOS POR MEDIDA (opcional, JSON [{ancho,alto,precio}]): solo para productos
+    // con muchas variantes que cambian de medida (ej. portones). Si un producto NO la tiene,
+    // todo funciona EXACTAMENTE igual que antes (campo nulo = comportamiento viejo intacto).
+    try { await db.exec("ALTER TABLE products ADD COLUMN tabla_precios TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE documents ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN lead_alertado INTEGER DEFAULT 0"); } catch(e){}
@@ -3345,6 +3349,52 @@ function normalizeAdIds(v) {
   return arr.map(x => String(x).trim()).filter(Boolean).join(',');
 }
 
+// ─── TABLA DE PRECIOS POR MEDIDA (opcional por producto) ──────────────────────
+// Para productos con muchas variantes que solo cambian de medida (ej. portones).
+// Se guarda como JSON [{ancho, alto, precio}]. Un producto SIN tabla se comporta
+// EXACTAMENTE como antes; nada de esto corre si la columna está vacía.
+function normalizeTablaPrecios(v) {
+  if (v == null || v === '') return '';
+  try {
+    const arr = typeof v === 'string' ? JSON.parse(v) : v;
+    if (!Array.isArray(arr)) return '';
+    const limpio = arr
+      .map(r => ({
+        ancho: String(r.ancho ?? '').trim(),
+        alto: String(r.alto ?? '').trim(),
+        precio: String(r.precio ?? '').trim()
+      }))
+      .filter(r => r.ancho && r.alto && r.precio);
+    return limpio.length ? JSON.stringify(limpio) : '';
+  } catch (e) { return ''; }
+}
+
+// Extrae una medida "ancho x alto" del texto libre del cliente ("10x8", "10 por 8",
+// "ancho 10 alto 8"). Devuelve {ancho, alto} en número, o null si no encuentra dos medidas.
+function parseMedidasTexto(text) {
+  const t = String(text || '').toLowerCase().replace(/,/g, '.');
+  let m = t.match(/(\d{1,3}(?:\.\d{1,2})?)\s*(?:x|por|\*|×)\s*(\d{1,3}(?:\.\d{1,2})?)/);
+  if (m) return { ancho: parseFloat(m[1]), alto: parseFloat(m[2]) };
+  const a = t.match(/ancho\s*(?:de|:)?\s*(\d{1,3}(?:\.\d{1,2})?)/);
+  const h = t.match(/alto\s*(?:de|:)?\s*(\d{1,3}(?:\.\d{1,2})?)/);
+  if (a && h) return { ancho: parseFloat(a[1]), alto: parseFloat(h[1]) };
+  return null;
+}
+
+// Busca en una tabla [{ancho,alto,precio}] la fila EXACTA; si no hay, la más cercana.
+function lookupTablaPrecio(tabla, ancho, alto) {
+  let best = null, bestD = Infinity;
+  for (const r of tabla) {
+    const ra = parseFloat(String(r.ancho).replace(',', '.'));
+    const rh = parseFloat(String(r.alto).replace(',', '.'));
+    if (isNaN(ra) || isNaN(rh)) continue;
+    if (ra === ancho && rh === alto) return { row: r, exact: true };
+    const d = Math.abs(ra - ancho) + Math.abs(rh - alto);
+    if (d < bestD) { bestD = d; best = r; }
+  }
+  return best ? { row: best, exact: false } : null;
+}
+
 // Dado un ad_source_id (el anuncio del que vino el lead), busca el producto
 // que lo tenga listado en su columna ad_ids. Devuelve el producto o null.
 async function getProductByAdId(adSourceId) {
@@ -3855,14 +3905,14 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, tabla_precios } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', normalizeAdIds(ad_ids), compatibilidad || '', ts
+      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, tabla_precios, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', normalizeAdIds(ad_ids), compatibilidad || '', normalizeTablaPrecios(tabla_precios), ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3870,17 +3920,19 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, post_ids, compatibilidad } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, post_ids, compatibilidad, tabla_precios } = req.body;
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     // Flags "más vendido" / "campaña activa": si no vienen en el body, se preservan (para no
     // pisarlos cuando se guarda el producto desde otra pantalla que no los manda).
-    const existingFlags = await db.get("SELECT mas_vendido, campana_activa FROM products WHERE id=?", req.params.id);
+    const existingFlags = await db.get("SELECT mas_vendido, campana_activa, tabla_precios FROM products WHERE id=?", req.params.id);
     const masVendido    = req.body.mas_vendido    !== undefined ? (req.body.mas_vendido    ? 1 : 0) : (existingFlags?.mas_vendido    || 0);
     const campanaActiva = req.body.campana_activa !== undefined ? (req.body.campana_activa ? 1 : 0) : (existingFlags?.campana_activa || 0);
+    // Tabla de precios: si no viene en el body, se preserva (no pisarla desde otra pantalla).
+    const tablaPrecios  = tabla_precios !== undefined ? normalizeTablaPrecios(tabla_precios) : (existingFlags?.tabla_precios || '');
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, post_ids=?, compatibilidad=?, mas_vendido=?, campana_activa=? WHERE id=?",
-      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), normalizeAdIds(post_ids), compatibilidad ?? '', masVendido, campanaActiva, req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, post_ids=?, compatibilidad=?, tabla_precios=?, mas_vendido=?, campana_activa=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), normalizeAdIds(post_ids), compatibilidad ?? '', tablaPrecios, masVendido, campanaActiva, req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4135,6 +4187,10 @@ app.get('/api/rag/context', async (req, res) => {
     const maxChars = req.query.maxChars || 2500;
     if (!q) return res.json({ context: "No se proporcionó consulta", found: false, sources: [] });
 
+    // Medida (ancho x alto) que pidió el cliente, para la búsqueda exacta en productos
+    // con tabla de precios por medida. null si el mensaje no trae dos medidas.
+    const medidasQ = parseMedidasTexto(q);
+
     // ── FOTO CITADA ──────────────────────────────────────────────────────────
     // Si el cliente RESPONDE citando una foto que le mandamos, WhatsApp trae el wamid
     // de esa foto en context.id. Lo resolvemos (sent_media) y le decimos al bot de qué
@@ -4202,7 +4258,7 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
-    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(imagenes,'') as imagenes, COALESCE(imagenes_meta,'') as imagenes_meta, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad, COALESCE(mas_vendido,0) as mas_vendido, COALESCE(campana_activa,0) as campana_activa FROM products WHERE activo = 1");
+    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(imagenes,'') as imagenes, COALESCE(imagenes_meta,'') as imagenes_meta, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad, COALESCE(mas_vendido,0) as mas_vendido, COALESCE(campana_activa,0) as campana_activa, COALESCE(tabla_precios,'') as tabla_precios FROM products WHERE activo = 1");
     // Detecta agotado (sin stock inmediato). Los muebles se fabrican a pedido en ~4 días.
     // 3 estados de stock:
     //  - AGOTADO  → no se ofrece; solo aparece (a pedido) si el cliente lo nombra específicamente.
@@ -4228,6 +4284,27 @@ app.get('/api/rag/context', async (req, res) => {
       // Reglas específicas del producto (antes NO llegaban al bot): ahora sí.
       if (p.reglas_bot && String(p.reglas_bot).trim()) {
         content += ` - REGLA IMPORTANTE (cumplila): ${String(p.reglas_bot).trim()}`;
+      }
+      // TABLA DE PRECIOS POR MEDIDA (opcional): solo para productos con muchas variantes
+      // que cambian de medida (ej. portones). Si el producto NO tiene tabla, nada de esto
+      // corre y se comporta igual que siempre.
+      if (p.tabla_precios && String(p.tabla_precios).trim()) {
+        try {
+          const tabla = JSON.parse(p.tabla_precios);
+          if (Array.isArray(tabla) && tabla.length) {
+            const fmt = tabla.map(r => `${r.ancho}x${r.alto}=${r.precio}`).join('; ');
+            content += ` - 📐 PRECIO POR MEDIDA (ancho x alto): antes de dar precio PEDÍ ancho y alto; dá SOLO el precio de la medida que pida el cliente (NO mandes toda la tabla) y usá EXACTAMENTE estos valores, nunca inventes: ${fmt}.`;
+            // Búsqueda EXACTA contra el mensaje del cliente (lo calcula el sistema, la IA no adivina).
+            if (medidasQ) {
+              const hit = lookupTablaPrecio(tabla, medidasQ.ancho, medidasQ.alto);
+              if (hit && hit.exact) {
+                content += ` - 💰 PRECIO EXACTO para la medida que pidió el cliente (${medidasQ.ancho}x${medidasQ.alto}): ${hit.row.precio}. Dá ESTE precio exacto.`;
+              } else if (hit) {
+                content += ` - 💰 La medida ${medidasQ.ancho}x${medidasQ.alto} no está en la tabla; la más cercana es ${hit.row.ancho}x${hit.row.alto}=${hit.row.precio}. Ofrecela como referencia y aclará que el precio exacto lo confirma un asesor.`;
+              }
+            }
+          }
+        } catch (e) {}
       }
       // Avisar a la IA si el producto tiene VIDEO, para que ofrezca mandarlo y NO diga "no tengo video".
       try {
