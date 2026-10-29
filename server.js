@@ -3794,10 +3794,14 @@ async function computeAutoAttachMedia(clientMsgRaw, botMsgRaw, phoneRaw) {
 }
 
 // n8n lo llama para adjuntar fotos sin depender del criterio del LLM.
+// ⚠️ ANTI-VIDEO-DOBLE: devolvemos SOLO fotos (urls), NUNCA videos. El VIDEO lo manda
+// ÚNICAMENTE el dashboard (bloque anti-doble del webhook, con dedup + compresión).
+// Antes acá también devolvíamos el video → n8n lo mandaba Y el dashboard TAMBIÉN =
+// video doble (caso real: bastones y mesa de noche llegaban 2 veces al cliente).
 app.post('/api/photos/auto-attach', async (req, res) => {
   try {
     const r = await computeAutoAttachMedia(req.body.clientMsg, req.body.botMsg, req.body.phone);
-    res.json(r);
+    res.json({ ...r, videos: [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
