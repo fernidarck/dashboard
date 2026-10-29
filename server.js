@@ -3425,15 +3425,42 @@ function normalizeTablaPrecios(v) {
 }
 
 // Extrae una medida "ancho x alto" del texto libre del cliente ("10x8", "10 por 8",
-// "ancho 10 alto 8"). Devuelve {ancho, alto} en número, o null si no encuentra dos medidas.
+// "ancho 10 alto 8"). La tabla está en PIES, pero la gente suele dar METROS → convertimos.
+// Devuelve {ancho, alto} SIEMPRE en pies (número), más {unidad, convertido}, o null.
 function parseMedidasTexto(text) {
-  const t = String(text || '').toLowerCase().replace(/,/g, '.');
-  let m = t.match(/(\d{1,3}(?:\.\d{1,2})?)\s*(?:x|por|\*|×)\s*(\d{1,3}(?:\.\d{1,2})?)/);
-  if (m) return { ancho: parseFloat(m[1]), alto: parseFloat(m[2]) };
-  const a = t.match(/ancho\s*(?:de|:)?\s*(\d{1,3}(?:\.\d{1,2})?)/);
-  const h = t.match(/alto\s*(?:de|:)?\s*(\d{1,3}(?:\.\d{1,2})?)/);
-  if (a && h) return { ancho: parseFloat(a[1]), alto: parseFloat(h[1]) };
-  return null;
+  const raw = String(text || '').toLowerCase();
+  const t = raw.replace(/,/g, '.');
+
+  // ¿En qué unidad lo escribió el cliente? (la tabla está en pies)
+  const tienePies   = /\bpies?\b|\bft\b|\bfeet\b|\bfoot\b/.test(t) || /\d\s*(?:pies?|ft|['′])\b/.test(t);
+  const tieneCm     = /\bcent[ií]metros?\b/.test(raw) || /\bcms?\b/.test(t) || /\d\s*cms?\b/.test(t);
+  const tieneMetros = !tieneCm && (/\bmetros?\b|\bmts?\b/.test(t) || /\d\s*m(?:ts?|etros?)?\b/.test(t));
+
+  let ancho = null, alto = null;
+  // Permite una unidad entre el número y la "x" (ej. "12 pies x 8", "3 metros x 2.6").
+  const m = t.match(/(\d{1,3}(?:\.\d{1,2})?)\s*(?:pies?|mts?|metros?|cms?|m|['′])?\s*(?:x|por|\*|×)\s*(\d{1,3}(?:\.\d{1,2})?)/);
+  if (m) { ancho = parseFloat(m[1]); alto = parseFloat(m[2]); }
+  else {
+    const a = t.match(/ancho\s*(?:de|:)?\s*(\d{1,3}(?:\.\d{1,2})?)/);
+    const h = t.match(/alto\s*(?:de|:)?\s*(\d{1,3}(?:\.\d{1,2})?)/);
+    if (a && h) { ancho = parseFloat(a[1]); alto = parseFloat(h[1]); }
+  }
+  if (ancho == null || alto == null || isNaN(ancho) || isNaN(alto)) return null;
+
+  // Convertir a PIES. 1 metro = 3.28084 pies; 1 pie = 30.48 cm.
+  let unidad = 'pies', convertido = false;
+  if (tieneCm && !tienePies) {
+    ancho = ancho / 30.48; alto = alto / 30.48; unidad = 'cm'; convertido = true;
+  } else if (tieneMetros && !tienePies) {
+    ancho = ancho * 3.28084; alto = alto * 3.28084; unidad = 'metros'; convertido = true;
+  } else if (!tienePies && !tieneMetros && !tieneCm && ancho < 7 && alto < 7) {
+    // Sin unidad y medidas chicas (<7): casi seguro metros (la tabla va de 8 a 20 pies).
+    ancho = ancho * 3.28084; alto = alto * 3.28084; unidad = 'metros (asumido)'; convertido = true;
+  }
+
+  ancho = Math.round(ancho * 100) / 100;
+  alto  = Math.round(alto  * 100) / 100;
+  return { ancho, alto, unidad, convertido };
 }
 
 // Busca en una tabla [{ancho,alto,precio}] la fila EXACTA; si no hay, la más cercana.
@@ -4348,14 +4375,16 @@ app.get('/api/rag/context', async (req, res) => {
           const tabla = JSON.parse(p.tabla_precios);
           if (Array.isArray(tabla) && tabla.length) {
             const fmt = tabla.map(r => `${r.ancho}x${r.alto}=${r.precio}`).join('; ');
-            content += ` - 📐 PRECIO POR MEDIDA (ancho x alto): antes de dar precio PEDÍ ancho y alto; dá SOLO el precio de la medida que pida el cliente (NO mandes toda la tabla) y usá EXACTAMENTE estos valores, nunca inventes: ${fmt}.`;
+            content += ` - 📐 PRECIO POR MEDIDA (ancho x alto): antes de dar precio PEDÍ ancho y alto; dá SOLO el precio de la medida que pida el cliente (NO mandes toda la tabla) y usá EXACTAMENTE estos valores, nunca inventes: ${fmt}. Las medidas de la tabla están en PIES. Si el cliente las da en METROS, convertí a pies (1 metro = 3.28 pies; ej. 3 m = 9.8 pies, 2.6 m = 8.5 pies) y usá la medida más cercana; si las da en centímetros, dividí entre 30.48. Ante la duda, confirmá la medida con el cliente.`;
             // Búsqueda EXACTA contra el mensaje del cliente (lo calcula el sistema, la IA no adivina).
+            // medidasQ ya viene convertido a PIES aunque el cliente haya escrito metros/cm.
             if (medidasQ) {
+              const conv = medidasQ.convertido ? ` (el cliente la dio en ${medidasQ.unidad}, ya convertida a pies)` : '';
               const hit = lookupTablaPrecio(tabla, medidasQ.ancho, medidasQ.alto);
               if (hit && hit.exact) {
-                content += ` - 💰 PRECIO EXACTO para la medida que pidió el cliente (${medidasQ.ancho}x${medidasQ.alto}): ${hit.row.precio}. Dá ESTE precio exacto.`;
+                content += ` - 💰 PRECIO EXACTO para la medida que pidió el cliente (${medidasQ.ancho}x${medidasQ.alto} pies${conv}): ${hit.row.precio}. Dá ESTE precio exacto.`;
               } else if (hit) {
-                content += ` - 💰 La medida ${medidasQ.ancho}x${medidasQ.alto} no está en la tabla; la más cercana es ${hit.row.ancho}x${hit.row.alto}=${hit.row.precio}. Ofrecela como referencia y aclará que el precio exacto lo confirma un asesor.`;
+                content += ` - 💰 La medida ${medidasQ.ancho}x${medidasQ.alto} pies${conv} no está exacta en la tabla; la más cercana es ${hit.row.ancho}x${hit.row.alto}=${hit.row.precio}. Ofrecela como referencia y aclará que el precio exacto lo confirma un asesor.`;
               }
             }
           }
