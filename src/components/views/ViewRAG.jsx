@@ -319,6 +319,14 @@ export default function ViewRAG({
     });
   };
 
+  // Filtro en vivo para EDITAR: lo que escribís en el buscador también filtra la lista editable
+  // (productos / tarjetas / web) por nombre, categoría y texto. El botón ✨ sigue haciendo la prueba del bot.
+  const q = testQuery.trim().toLowerCase();
+  const matchAny = (...vals) => !q || vals.some(v => (v ?? '').toString().toLowerCase().includes(q));
+  const filteredProducts = products.filter(p => matchAny(p.nombre, p.categoria, p.descripcion, p.compatibilidad, p.reglas_bot, p.precio));
+  const filteredDocuments = documents.filter(d => matchAny(d.name, d.category, d.content));
+  const filteredWebProducts = webProducts.filter(p => matchAny(p.nombre, p.categoria, p.precio, p.precio_manual, p.reglas_bot));
+
   // Categorías: las por defecto + las que ya usás en tus productos (podés escribir nuevas).
   const allProductCats = [...new Set([...PRODUCT_CATEGORIES, ...products.map(p => p.categoria).filter(Boolean)])];
   // Categorías de tarjetas: las por defecto + las que ya usás en tarjetas + las de productos (campo libre).
@@ -438,7 +446,7 @@ export default function ViewRAG({
               value={testQuery}
               onChange={e => { setTestQuery(e.target.value); if (!e.target.value.trim()) setTestResults([]); }}
               onKeyDown={e => e.key === 'Enter' && handleRunSearch()}
-              placeholder="Buscar en RAG..."
+              placeholder="Buscar para editar… (✨ = probar bot)"
               className="pl-10 pr-2 py-3 bg-transparent text-xs font-bold outline-none italic w-full sm:w-44 min-w-0"
             />
             <button
@@ -504,9 +512,14 @@ export default function ViewRAG({
             <div className="bg-white p-10 rounded-3xl border border-slate-100 text-center">
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin productos aún — dale a "Sincronizar tienda"</p>
             </div>
+          ) : filteredWebProducts.length === 0 ? (
+            <div className="bg-white p-10 rounded-3xl border border-slate-100 text-center">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Ningún producto web coincide con "{testQuery}"</p>
+              <p className="text-xs text-slate-300 mt-1">Borrá el buscador (la X) para ver todos otra vez.</p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {webProducts.map(p => (
+              {filteredWebProducts.map(p => (
                 <div key={p.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
                   <div>
                     <span className="text-[9px] font-black text-[#FF6B00] uppercase tracking-wider block truncate">{p.categoria || 'General'}</span>
@@ -562,7 +575,7 @@ export default function ViewRAG({
         </div>
       ) : ragSubTab === 'conocimiento' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {documents.map(doc => {
+          {filteredDocuments.map(doc => {
             const cardImgs = getImagesMeta(doc);
             return (
               <div key={doc.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group relative flex flex-col justify-between">
@@ -606,11 +619,20 @@ export default function ViewRAG({
               </div>
             );
           })}
-          {documents.length === 0 && (
+          {filteredDocuments.length === 0 && (
             <div className="col-span-3 py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
               <BookOpen size={32} className="mx-auto text-slate-300 mb-2" />
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin tarjetas de conocimiento</p>
-              <p className="text-xs text-slate-300 mt-1">Crea una tarjeta con información de precios, garantías, visacuotas o instalación.</p>
+              {q ? (
+                <>
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Ninguna tarjeta coincide con "{testQuery}"</p>
+                  <p className="text-xs text-slate-300 mt-1">Borrá el buscador (la X) para ver todas otra vez.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin tarjetas de conocimiento</p>
+                  <p className="text-xs text-slate-300 mt-1">Crea una tarjeta con información de precios, garantías, visacuotas o instalación.</p>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -633,7 +655,7 @@ export default function ViewRAG({
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {products.map(prod => {
+          {filteredProducts.map(prod => {
             const prodImgs = getImagesMeta(prod);
             return (
               <div key={prod.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group overflow-hidden flex flex-col">
@@ -713,11 +735,20 @@ export default function ViewRAG({
               </div>
             );
           })}
-          {products.length === 0 && (
+          {filteredProducts.length === 0 && (
             <div className="col-span-4 py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
               <ShoppingBag size={32} className="mx-auto text-slate-300 mb-2" />
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin productos en catálogo</p>
-              <p className="text-xs text-slate-300 mt-1">Agrega motores, cremalleras, controles o kits con sus precios y fotos.</p>
+              {q ? (
+                <>
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Ningún producto coincide con "{testQuery}"</p>
+                  <p className="text-xs text-slate-300 mt-1">Borrá el buscador (la X) para ver todos otra vez.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sin productos en catálogo</p>
+                  <p className="text-xs text-slate-300 mt-1">Agrega motores, cremalleras, controles o kits con sus precios y fotos.</p>
+                </>
+              )}
             </div>
           )}
         </div>
