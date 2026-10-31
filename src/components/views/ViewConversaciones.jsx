@@ -92,6 +92,24 @@ const getChannelIcon = (origen, channelPhone) => {
   return '🌟';
 };
 
+// Avatar tipo "foto de perfil": WhatsApp no nos da la foto real del cliente (privacidad),
+// así que usamos iniciales + un color fijo derivado del nombre (como Gmail/WhatsApp Web).
+// Mismo nombre → mismo color SIEMPRE, para reconocer al cliente de un vistazo.
+const avatarInitials = (name) => {
+  const s = String(name || '').replace(/cliente\s*whatsapp/i, '').trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return s.slice(0, 2).toUpperCase();
+};
+const avatarColor = (name) => {
+  const s = String(name || '').replace(/cliente\s*whatsapp/i, '').trim();
+  if (!s) return '#64748b'; // slate-500 para contactos sin nombre
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return `hsl(${h}, 60%, 45%)`; // saturación/luz fijas → texto blanco siempre legible
+};
+
 // Helper: resuelve y normaliza medios (imágenes, videos, audios, documentos)
 // con compatibilidad de aliases, MIME types y resolución de URLs localhost/uploads
 function getMediaInfo(m) {
@@ -721,12 +739,15 @@ export default function ViewConversaciones({
               >
                 <div className="flex items-center space-x-3 mb-2">
                   <div className="relative shrink-0">
-                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shadow-sm ${
-                      lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
-                      isBuyer ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 ring-2 ring-emerald-400' :
-                      lead.botActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-900 text-[#FF6B00]'
-                    }`}>
-                      {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : isBuyer ? '🏆' : lead.botActive ? <Bot size={14} /> : (lead.nombre?.[0] || '?')}
+                    <div
+                      className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs shadow-sm ${
+                        lead.priority === 'urgent' ? 'bg-red-100 text-red-600' :
+                        isBuyer ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 ring-2 ring-emerald-400' :
+                        'text-white'
+                      }`}
+                      style={(lead.priority === 'urgent' || isBuyer) ? undefined : { backgroundColor: avatarColor(lead.nombre) }}
+                    >
+                      {lead.priority === 'urgent' ? <AlertTriangle size={14} /> : isBuyer ? '🏆' : avatarInitials(lead.nombre)}
                     </div>
                     {/* Badge con el ícono del canal de origen */}
                     <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-100 leading-none" title={badgeInfo.label}>
@@ -734,6 +755,12 @@ export default function ViewConversaciones({
                     </span>
                     {lead.priority === 'urgent' && (
                       <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-ping" />
+                    )}
+                    {lead.priority !== 'urgent' && !isBuyer && (
+                      <span
+                        className={`absolute -top-1 -right-1 h-3 w-3 rounded-full border-2 border-white ${lead.botActive ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                        title={lead.botActive ? 'Bot activo' : 'Modo manual'}
+                      />
                     )}
                     {isBuyer && (
                       <span className="absolute -top-1 -left-1 h-4 w-4 bg-emerald-500 text-white text-[8px] font-black rounded-full flex items-center justify-center shadow-xs border border-white" title="Cliente que ya compró">
@@ -866,11 +893,12 @@ export default function ViewConversaciones({
                   className={`h-10 w-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 relative cursor-pointer transition-all shadow-xs ${
                     isBuyer
                       ? 'bg-emerald-600 text-white border-2 border-emerald-400 shadow-md shadow-emerald-200'
-                      : 'bg-slate-800 text-[#FF6B00] border border-[#FF6B00]/40 hover:border-[#FF6B00]'
+                      : 'text-white hover:brightness-110'
                   }`}
+                  style={isBuyer ? undefined : { backgroundColor: avatarColor(selectedLead.nombre) }}
                   title="Ver ficha del lead"
                 >
-                  {isBuyer ? '🏆' : (selectedLead.nombre?.[0] || 'OC')}
+                  {isBuyer ? '🏆' : avatarInitials(selectedLead.nombre)}
                   <span className="absolute -bottom-1 -right-1 text-[10px] bg-white rounded-full px-0.5 shadow-xs border border-slate-200 leading-none">
                     {getChannelIcon(selectedLead.origen)}
                   </span>
