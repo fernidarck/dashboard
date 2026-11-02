@@ -2948,6 +2948,33 @@ app.get('/api/delivery/last', async (req, res) => {
   } catch (err) { res.json({ ok: false, error: err.message }); }
 });
 
+// CHEQUESITOS TIPO WHATSAPP: devuelve el estado de los ÚLTIMOS mensajes SALIENTES a este
+// cliente según YCloud (accepted/sent/delivered/read/failed). El front casa cada burbuja
+// saliente por su texto y pinta ✓ (enviado) / ✓✓ gris (entregado) / ✓✓ azul (leído).
+// Funciona para mensajes del panel Y del bot (todos pasan por YCloud). No necesita webhook.
+app.get('/api/delivery/statuses', async (req, res) => {
+  try {
+    const cleanPhone = String(req.query.phone || '').replace(/\D/g, '');
+    if (!cleanPhone) return res.json({ ok: false, items: [] });
+    const cleanChan = String(req.query.channel_phone || '').replace(/\D/g, '');
+    let apiKey = null;
+    if (cleanChan) { const ch = await db.get("SELECT api_key FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? AND active = 1", cleanChan); apiKey = ch?.api_key; }
+    if (!apiKey) apiKey = await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
+    if (!apiKey) return res.json({ ok: false, items: [] });
+    const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
+    const url = `https://api.ycloud.com/v2/whatsapp/messages?filter.to=%2B${cleanPhone}&limit=${limit}&sortBy=${encodeURIComponent('createTime desc')}`;
+    const r = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    const j = await r.json();
+    const items = (j.items || j.data || []).map(m => ({
+      status: m.status || null,
+      type: m.type || null,
+      body: String(m.text?.body || m.image?.caption || m.video?.caption || m.document?.caption || '').trim(),
+      createTime: m.createTime || m.sendTime || null
+    }));
+    res.json({ ok: true, items });
+  } catch (err) { res.json({ ok: false, items: [], error: err.message }); }
+});
+
 app.get('/api/bot/channel-key', async (req, res) => {
   try {
     const phone = req.query.phone;

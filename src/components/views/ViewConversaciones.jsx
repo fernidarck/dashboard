@@ -110,6 +110,16 @@ const avatarColor = (name) => {
   return `hsl(${h}, 60%, 45%)`; // saturación/luz fijas → texto blanco siempre legible
 };
 
+// Chequesitos tipo WhatsApp según el estado que reporta YCloud para un mensaje SALIENTE.
+// ✓ enviado · ✓✓ gris entregado · ✓✓ azul leído · ⚠️ falló. Sin estado → no muestra nada.
+const DeliveryTicks = ({ status }) => {
+  if (!status) return null;
+  if (status === 'failed')    return <span title="No se pudo enviar" className="text-rose-400 normal-case">⚠️</span>;
+  if (status === 'read')      return <span title="Leído" className="text-sky-400 font-black tracking-[-3px] normal-case">✓✓</span>;
+  if (status === 'delivered') return <span title="Entregado" className="text-slate-300 font-black tracking-[-3px] normal-case">✓✓</span>;
+  return <span title="Enviado" className="text-slate-400 font-black normal-case">✓</span>; // sent / accepted
+};
+
 // Helper: resuelve y normaliza medios (imágenes, videos, audios, documentos)
 // con compatibilidad de aliases, MIME types y resolución de URLs localhost/uploads
 function getMediaInfo(m) {
@@ -171,6 +181,7 @@ export default function ViewConversaciones({
   onSendMessage,
   onSendDocument,
   onCheckDelivery,
+  onFetchStatuses,
   onToggleBot,
   onSavePedido,
   onUpdateLead,
@@ -180,6 +191,7 @@ export default function ViewConversaciones({
 }) {
   const [messageText, setMessageText] = useState('');
   const [deliveryWarn, setDeliveryWarn] = useState(null); // {ventana24h, errorMessage} si el último NO llegó
+  const [msgStatuses, setMsgStatuses] = useState([]); // chequesitos: estados YCloud de los mensajes salientes
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState('cotizador'); // 'cotizador' | 'perfil'
   const [mobileShowChat, setMobileShowChat] = useState(false);
@@ -232,6 +244,38 @@ export default function ViewConversaciones({
     })();
     return () => { cancel = true; };
   }, [selectedLead?.id, messages.length, onCheckDelivery]);
+
+  // CHEQUESITOS: traer el estado (sent/delivered/read) de los mensajes salientes desde YCloud.
+  // Se refresca al abrir el chat, cuando llegan mensajes, y cada 10s (para que "entregado" pase
+  // a "leído" solo mientras tenés el chat abierto).
+  useEffect(() => {
+    const phone = selectedLead?.phone || selectedLead?.telefono;
+    if (!phone || !onFetchStatuses) { setMsgStatuses([]); return; }
+    let cancel = false;
+    const load = async () => {
+      const r = await onFetchStatuses(phone, selectedLead?.channel_phone);
+      if (!cancel && r && r.ok && Array.isArray(r.items)) setMsgStatuses(r.items);
+    };
+    load();
+    const id = setInterval(load, 10000);
+    return () => { cancel = true; clearInterval(id); };
+  }, [selectedLead?.id, messages.length, onFetchStatuses]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mapa texto-normalizado → estado (el más reciente gana; YCloud viene ordenado desc).
+  const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const statusByBody = useMemo(() => {
+    const map = {};
+    for (const it of msgStatuses) {
+      const k = norm(it.body);
+      if (k && !(k in map)) map[k] = it.status;
+    }
+    return map;
+  }, [msgStatuses]);
+  const lastOutStatus = msgStatuses.length ? msgStatuses[0].status : null; // último saliente real
+  const lastOutIdx = useMemo(() => {
+    for (let k = messages.length - 1; k >= 0; k--) if (messages[k].sender !== 'client') return k;
+    return -1;
+  }, [messages]);
 
   const activeLabel = useMemo(() => {
     return getLeadLabel(selectedLead);
@@ -1331,10 +1375,18 @@ export default function ViewConversaciones({
                       );
                     })()}
 
-                    {/* Timestamp */}
-                    <p className={`px-4 pb-2 text-[8px] font-bold uppercase tracking-widest ${isClient ? 'text-slate-400' : 'text-slate-400'}`}>
-                      {m.timestamp || 'Ahora'}
-                    </p>
+                    {/* Timestamp + chequesitos de entrega (solo mensajes salientes) */}
+                    <div className="px-4 pb-2 flex items-center justify-end gap-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">
+                      <span>{m.timestamp || 'Ahora'}</span>
+                      {!isClient && (() => {
+                        const body = getMediaInfo(m).text;
+                        const bk = norm(body);
+                        // Casa por texto; si no hay texto (media) o no matchea, usa el estado del
+                        // ÚLTIMO saliente solo para la última burbuja saliente (evita falsos).
+                        const st = (bk && statusByBody[bk]) || (i === lastOutIdx ? lastOutStatus : null);
+                        return <DeliveryTicks status={st} />;
+                      })()}
+                    </div>
                   </div>
                 </div>
               );

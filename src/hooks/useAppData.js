@@ -534,6 +534,16 @@ export function useAppData(apiBase, authToken) {
     } catch { return null; }
   }, [apiFetch, apiBase]);
 
+  // Chequesitos tipo WhatsApp: estado (sent/delivered/read/failed) de los mensajes salientes.
+  const fetchDeliveryStatuses = useCallback(async (phone, channelPhone) => {
+    try {
+      const qs = `phone=${encodeURIComponent(phone || '')}&channel_phone=${encodeURIComponent(channelPhone || '')}`;
+      const res = await apiFetch(`${apiBase}/api/delivery/statuses?${qs}`);
+      if (res.ok) return await res.json();
+      return { ok: false, items: [] };
+    } catch { return { ok: false, items: [] }; }
+  }, [apiFetch, apiBase]);
+
   // Marcar un chat como LEÍDO al abrirlo (quita el indicador de "no leído").
   const markLeadRead = useCallback(async (leadId) => {
     if (!leadId) return;
@@ -1046,7 +1056,7 @@ export function useAppData(apiBase, authToken) {
     fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
-    sendMessage, sendDocument, checkLastDelivery, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
+    sendMessage, sendDocument, checkLastDelivery, fetchDeliveryStatuses, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,

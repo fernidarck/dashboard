@@ -76,7 +76,7 @@ export default function App() {
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
     fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
-    sendMessage, sendDocument, checkLastDelivery, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
+    sendMessage, sendDocument, checkLastDelivery, fetchDeliveryStatuses, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
@@ -530,6 +530,7 @@ export default function App() {
                 onSendMessage={sendMessage}
                 onSendDocument={sendDocument}
                 onCheckDelivery={checkLastDelivery}
+                onFetchStatuses={fetchDeliveryStatuses}
                 onToggleBot={handleToggleBot}
                 onSavePedido={savePedido}
                 onUpdateLead={updateLead}
