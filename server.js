@@ -1566,7 +1566,7 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
     // emitir #PEDIDO_LISTO (el modelo no siempre obedece esa regla). Detectamos ese cierre en
     // las PROPIAS palabras del bot (ej. "vamos a coordinar el envío", "lo enviamos el lunes",
     // "ya tenemos tu guía") para no perder la venta en la lista de Pedidos.
-    const CIERRE_BOT = /coordinar\s+(el\s+|tu\s+)?env[ií]o|lo\s+enviamos|lo\s+mandamos|te\s+lo\s+env[ií]|queda\s+(registrad|anotad)|pago\s+contra\s+entrega|program(amos|ar[eé])\s+(el\s+|tu\s+)?env[ií]o|gu[ií]a\s+de\s+env[ií]o|agencia\s+de\s+encomienda|sale\s+el\s+(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado)/i;
+    const CIERRE_BOT = /coordinar\s+(el\s+|tu\s+)?env[ií]o|lo\s+enviamos|lo\s+mandamos|te\s+lo\s+env[ií]|qued[aoó]\s+(registrad|anotad)|(pedido|orden)\s+(qued[aoó]|est[aá]\s+(registrad|anotad)|registrad|anotad)|un?\s+asesor\s+(lo|la|le|te)\s+(contactar|llamar|atender|escribir)|pago\s+contra\s+entrega|program(amos|ar[eé])\s+(el\s+|tu\s+)?env[ií]o|gu[ií]a\s+de\s+env[ií]o|agencia\s+de\s+encomienda|sale\s+el\s+(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado)/i;
     const hayCierreBot = CIERRE_BOT.test(String(botMsg || ''));
 
     // forced = n8n ya confirmó el pedido (etiqueta PEDIDO_LISTO). Si no viene forzado, exige
