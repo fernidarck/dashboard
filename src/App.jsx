@@ -76,7 +76,7 @@ export default function App() {
     fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
     fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
-    sendMessage, sendDocument, checkLastDelivery, updatePedidoEstado, savePedido, deletePedido,
+    sendMessage, sendDocument, checkLastDelivery, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
@@ -123,7 +123,14 @@ export default function App() {
     const numId = !isNaN(Number(id)) ? Number(id) : id;
     setActiveTab('conversaciones');
     setSelectedChatId(numId);
+    markLeadRead(numId);
     setOpenChatNonce(n => n + 1);
+  };
+
+  // Seleccionar un chat desde la lista de Conversaciones: lo marca como leído (quita el "no leído").
+  const handleSelectChat = (id) => {
+    setSelectedChatId(id);
+    markLeadRead(id);
   };
 
   // Abrir chat automáticamente si viene en los parámetros de la URL (ej. notificación push: /?chat=123)
@@ -210,6 +217,16 @@ export default function App() {
     const lead = leads.find(l => String(l.id) === String(selectedChatId));
     if (lead) setSelectedLead(lead);
   }, [selectedChatId, leads]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Si estás viendo Conversaciones y entra un mensaje nuevo al chat ABIERTO, marcarlo
+  // leído solo (como WhatsApp Web: el chat que tenés abierto no queda en "no leído").
+  useEffect(() => {
+    if (activeTab !== 'conversaciones' || !selectedChatId) return;
+    const lead = leads.find(l => String(l.id) === String(selectedChatId));
+    if (lead && (lead.lastClientMsgId || 0) > (lead.last_read_msg_id || 0)) {
+      markLeadRead(selectedChatId);
+    }
+  }, [leads, selectedChatId, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll behavior on new messages
   useEffect(() => {
@@ -509,7 +526,7 @@ export default function App() {
                 selectedChatId={selectedChatId}
                 openChatNonce={openChatNonce}
                 selectedLead={selectedLead}
-                onSelectChat={setSelectedChatId}
+                onSelectChat={handleSelectChat}
                 onSendMessage={sendMessage}
                 onSendDocument={sendDocument}
                 onCheckDelivery={checkLastDelivery}

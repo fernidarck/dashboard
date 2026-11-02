@@ -519,6 +519,13 @@ async function setup() {
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaUrl TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE messages ADD COLUMN mediaType TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN channel_phone TEXT"); } catch(e){}
+    // "No leído" tipo WhatsApp: guardamos el id del último mensaje que el operador YA vio al
+    // abrir el chat. unread = hay un mensaje de cliente con id mayor a este. Al crear la columna
+    // (una sola vez) marcamos como leídos TODOS los chats existentes para no inundar al abrir.
+    try {
+      await db.exec("ALTER TABLE leads ADD COLUMN last_read_msg_id INTEGER DEFAULT NULL");
+      await db.exec("UPDATE leads SET last_read_msg_id = COALESCE((SELECT MAX(id) FROM messages m WHERE m.lead_id = leads.id), 0)");
+    } catch(e){}
     // Texto del mensaje PRIVADO (DM con el precio) enviado en respuesta a un comentario, para
     // poder mostrar en el dashboard si ya se respondió por privado y con qué.
     try { await db.exec("ALTER TABLE redes_comments ADD COLUMN private_reply TEXT"); } catch(e){}
@@ -1314,7 +1321,8 @@ app.get('/api/leads', async (req, res) => {
         (SELECT timestamp FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageTime,
         (SELECT sender FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMessageSender,
         (SELECT id FROM messages m WHERE m.lead_id = l.id AND m.sender = 'client' ORDER BY id DESC LIMIT 1) as lastClientMsgId,
-        (SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMsgId
+        (SELECT id FROM messages m WHERE m.lead_id = l.id ORDER BY id DESC LIMIT 1) as lastMsgId,
+        (SELECT COUNT(*) FROM messages m WHERE m.lead_id = l.id AND m.sender = 'client' AND m.id > COALESCE(l.last_read_msg_id, 0)) as unreadCount
       FROM leads l
       WHERE l.archived = ?
     `;
@@ -1367,6 +1375,22 @@ app.get('/api/leads', async (req, res) => {
 
     const rows = await db.all(query, ...params);
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marcar un chat como LEÍDO: guarda el id del último mensaje como "ya visto".
+// Lo llama el frontend al abrir la conversación. Así el indicador de "no leído" desaparece.
+app.post('/api/leads/:id/read', async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id, 10);
+    if (!leadId) return res.status(400).json({ error: "Falta leadId" });
+    await db.run(
+      "UPDATE leads SET last_read_msg_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE lead_id = ?) WHERE id = ?",
+      leadId, leadId
+    );
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

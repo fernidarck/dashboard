@@ -534,6 +534,17 @@ export function useAppData(apiBase, authToken) {
     } catch { return null; }
   }, [apiFetch, apiBase]);
 
+  // Marcar un chat como LEÍDO al abrirlo (quita el indicador de "no leído").
+  const markLeadRead = useCallback(async (leadId) => {
+    if (!leadId) return;
+    // Optimista: el badge desaparece YA, sin esperar al server.
+    setLeads(prev => prev.map(l => l.id === leadId
+      ? { ...l, last_read_msg_id: Math.max(l.lastMsgId || 0, l.last_read_msg_id || 0) }
+      : l));
+    try { await apiFetch(`${apiBase}/api/leads/${leadId}/read`, { method: 'POST' }); }
+    catch (e) { console.error('No se pudo marcar leído:', e); }
+  }, [apiFetch, apiBase]);
+
   const sendDocument = useCallback(async (leadId, file, caption = '') => {
     try {
       const isImg = file?.type?.startsWith('image/');
@@ -1035,7 +1046,7 @@ export function useAppData(apiBase, authToken) {
     fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
-    sendMessage, sendDocument, checkLastDelivery, updatePedidoEstado, savePedido, deletePedido,
+    sendMessage, sendDocument, checkLastDelivery, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,

@@ -722,6 +722,7 @@ export default function ViewConversaciones({
             const leadLabel = getLeadLabel(lead);
             const isBuyer = leadLabel?.id === 'Venta';
             const isSelected = selectedChatId === lead.id;
+            const unread = Number(lead.unreadCount || 0);        // mensajes del cliente sin leer
 
             return (
               <button
@@ -771,7 +772,7 @@ export default function ViewConversaciones({
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : isBuyer ? 'text-emerald-950 font-black' : 'text-slate-800'}`}>{lead.nombre}</p>
+                        <p className={`text-xs font-black truncate ${lead.priority === 'urgent' ? 'text-red-700' : isBuyer ? 'text-emerald-950 font-black' : unread ? 'text-slate-900' : 'text-slate-800'}`}>{lead.nombre}</p>
                         {isBuyer ? (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-600 text-white shadow-xs shrink-0 tracking-tight">
                             🏆 Ya compró
@@ -784,7 +785,14 @@ export default function ViewConversaciones({
                           />
                         )}
                       </div>
-                      {lead.lastMessageTime && <span className="text-[8px] font-bold text-slate-400 tabular-nums shrink-0 ml-1">{lead.lastMessageTime}</span>}
+                      <div className="flex items-center gap-1 shrink-0 ml-1">
+                        {lead.lastMessageTime && <span className={`text-[8px] font-bold tabular-nums ${unread ? 'text-emerald-600' : 'text-slate-400'}`}>{lead.lastMessageTime}</span>}
+                        {unread > 0 && (
+                          <span className="min-w-[16px] h-[16px] px-1 inline-flex items-center justify-center text-[9px] font-black bg-emerald-500 text-white rounded-full shadow-sm" title={`${unread} mensaje(s) sin leer`}>
+                            {unread > 9 ? '9+' : unread}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <p className="text-[10px] text-slate-400 font-bold tabular-nums truncate">{lead.phone || 'Sin número'}</p>
@@ -818,7 +826,7 @@ export default function ViewConversaciones({
                   <p className="text-[9px] text-red-500 font-bold italic truncate mt-1 leading-none">⚠️ {lead.handoff_reason}</p>
                 )}
                 {!lead.handoff_reason && (
-                  <p className="text-[11px] text-slate-500 truncate mt-1 font-medium italic leading-none">
+                  <p className={`text-[11px] truncate mt-1 italic leading-none ${unread ? 'text-slate-900 font-bold not-italic' : 'text-slate-500 font-medium'}`}>
                     {lead.lastMessage ? `"${lead.lastMessage}"` : "Sin mensajes recientes"}
                   </p>
                 )}
