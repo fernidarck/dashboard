@@ -769,7 +769,7 @@ export default function StickerPrint({
       payAmount: px(isHorizontal ? 19.5 : 22),
       nitText: px(11),
       notesText: px(10.5),
-      qrSize: rawPx(isHorizontal ? 96 : 120),
+      qrSize: rawPx(isHorizontal ? 82 : 120),
       webUrl: Math.round(px(isHorizontal ? 12.5 : 13.5) * socialBoost),
       socialHandle: Math.round(px(isHorizontal ? 10 : 13) * socialBoost),
       socialNet: px(10),
