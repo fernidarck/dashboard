@@ -1,26 +1,24 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, Printer, Save, Check, RefreshCw, ZoomIn, ZoomOut,
-  Tag, Truck, MapPin, Phone, User, Package,
-  DollarSign, FileText, Calendar, ExternalLink, Sliders,
-  CheckCircle2, Trash2, QrCode, Globe, Share2, MessageCircle,
-  HelpCircle, AlertTriangle, Eye, Smartphone, Download, Contrast, Type
+  Tag, User, Package, FileText, ExternalLink, Sliders,
+  CheckCircle2, Trash2, Globe, Eye, Smartphone, Download,
+  Contrast, Type, ArrowUpDown, ArrowLeftRight, LayoutGrid
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
 import { ONE_CONTROL_LOGO_BASE64 } from '../assets/logoBase64.js';
 
-// ── TAMAÑOS PREESTABLECIDOS DE STICKERS ─────────────────────────────────────
+// ── TAMAÑOS BASE DE STICKERS (SE ADAPTAN A VERTICAL U HORIZONTAL) ───────────
 export const STICKER_SIZES = [
   {
     id: '10x15',
     name: '100 x 150 mm (10 x 15 cm)',
     badge: 'Guía Grande 4"x6" ⭐',
-    description: 'Estándar grande para paquetería e impresoras térmicas (100x150 mm).',
+    description: 'Estándar grande para paquetería e impresoras térmicas.',
     widthMm: 100,
     heightMm: 150,
-    aspect: '100 / 150',
-    density: 'spacious'
+    defaultOrientation: 'vertical'
   },
   {
     id: '10x10',
@@ -29,8 +27,7 @@ export const STICKER_SIZES = [
     description: 'Ideal para cajas medianas y cajas de motores.',
     widthMm: 100,
     heightMm: 100,
-    aspect: '100 / 100',
-    density: 'medium'
+    defaultOrientation: 'vertical'
   },
   {
     id: '10x7.5',
@@ -39,8 +36,7 @@ export const STICKER_SIZES = [
     description: 'Tamaño versátil y balanceado para despachos y cajas.',
     widthMm: 100,
     heightMm: 75,
-    aspect: '100 / 75',
-    density: 'compact'
+    defaultOrientation: 'horizontal'
   },
   {
     id: '7.5x5',
@@ -49,28 +45,25 @@ export const STICKER_SIZES = [
     description: 'Sticker compacto para paquetes pequeños o accesorios.',
     widthMm: 75,
     heightMm: 50,
-    aspect: '75 / 50',
-    density: 'small'
+    defaultOrientation: 'horizontal'
   },
   {
     id: '5x2.5',
     name: '50 x 25 mm (5 x 2.5 cm)',
     badge: 'Mini / Controles 2"x1"',
-    description: 'Mini etiqueta para pegar directo en cajas de controles remotos.',
+    description: 'Mini etiqueta para cajas de controles remotos.',
     widthMm: 50,
     heightMm: 25,
-    aspect: '50 / 25',
-    density: 'tiny'
+    defaultOrientation: 'horizontal'
   },
   {
     id: 'custom',
     name: 'Personalizado (mm)',
     badge: 'Medida Libre',
-    description: 'Especifica ancho y alto exactos en milímetros (ej. 100 x 150).',
+    description: 'Especifica ancho y alto exactos en milímetros.',
     widthMm: 100,
     heightMm: 150,
-    aspect: '100 / 150',
-    density: 'spacious'
+    defaultOrientation: 'vertical'
   }
 ];
 
@@ -89,14 +82,14 @@ const CODE39_ENCODINGS = {
   '/': '010100010', '+': '010001010', '%': '000101010', '*': '010010100'
 };
 
-function generateBarcodeSvg(text, height = 26) {
+function generateBarcodeSvg(text, height = 24) {
   const clean = '*' + String(text || 'OC-PEDIDO').toUpperCase().replace(/[^0-9A-Z\-\. \$\/\+\%]/g, '') + '*';
-  let narrow = 1.8;
-  let wide = 4.5;
-  let gap = 1.8;
+  const narrow = 1.8;
+  const wide = 4.4;
+  const gap = 1.8;
 
-  let rects = [];
-  let currentX = 6;
+  const rects = [];
+  let currentX = 4;
 
   for (let i = 0; i < clean.length; i++) {
     const char = clean[i];
@@ -113,11 +106,56 @@ function generateBarcodeSvg(text, height = 26) {
     currentX += gap;
   }
 
-  const totalWidth = currentX + 6;
+  const totalWidth = currentX + 4;
   return `<svg viewBox="0 0 ${totalWidth} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px; display: block;">${rects.join('')}</svg>`;
 }
 
-// ── LIMPIEZA INTELIGENTE DE ZONAS (EVITA "N/A" Y EXTRAE DE DIRECCIÓN) ───────
+// ── ÍCONOS VECTORIALES MINIMALISTAS (PURO SVG EN NEGRO, SIN EMOJIS) ─────────
+function SocialIconSvg({ type, size = 11, color = '#000000' }) {
+  const style = { width: `${size}px`, height: `${size}px`, display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 };
+  if (type === 'web') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <circle cx="12" cy="12" r="10" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+    );
+  }
+  if (type === 'ig') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+        <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+      </svg>
+    );
+  }
+  if (type === 'fb') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+      </svg>
+    );
+  }
+  if (type === 'tiktok') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+      </svg>
+    );
+  }
+  if (type === 'wa') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+      </svg>
+    );
+  }
+  return null;
+}
+
+// ── LIMPIEZA INTELIGENTE DE ZONAS Y DIRECCIÓN ───────────────────────────────
 function extractOrCleanZona(zona, direccion, notas) {
   const raw = String(zona || '').trim();
   if (raw && !/^(n\/?a|none|null|undefined|-|\.)$/i.test(raw)) {
@@ -128,14 +166,23 @@ function extractOrCleanZona(zona, direccion, notas) {
   if (m) {
     return `Zona ${m[1]}`;
   }
-  const mTown = combined.match(/\b(mixco|villa nueva|san crist[oó]bal|santa catarina|carretera al? salvador|san miguel petapa|amatitl[aá]n)\b/i);
+  const mTown = combined.match(/\b(mixco|villa nueva|san crist[oó]bal|santa catarina|carretera al? salvador|san miguel petapa|amatitl[aá]n|fraijanes|chinautla)\b/i);
   if (mTown) {
     return mTown[1];
   }
   return '';
 }
 
-// Destinos predefinidos para el QR de Redes Sociales y Web
+function formatCleanAddress(rawDir) {
+  if (!rawDir) return '';
+  return String(rawDir)
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{2,}/g, ' · ')
+    .replace(/\n/g, ', ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 const QR_TARGETS = [
   { id: 'web', label: 'Página Web & Redes (onecontrol.shop)', url: 'https://onecontrol.shop' },
   { id: 'whatsapp', label: 'WhatsApp Directo (+502 5965-8803)', url: 'https://wa.me/50259658803' },
@@ -144,8 +191,9 @@ const QR_TARGETS = [
 ];
 
 const DEFAULT_OPTIONS = {
-  colorMode: 'bw',          // 'bw' (Blanco y Negro térmico alto contraste) | 'color'
-  textScale: 'large',       // 'normal' | 'large' | 'xlarge'
+  colorMode: 'bw',            // 'bw' (Blanco y Negro térmico) | 'color'
+  orientation: 'vertical',    // 'vertical' | 'horizontal'
+  textScale: 'normal',        // 'normal' | 'large' | 'xlarge'
   showLogo: true,
   showSender: true,
   showBarcode: true,
@@ -190,7 +238,7 @@ export default function StickerPrint({
     }) || null;
   }, [pedido?.phone, leads]);
 
-  // Tamaño guardado o default ('10x15' = 100x150mm o el último usado)
+  // Tamaño guardado o default ('10x15' = 100x150mm)
   const [sizeId, setSizeId] = useState(() => {
     return localStorage.getItem('onecontrol_sticker_size') || '10x15';
   });
@@ -220,10 +268,10 @@ export default function StickerPrint({
     numeroPedido: ''
   });
 
-  // Opciones de visualización, Blanco y Negro, Web y Redes Sociales (persistentes)
+  // Opciones persistentes
   const [options, setOptions] = useState(() => {
     try {
-      const saved = localStorage.getItem('onecontrol_sticker_options_v2');
+      const saved = localStorage.getItem('onecontrol_sticker_options_v3');
       if (saved) {
         return { ...DEFAULT_OPTIONS, ...JSON.parse(saved) };
       }
@@ -237,7 +285,7 @@ export default function StickerPrint({
     setOptions(prev => {
       const next = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch };
       try {
-        localStorage.setItem('onecontrol_sticker_options_v2', JSON.stringify(next));
+        localStorage.setItem('onecontrol_sticker_options_v3', JSON.stringify(next));
       } catch (e) {
         // ignore
       }
@@ -268,7 +316,6 @@ export default function StickerPrint({
   }, []);
 
   // Pre-procesar el logo: recortar márgenes blancos sobrantes y generar versión Blanco y Negro Puro (#000000)
-  // (El logo original tiene partes naranjas que en impresoras B/N salían grises o muy tenues, y márgenes amplios)
   useEffect(() => {
     let isMounted = true;
     const img = new Image();
@@ -288,7 +335,6 @@ export default function StickerPrint({
         const imgData = ctx.getImageData(0, 0, w, h);
         const data = imgData.data;
 
-        // 1. Detectar caja delimitadora (bounding box) real del logo sin el margen blanco gigante
         let minX = w, minY = h, maxX = 0, maxY = 0;
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
@@ -309,7 +355,7 @@ export default function StickerPrint({
         if (maxX <= minX || maxY <= minY) {
           minX = 0; minY = 0; maxX = w - 1; maxY = h - 1;
         } else {
-          const pad = 10;
+          const pad = 8;
           minX = Math.max(0, minX - pad);
           minY = Math.max(0, minY - pad);
           maxX = Math.min(w - 1, maxX + pad);
@@ -319,7 +365,6 @@ export default function StickerPrint({
         const cropW = maxX - minX + 1;
         const cropH = maxY - minY + 1;
 
-        // 2. Canvas a Color Recortado
         const colorCanvas = document.createElement('canvas');
         colorCanvas.width = cropW;
         colorCanvas.height = cropH;
@@ -329,7 +374,6 @@ export default function StickerPrint({
         colorCtx.drawImage(tempCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
         const colorDataUrl = colorCanvas.toDataURL('image/png');
 
-        // 3. Canvas Blanco y Negro de Alto Contraste (convierte el naranja y gris a negro sólido #000000)
         const bwCanvas = document.createElement('canvas');
         bwCanvas.width = cropW;
         bwCanvas.height = cropH;
@@ -339,22 +383,12 @@ export default function StickerPrint({
         const bwData = bwImgData.data;
 
         for (let i = 0; i < bwData.length; i += 4) {
-          const r = bwData[i];
-          const g = bwData[i + 1];
-          const b = bwData[i + 2];
-          // El canal mínimo (minChannel) es 0 en el naranja (#FF8C00) y bajo en el negro (#222), pero 255 en el blanco
-          const minChannel = Math.min(r, g, b);
-          if (minChannel < 185) {
-            bwData[i] = 0;
-            bwData[i + 1] = 0;
-            bwData[i + 2] = 0;
-            bwData[i + 3] = 255;
-          } else {
-            bwData[i] = 255;
-            bwData[i + 1] = 255;
-            bwData[i + 2] = 255;
-            bwData[i + 3] = 255;
-          }
+          const minChannel = Math.min(bwData[i], bwData[i + 1], bwData[i + 2]);
+          const v = minChannel < 185 ? 0 : 255;
+          bwData[i] = v;
+          bwData[i + 1] = v;
+          bwData[i + 2] = v;
+          bwData[i + 3] = 255;
         }
         bwCtx.putImageData(bwImgData, 0, 0);
         const bwDataUrl = bwCanvas.toDataURL('image/png');
@@ -370,7 +404,6 @@ export default function StickerPrint({
     return () => { isMounted = false; };
   }, []);
 
-  // Ref para EVITAR que el form se reinicie mientras el usuario escribe
   const initializedPedidoIdRef = useRef(null);
 
   useEffect(() => {
@@ -379,11 +412,17 @@ export default function StickerPrint({
     initializedPedidoIdRef.current = pedido.id;
 
     const notasText = (pedido.notas || '').trim();
-    let initialDir = matchedLead?.direccion || '';
+    let initialDir = (matchedLead?.direccion || '').trim();
+    let initialNotas = notasText;
     let initialNit = matchedLead?.nit || 'C/F';
 
-    if (!initialDir && notasText && /zona|calle|avenida|colonia|casa|lote|km|carretera/i.test(notasText)) {
+    // Si el lead no tenía dirección separada pero las notas del pedido son la dirección,
+    // usarla como dirección principal y NO duplicarla en el campo de notas adicionales.
+    if (!initialDir && notasText) {
       initialDir = notasText;
+      initialNotas = '';
+    } else if (initialDir && notasText && initialDir.toLowerCase() === notasText.toLowerCase()) {
+      initialNotas = '';
     }
 
     const initialZona = extractOrCleanZona(matchedLead?.zona, initialDir, notasText);
@@ -393,7 +432,7 @@ export default function StickerPrint({
     setForm({
       cliente: pedido.cliente || matchedLead?.nombre || '',
       phone: pedido.phone || matchedLead?.phone || '',
-      direccion: initialDir,
+      direccion: formatCleanAddress(initialDir),
       zona: initialZona,
       municipio: 'Guatemala',
       departamento: 'Guatemala',
@@ -403,7 +442,7 @@ export default function StickerPrint({
       esContraEntrega: initialEsContraEntrega,
       pagado: initialPagado,
       nit: initialNit || 'C/F',
-      notas: pedido.notas || '',
+      notas: initialNotas,
       fechaEntrega: pedido.fecha_entrega || '',
       numeroPedido: String(pedido.id || '')
     });
@@ -418,7 +457,6 @@ export default function StickerPrint({
     return found ? found.url : 'https://onecontrol.shop';
   }, [options.socialQrTarget, options.customQrUrl]);
 
-  // Generar QR en base64 de alta resolución y alto contraste
   useEffect(() => {
     let isMounted = true;
     QRCode.toDataURL(currentQrUrl, {
@@ -443,6 +481,25 @@ export default function StickerPrint({
   const handleSizeChange = (id) => {
     setSizeId(id);
     localStorage.setItem('onecontrol_sticker_size', id);
+    const preset = STICKER_SIZES.find(s => s.id === id);
+    if (preset && preset.defaultOrientation && id !== 'custom') {
+      updateOptions({ orientation: preset.defaultOrientation });
+    }
+  };
+
+  const handleOrientationChange = (newOrientation) => {
+    updateOptions({ orientation: newOrientation });
+    if (sizeId === 'custom') {
+      const minSide = Math.min(customW, customH);
+      const maxSide = Math.max(customW, customH);
+      if (newOrientation === 'vertical') {
+        handleCustomWChange(minSide);
+        handleCustomHChange(maxSide);
+      } else {
+        handleCustomWChange(maxSide);
+        handleCustomHChange(minSide);
+      }
+    }
   };
 
   const handleCustomWChange = (val) => {
@@ -455,29 +512,42 @@ export default function StickerPrint({
     localStorage.setItem('onecontrol_sticker_custom_h', String(val));
   };
 
-  // Configuración de dimensiones activas y densidad inteligente
+  // Dimensiones finales adaptadas a la orientación (Vertical vs Horizontal)
   const activeSize = useMemo(() => {
     const found = STICKER_SIZES.find(s => s.id === sizeId) || STICKER_SIZES[0];
-    let w = found.widthMm;
-    let h = found.heightMm;
+    let rawW = found.widthMm;
+    let rawH = found.heightMm;
     if (sizeId === 'custom') {
-      w = Math.max(30, Math.min(250, Number(customW) || 100));
-      h = Math.max(20, Math.min(300, Number(customH) || 150));
+      rawW = Math.max(25, Math.min(250, Number(customW) || 100));
+      rawH = Math.max(20, Math.min(300, Number(customH) || 150));
     }
-    const density = h < 38 ? 'tiny' : h < 62 ? 'small' : h <= 85 ? 'compact' : h <= 115 ? 'medium' : 'spacious';
+
+    const minDim = Math.min(rawW, rawH);
+    const maxDim = Math.max(rawW, rawH);
+    const isHorizontal = options.orientation === 'horizontal';
+
+    // Si es cuadrado (ej. 100x100), w y h son iguales pero 'isHorizontal' cambia la distribución interna
+    const w = isHorizontal ? maxDim : minDim;
+    const h = isHorizontal ? minDim : maxDim;
+
+    const area = w * h;
+    const shortSide = Math.min(w, h);
+    const density = shortSide <= 32 ? 'tiny' : area <= 4200 ? 'small' : area <= 8200 ? 'compact' : area <= 11500 ? 'medium' : 'spacious';
+
     return {
       ...found,
       widthMm: w,
       heightMm: h,
+      isHorizontal,
       density
     };
-  }, [sizeId, customW, customH]);
+  }, [sizeId, customW, customH, options.orientation]);
 
   // Escala adaptativa responsive para la vista previa en pantalla
   const isSmallScreen = windowWidth < 640;
   const stickerWidthPx = Math.round(activeSize.widthMm * 3.78);
   const stickerHeightPx = Math.round(activeSize.heightMm * 3.78);
-  const availableWidth = isSmallScreen ? Math.max(260, windowWidth - 44) : 520;
+  const availableWidth = isSmallScreen ? Math.max(260, windowWidth - 40) : 540;
   const availableHeight = isSmallScreen ? 460 : 540;
   const autoScaleW = stickerWidthPx > availableWidth ? (availableWidth / stickerWidthPx) : 1;
   const autoScaleH = stickerHeightPx > availableHeight ? (availableHeight / stickerHeightPx) : 1;
@@ -507,7 +577,7 @@ export default function StickerPrint({
           producto: form.producto,
           cantidad: form.cantidad,
           precio: form.precio,
-          notas: form.notas,
+          notas: form.notas || form.direccion,
           fecha_entrega: form.fechaEntrega
         });
       }
@@ -522,232 +592,187 @@ export default function StickerPrint({
     }
   };
 
-  // ── CÁLCULO PROPORCIONAL Y ADAPTATIVO PARA CUALQUIER MEDIDA (ESPECIAL 100x150mm) ──
+  // ── MÉTRICAS DE DISEÑO MINIMALISTA Y AUTO-ADAPTATIVO (VERTICAL & HORIZONTAL) ──
   const layoutMetrics = useMemo(() => {
-    const { widthMm, heightMm, density } = activeSize;
+    const { widthMm, heightMm, density, isHorizontal } = activeSize;
     const isBw = options.colorMode === 'bw';
-    const textMult = options.textScale === 'xlarge' ? 1.22 : options.textScale === 'large' ? 1.1 : 1.0;
-    const socialBoost = options.prominentSocials ? 1.12 : 1.0;
+    const textMult = options.textScale === 'xlarge' ? 1.2 : options.textScale === 'large' ? 1.1 : 1.0;
+    const socialBoost = options.prominentSocials ? 1.1 : 1.0;
 
-    // Factor continuo basado en dimensiones reales para medidas personalizadas o grandes
-    const wRatio = widthMm / 100;
-    const isVerticalLarge = heightMm >= 115; // ej: 100 x 150 mm
-    const isMediumSquare = heightMm > 85 && heightMm < 115; // ej: 100 x 100 mm
-    const isCompact = density === 'compact'; // ej: 100 x 75 mm
-    const isSmall = density === 'small';     // ej: 75 x 50 mm
-    const isTiny = density === 'tiny';       // ej: 50 x 25 mm
+    const isTiny = density === 'tiny';
+    const isSmall = density === 'small';
+    const isCompact = density === 'compact';
+    const isMedium = density === 'medium';
+    const isSpacious = density === 'spacious';
 
-    // Escala adicional si el usuario pone una etiqueta personalizada aún más grande o pequeña
-    const hScale = isVerticalLarge
-      ? (heightMm / 150)
-      : isMediumSquare
-        ? (heightMm / 100)
-        : isCompact
-          ? (heightMm / 75)
-          : isSmall
-            ? (heightMm / 50)
-            : (heightMm / 25);
+    // Escala proporcional según el área de la etiqueta respecto al estándar de su categoría
+    const areaRatio = Math.sqrt((widthMm * heightMm) / (isSpacious ? 15000 : isMedium ? 10000 : isCompact ? 7500 : isSmall ? 3750 : 1250));
+    const baseScale = Math.min(Math.max(areaRatio, 0.78), 1.45);
 
-    const baseScale = Math.min(Math.max(Math.min(wRatio, hScale), 0.72), 1.65);
-    const px = (val) => Math.max(7, Math.round(val * baseScale * textMult));
-    const rawPx = (val) => Math.max(4, Math.round(val * baseScale));
+    const px = (val) => Math.max(6.5, Math.round(val * baseScale * textMult * 10) / 10);
+    const rawPx = (val) => Math.max(3, Math.round(val * baseScale));
 
     if (isTiny) {
       return {
-        isBw,
-        isTiny: true,
-        isSmall: false,
-        isCompact: false,
-        isMediumSquare: false,
-        isVerticalLarge: false,
-        stackMiddle: false,
-        pad: rawPx(5),
-        gap: rawPx(3),
-        borderW: isBw ? 1.5 : 1,
-        logoH: rawPx(15),
-        headerTitle: px(10),
-        headerSub: px(7.5),
-        orderBadge: px(9.5),
-        destLabel: px(7),
-        destName: px(11),
-        destPhone: px(9.5),
-        destAddr: px(8.5),
-        zonaBadge: px(8),
-        prodText: px(9),
-        prodQty: px(9),
-        payTitle: px(7.5),
-        payAmount: px(11),
-        nitText: px(7.5),
-        notesText: px(7.5),
-        qrSize: rawPx(28),
-        webText: Math.round(px(8.5) * socialBoost),
-        socialTitle: px(7.5),
-        socialHandle: Math.round(px(8) * socialBoost),
-        socialChips: px(7),
-        barcodeH: rawPx(14),
-        barcodeText: px(7.5)
+        isBw, isTiny: true, isSmall: false, isCompact: false, isMedium: false, isSpacious: false, isHorizontal,
+        outerPad: rawPx(4),
+        cellPad: '2px 4px',
+        frameBorder: isBw ? 1.5 : 1,
+        gridBorder: 1,
+        logoH: rawPx(13),
+        brandTitle: px(9.5),
+        brandSub: px(6.5),
+        orderNum: px(8.5),
+        microLabel: px(6),
+        clientName: px(10),
+        clientPhone: px(9),
+        addressText: px(8),
+        zonaText: px(7.5),
+        prodName: px(8.5),
+        prodQty: px(8.5),
+        payAmount: px(10),
+        nitText: px(7),
+        notesText: px(7),
+        qrSize: rawPx(26),
+        webUrl: Math.round(px(8) * socialBoost),
+        socialHandle: Math.round(px(7.5) * socialBoost),
+        socialNet: px(6.5),
+        barcodeH: rawPx(12),
+        barcodeLabel: px(6.5)
       };
     }
 
     if (isSmall) {
+      // ej: 75 x 50 mm o 50 x 75 mm
       return {
-        isBw,
-        isTiny: false,
-        isSmall: true,
-        isCompact: false,
-        isMediumSquare: false,
-        isVerticalLarge: false,
-        stackMiddle: false,
-        pad: rawPx(7),
-        gap: rawPx(4),
-        borderW: isBw ? 1.5 : 1,
-        logoH: rawPx(20),
-        headerTitle: px(11),
-        headerSub: px(8),
-        orderBadge: px(10.5),
-        destLabel: px(7.5),
-        destName: px(13),
-        destPhone: px(10.5),
-        destAddr: px(9.5),
-        zonaBadge: px(9),
-        prodText: px(10),
+        isBw, isTiny: false, isSmall: true, isCompact: false, isMedium: false, isSpacious: false, isHorizontal,
+        outerPad: rawPx(6),
+        cellPad: '3px 6px',
+        frameBorder: isBw ? 1.5 : 1.2,
+        gridBorder: 1,
+        logoH: rawPx(18),
+        brandTitle: px(11),
+        brandSub: px(7.5),
+        orderNum: px(9.5),
+        microLabel: px(6.5),
+        clientName: px(12),
+        clientPhone: px(10.5),
+        addressText: px(9),
+        zonaText: px(8.5),
+        prodName: px(9.5),
         prodQty: px(10),
-        payTitle: px(8),
-        payAmount: px(13),
+        payAmount: px(12.5),
         nitText: px(8),
         notesText: px(8),
-        qrSize: rawPx(40),
-        webText: Math.round(px(9.5) * socialBoost),
-        socialTitle: px(8),
-        socialHandle: Math.round(px(9) * socialBoost),
-        socialChips: px(7.5),
-        barcodeH: rawPx(16),
-        barcodeText: px(8)
+        qrSize: rawPx(38),
+        webUrl: Math.round(px(9) * socialBoost),
+        socialHandle: Math.round(px(8.5) * socialBoost),
+        socialNet: px(7.5),
+        barcodeH: rawPx(15),
+        barcodeLabel: px(7.5)
       };
     }
 
     if (isCompact) {
-      // 100 x 75 mm (378 x 283 px)
+      // ej: 100 x 75 mm o 75 x 100 mm
       return {
-        isBw,
-        isTiny: false,
-        isSmall: false,
-        isCompact: true,
-        isMediumSquare: false,
-        isVerticalLarge: false,
-        stackMiddle: false,
-        pad: rawPx(9),
-        gap: rawPx(5),
-        borderW: isBw ? 2 : 1.5,
-        logoH: rawPx(26),
-        headerTitle: px(13),
-        headerSub: px(9),
-        orderBadge: px(12),
-        destLabel: px(8.5),
-        destName: px(15.5),
-        destPhone: px(12.5),
-        destAddr: px(10.5),
-        zonaBadge: px(10),
-        prodText: px(11.5),
-        prodQty: px(11),
-        payTitle: px(8.5),
-        payAmount: px(15.5),
+        isBw, isTiny: false, isSmall: false, isCompact: true, isMedium: false, isSpacious: false, isHorizontal,
+        outerPad: rawPx(8),
+        cellPad: isHorizontal ? '4px 7px' : '5px 8px',
+        frameBorder: isBw ? 2 : 1.5,
+        gridBorder: isBw ? 1.2 : 1,
+        logoH: rawPx(23),
+        brandTitle: px(13),
+        brandSub: px(8.5),
+        orderNum: px(11),
+        microLabel: px(7.5),
+        clientName: px(14.5),
+        clientPhone: px(12),
+        addressText: px(10.5),
+        zonaText: px(9.5),
+        prodName: px(11),
+        prodQty: px(11.5),
+        payAmount: px(15),
         nitText: px(9),
         notesText: px(8.5),
-        qrSize: rawPx(50),
-        webText: Math.round(px(10.5) * socialBoost),
-        socialTitle: px(8.5),
+        qrSize: rawPx(isHorizontal ? 46 : 52),
+        webUrl: Math.round(px(10.5) * socialBoost),
         socialHandle: Math.round(px(10) * socialBoost),
-        socialChips: px(8),
-        barcodeH: rawPx(20),
-        barcodeText: px(8.5)
+        socialNet: px(8),
+        barcodeH: rawPx(18),
+        barcodeLabel: px(8)
       };
     }
 
-    if (isMediumSquare) {
-      // 100 x 100 mm (378 x 378 px)
+    if (isMedium) {
+      // ej: 100 x 100 mm
       return {
-        isBw,
-        isTiny: false,
-        isSmall: false,
-        isCompact: false,
-        isMediumSquare: true,
-        isVerticalLarge: false,
-        stackMiddle: false,
-        pad: rawPx(11),
-        gap: rawPx(7),
-        borderW: isBw ? 2 : 1.5,
-        logoH: rawPx(32),
-        headerTitle: px(15),
-        headerSub: px(10),
-        orderBadge: px(13.5),
-        destLabel: px(9.5),
-        destName: px(18.5),
-        destPhone: px(14),
-        destAddr: px(12),
-        zonaBadge: px(11),
-        prodText: px(13),
-        prodQty: px(12.5),
-        payTitle: px(9.5),
-        payAmount: px(18.5),
+        isBw, isTiny: false, isSmall: false, isCompact: false, isMedium: true, isSpacious: false, isHorizontal,
+        outerPad: rawPx(10),
+        cellPad: '6px 9px',
+        frameBorder: isBw ? 2 : 1.5,
+        gridBorder: isBw ? 1.3 : 1,
+        logoH: rawPx(28),
+        brandTitle: px(15),
+        brandSub: px(9.5),
+        orderNum: px(12.5),
+        microLabel: px(8),
+        clientName: px(17),
+        clientPhone: px(13.5),
+        addressText: px(12),
+        zonaText: px(10.5),
+        prodName: px(12.5),
+        prodQty: px(13),
+        payAmount: px(18),
         nitText: px(10),
-        notesText: px(10),
-        qrSize: rawPx(64),
-        webText: Math.round(px(12) * socialBoost),
-        socialTitle: px(9.5),
-        socialHandle: Math.round(px(11.5) * socialBoost),
-        socialChips: px(9),
-        barcodeH: rawPx(25),
-        barcodeText: px(9.5)
+        notesText: px(9.5),
+        qrSize: rawPx(60),
+        webUrl: Math.round(px(11.5) * socialBoost),
+        socialHandle: Math.round(px(11) * socialBoost),
+        socialNet: px(9),
+        barcodeH: rawPx(22),
+        barcodeLabel: px(9)
       };
     }
 
-    // 100 x 150 mm (378 x 567 px) y formatos verticales grandes:
-    // Secciones apiladas a ancho completo para que TODO se vea grande, proporcionado y llene el sticker
+    // 100 x 150 mm (Vertical) o 150 x 100 mm (Horizontal)
     return {
-      isBw,
-      isTiny: false,
-      isSmall: false,
-      isCompact: false,
-      isMediumSquare: false,
-      isVerticalLarge: true,
-      stackMiddle: true,
-      pad: rawPx(13),
-      gap: rawPx(8),
-      borderW: isBw ? 2.2 : 1.8,
-      logoH: rawPx(40),
-      headerTitle: px(18),
-      headerSub: px(11),
-      orderBadge: px(15),
-      destLabel: px(10.5),
-      destName: px(22),
-      destPhone: px(16.5),
-      destAddr: px(13.5),
-      zonaBadge: px(12.5),
-      prodText: px(14.5),
-      prodQty: px(14),
-      payTitle: px(11),
-      payAmount: px(23),
-      nitText: px(11.5),
-      notesText: px(11.5),
-      qrSize: rawPx(82),
-      webText: Math.round(px(14) * socialBoost),
-      socialTitle: px(10.5),
-      socialHandle: Math.round(px(13.5) * socialBoost),
-      socialChips: px(10.5),
-      barcodeH: rawPx(32),
-      barcodeText: px(11)
+      isBw, isTiny: false, isSmall: false, isCompact: false, isMedium: false, isSpacious: true, isHorizontal,
+      outerPad: rawPx(12),
+      cellPad: isHorizontal ? '6px 10px' : '8px 11px',
+      frameBorder: isBw ? 2.2 : 1.8,
+      gridBorder: isBw ? 1.5 : 1.2,
+      logoH: rawPx(isHorizontal ? 32 : 36),
+      brandTitle: px(isHorizontal ? 16 : 18),
+      brandSub: px(10.5),
+      orderNum: px(isHorizontal ? 13.5 : 14.5),
+      microLabel: px(8.5),
+      clientName: px(isHorizontal ? 18.5 : 21),
+      clientPhone: px(isHorizontal ? 14.5 : 16),
+      addressText: px(isHorizontal ? 12.5 : 13.5),
+      zonaText: px(12),
+      prodName: px(isHorizontal ? 13 : 14.5),
+      prodQty: px(isHorizontal ? 14 : 15),
+      payAmount: px(isHorizontal ? 19.5 : 22),
+      nitText: px(11),
+      notesText: px(10.5),
+      qrSize: rawPx(isHorizontal ? 68 : 78),
+      webUrl: Math.round(px(isHorizontal ? 12.5 : 13.5) * socialBoost),
+      socialHandle: Math.round(px(isHorizontal ? 11.5 : 13) * socialBoost),
+      socialNet: px(10),
+      barcodeH: rawPx(isHorizontal ? 24 : 30),
+      barcodeLabel: px(10)
     };
   }, [activeSize, options.colorMode, options.textScale, options.prominentSocials]);
 
-  // Lista de redes activas seleccionadas por el usuario
+  // Redes activas con íconos SVG minimalistas
   const activeSocialPlatforms = useMemo(() => {
     const list = [];
     if (options.showTiktok) list.push({ id: 'tiktok', label: 'TikTok' });
     if (options.showInstagram) list.push({ id: 'ig', label: 'Instagram' });
     if (options.showFacebook) list.push({ id: 'fb', label: 'Facebook' });
     if (options.showWhatsapp && options.whatsappNumber) {
-      list.push({ id: 'wa', label: `WA: ${options.whatsappNumber}` });
+      list.push({ id: 'wa', label: options.whatsappNumber });
     }
     return list;
   }, [options.showTiktok, options.showInstagram, options.showFacebook, options.showWhatsapp, options.whatsappNumber]);
@@ -756,7 +781,16 @@ export default function StickerPrint({
   const activeLogoSrc = options.colorMode === 'bw' ? croppedLogos.bw : croppedLogos.color;
   const barcodeCodeText = `OC-${String(form.numeroPedido || '0').padStart(4, '0')}`;
 
-  // ── GENERADOR DE HTML PARA IMPRESIÓN DIRECTA (CLONA EL DISEÑO ADAPTATIVO EXACTO) ──
+  // Evitar mostrar en "Observaciones" el mismo texto si es idéntico a la dirección
+  const cleanNotasToDisplay = useMemo(() => {
+    if (!options.showNotes || !form.notas) return '';
+    const n = form.notas.trim();
+    const d = (form.direccion || '').trim();
+    if (!n || n.toLowerCase() === d.toLowerCase()) return '';
+    return n;
+  }, [options.showNotes, form.notas, form.direccion]);
+
+  // ── GENERADOR DE HTML PARA IMPRESIÓN DIRECTA ──────────────────────────────
   const generatePrintableHtml = () => {
     const { widthMm, heightMm } = activeSize;
     const innerMarkup = stickerCardRef.current ? stickerCardRef.current.outerHTML : '';
@@ -854,14 +888,13 @@ export default function StickerPrint({
 <body>
   <div class="screen-toolbar">
     <div style="display:flex; align-items:center; gap:8px;">
-      <span style="font-size: 18px;">🏷️</span>
       <div>
         <div style="font-weight: 900; font-size: 12px; line-height: 1.2;">Sticker Pedido #${form.numeroPedido}</div>
-        <div style="font-size: 10px; color: #94a3b8;">${widthMm}x${heightMm}mm · ${options.colorMode === 'bw' ? 'Blanco y Negro (Térmico)' : 'Color'} · OneControl</div>
+        <div style="font-size: 10px; color: #94a3b8;">${widthMm}x${heightMm}mm (${activeSize.isHorizontal ? 'Horizontal' : 'Vertical'}) · ${options.colorMode === 'bw' ? 'Blanco y Negro' : 'Color'}</div>
       </div>
     </div>
     <button class="screen-btn" onclick="window.print()">
-      🖨️ IMPRIMIR / PDF
+      IMPRIMIR / PDF
     </button>
   </div>
   <div class="print-page-wrapper">
@@ -938,7 +971,7 @@ export default function StickerPrint({
     }
   };
 
-  // ── INTEGRACIÓN MARKLIFE & EXPORTACIÓN DE IMAGEN PNG (CON SOPORTE B/N PURO) ──
+  // ── INTEGRACIÓN MARKLIFE & EXPORTACIÓN DE IMAGEN PNG ──────────────────────
   const downloadBlob = (blob, fileName) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -956,12 +989,11 @@ export default function StickerPrint({
     }
 
     const canvas = await html2canvas(stickerCardRef.current, {
-      scale: 3, // 300 DPI ultra-nítido para impresoras térmicas
+      scale: 3,
       backgroundColor: '#ffffff',
       useCORS: true,
       logging: false,
       onclone: (_clonedDoc, clonedElement) => {
-        // Asegurar que si se exporta desde móvil en la pestaña "Editar", ningún contenedor padre esté oculto ni escalado
         let curr = clonedElement;
         while (curr && curr.style) {
           if (curr.classList && curr.classList.contains('hidden')) {
@@ -977,7 +1009,6 @@ export default function StickerPrint({
       }
     });
 
-    // Si está en modo Blanco y Negro, aplicar alto contraste B/N al canvas exportado para impresoras térmicas
     if (options.colorMode === 'bw') {
       const ctx = canvas.getContext('2d');
       const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -1016,7 +1047,7 @@ export default function StickerPrint({
           ]);
         }
       } catch (clipErr) {
-        // Silencioso si el navegador no permite clipboard
+        // ignore
       }
 
       setMarklifeStatus('saved');
@@ -1083,8 +1114,441 @@ export default function StickerPrint({
 
   const M = layoutMetrics;
   const isBw = M.isBw;
-  const accentColor = isBw ? '#000000' : '#FF6B00';
-  const payAccentBg = isBw ? '#000000' : (form.esContraEntrega ? '#d97706' : '#059669');
+  const isHoriz = M.isHorizontal;
+  const lineStyle = `${M.gridBorder}px solid #000000`;
+  const frameStyle = `${M.frameBorder}px solid #000000`;
+  const accentBg = isBw ? '#000000' : '#FF6B00';
+  const labelColor = isBw ? '#000000' : '#475569';
+
+  const microLabelCss = {
+    fontSize: `${M.microLabel}px`,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.7px',
+    color: labelColor,
+    lineHeight: 1.05,
+    marginBottom: '2px',
+    display: 'block'
+  };
+
+  // Sub-bloque reutilizable: Cuadro Ordenado del Destinatario (Tabla Minimalista)
+  const renderRecipientTable = (growVertically = false) => (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: growVertically ? '1 1 auto' : '0 0 auto',
+        justifyContent: 'space-between',
+        borderBottom: lineStyle
+      }}
+    >
+      {/* FILA 1: CLIENTE (IZQUIERDA) | TELÉFONO (DERECHA) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: form.phone ? '1.35fr 0.85fr' : '1fr',
+          borderBottom: lineStyle
+        }}
+      >
+        <div style={{ padding: M.cellPad, borderRight: form.phone ? lineStyle : 'none', minWidth: 0 }}>
+          <span style={microLabelCss}>DESTINATARIO / CLIENTE</span>
+          <div
+            style={{
+              fontSize: `${M.clientName}px`,
+              fontWeight: 900,
+              textTransform: 'uppercase',
+              color: '#000000',
+              lineHeight: 1.12,
+              wordBreak: 'break-word'
+            }}
+          >
+            {form.cliente || 'CLIENTE FINAL'}
+          </div>
+        </div>
+
+        {form.phone && (
+          <div style={{ padding: M.cellPad, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <span style={microLabelCss}>TELÉFONO</span>
+            <div
+              style={{
+                fontSize: `${M.clientPhone}px`,
+                fontWeight: 900,
+                color: '#000000',
+                lineHeight: 1.12,
+                letterSpacing: '0.2px',
+                wordBreak: 'break-all'
+              }}
+            >
+              {form.phone}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* FILA 2: DIRECCIÓN DE ENTREGA (BIEN ORDENADA EN SU PROPIA CASILLA) */}
+      <div
+        style={{
+          padding: M.cellPad,
+          flex: growVertically ? '1 1 auto' : '0 0 auto',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          borderBottom: (zonaVisual || form.municipio) && !M.isTiny ? lineStyle : 'none'
+        }}
+      >
+        <span style={microLabelCss}>DIRECCIÓN EXACTA DE ENTREGA</span>
+        <div
+          style={{
+            fontSize: `${M.addressText}px`,
+            fontWeight: 800,
+            color: '#000000',
+            lineHeight: 1.25,
+            wordBreak: 'break-word'
+          }}
+        >
+          {form.direccion || 'Dirección pendiente de confirmar'}
+        </div>
+      </div>
+
+      {/* FILA 3: ZONA / SECTOR | MUNICIPIO / DEPARTAMENTO */}
+      {(zonaVisual || form.municipio) && !M.isTiny && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: zonaVisual && form.municipio ? '1fr 1fr' : '1fr'
+          }}
+        >
+          {zonaVisual && (
+            <div
+              style={{
+                padding: M.cellPad,
+                borderRight: form.municipio ? lineStyle : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '6px'
+              }}
+            >
+              <div>
+                <span style={microLabelCss}>ZONA / SECTOR</span>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: '#000000',
+                    color: '#ffffff',
+                    fontSize: `${M.zonaText}px`,
+                    fontWeight: 900,
+                    padding: '1.5px 7px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                    lineHeight: 1.15
+                  }}
+                >
+                  {zonaVisual}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {form.municipio && (
+            <div style={{ padding: M.cellPad, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <span style={microLabelCss}>MUNICIPIO / DEPTO.</span>
+              <div
+                style={{
+                  fontSize: `${M.zonaText}px`,
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  color: '#000000',
+                  lineHeight: 1.15
+                }}
+              >
+                {form.municipio}{form.departamento && form.departamento !== form.municipio ? `, ${form.departamento}` : ''}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // Sub-bloque reutilizable: Producto + Cantidad
+  const renderProductRow = (withBottomBorder = true) => (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr auto',
+        borderBottom: withBottomBorder ? lineStyle : 'none'
+      }}
+    >
+      <div style={{ padding: M.cellPad, borderRight: lineStyle, minWidth: 0 }}>
+        <span style={microLabelCss}>PRODUCTO / DESCRIPCIÓN</span>
+        <div
+          style={{
+            fontSize: `${M.prodName}px`,
+            fontWeight: 900,
+            color: '#000000',
+            lineHeight: 1.15,
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitLineClamp: M.isSpacious ? 2 : 1,
+            WebkitBoxOrient: 'vertical'
+          }}
+        >
+          {form.producto || 'Producto de catálogo'}
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: M.cellPad,
+          minWidth: M.isTiny ? '38px' : '58px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}
+      >
+        <span style={microLabelCss}>CANT.</span>
+        <div
+          style={{
+            fontSize: `${M.prodQty}px`,
+            fontWeight: 900,
+            color: '#000000',
+            lineHeight: 1.1
+          }}
+        >
+          {form.cantidad || '1'}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Sub-bloque reutilizable: Cobro + NIT + Notas
+  const renderPaymentBlock = (withBottomBorder = true) => {
+    if (!options.showPrice) return null;
+    return (
+      <div style={{ borderBottom: withBottomBorder ? lineStyle : 'none', display: 'flex', flexDirection: 'column' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: options.showNit && form.nit ? '1fr auto' : '1fr'
+          }}
+        >
+          <div style={{ padding: M.cellPad, borderRight: options.showNit && form.nit ? lineStyle : 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap' }}>
+              <div>
+                <span style={microLabelCss}>CONDICIÓN DE PAGO</span>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: '#000000',
+                    color: '#ffffff',
+                    fontSize: `${M.microLabel + 1}px`,
+                    fontWeight: 900,
+                    padding: '1.5px 6px',
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase',
+                    lineHeight: 1.15
+                  }}
+                >
+                  {form.esContraEntrega ? 'COBRO CONTRA ENTREGA' : 'PAGADO · NO COBRAR'}
+                </span>
+              </div>
+
+              <div style={{ textAlign: 'right' }}>
+                <span style={microLabelCss}>TOTAL A COBRAR</span>
+                <div
+                  style={{
+                    fontSize: `${M.payAmount}px`,
+                    fontWeight: 900,
+                    color: '#000000',
+                    lineHeight: 1.05
+                  }}
+                >
+                  {form.esContraEntrega ? (form.precio || 'POR CONFIRMAR') : 'Q0.00'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {options.showNit && form.nit && (
+            <div
+              style={{
+                padding: M.cellPad,
+                minWidth: '58px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                textAlign: 'center'
+              }}
+            >
+              <span style={microLabelCss}>NIT</span>
+              <div style={{ fontSize: `${M.nitText}px`, fontWeight: 900, color: '#000000', lineHeight: 1.1 }}>
+                {form.nit}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {cleanNotasToDisplay && !M.isTiny && (
+          <div style={{ padding: M.cellPad, borderTop: `1px dashed #000000` }}>
+            <span style={microLabelCss}>OBSERVACIONES DE ENTREGA</span>
+            <div style={{ fontSize: `${M.notesText}px`, fontWeight: 800, color: '#000000', lineHeight: 1.2 }}>
+              {cleanNotasToDisplay}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Sub-bloque reutilizable: Página Web, Redes Sociales y QR Minimalista
+  const renderSocialAndWebBlock = (withBottomBorder = true) => {
+    if (!options.showSocialQr && !options.showWebsite && !options.showSocials) return null;
+    if (M.isTiny) {
+      return (
+        <div
+          style={{
+            padding: '2px 4px',
+            borderBottom: withBottomBorder ? lineStyle : 'none',
+            backgroundColor: '#000000',
+            color: '#ffffff',
+            fontSize: `${M.webUrl}px`,
+            fontWeight: 900,
+            textAlign: 'center',
+            letterSpacing: '0.3px',
+            lineHeight: 1.1
+          }}
+        >
+          {(options.websiteUrl || 'onecontrol.shop').toUpperCase()} · {options.socialHandle || '@onecontrol.shop'}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: options.showSocialQr && qrBase64 ? 'auto 1fr' : '1fr',
+          borderBottom: withBottomBorder ? lineStyle : 'none',
+          alignItems: 'stretch'
+        }}
+      >
+        {options.showSocialQr && qrBase64 && (
+          <div
+            style={{
+              padding: M.cellPad,
+              borderRight: lineStyle,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <img
+              src={qrBase64}
+              alt="QR OneControl"
+              style={{
+                width: `${M.qrSize}px`,
+                height: `${M.qrSize}px`,
+                objectFit: 'contain',
+                display: 'block',
+                backgroundColor: '#ffffff'
+              }}
+            />
+          </div>
+        )}
+
+        <div
+          style={{
+            padding: M.cellPad,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: M.isSpacious ? '5px' : '3px',
+            minWidth: 0
+          }}
+        >
+          {/* PÁGINA WEB MINIMALISTA Y MUY VISIBLE */}
+          {options.showWebsite && options.websiteUrl && (
+            <div
+              style={{
+                backgroundColor: '#000000',
+                color: '#ffffff',
+                padding: M.isSpacious ? '3px 8px' : '2px 6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px'
+              }}
+            >
+              <SocialIconSvg type="web" size={Math.max(10, M.webUrl - 1)} color="#ffffff" />
+              <span
+                style={{
+                  fontSize: `${M.webUrl}px`,
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  lineHeight: 1.1
+                }}
+              >
+                {options.websiteUrl}
+              </span>
+            </div>
+          )}
+
+          {/* REDES SOCIALES MINIMALISTAS Y MUY VISIBLES */}
+          {options.showSocials && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+              <div
+                style={{
+                  fontSize: `${M.socialHandle}px`,
+                  fontWeight: 900,
+                  color: '#000000',
+                  letterSpacing: '0.2px',
+                  lineHeight: 1.1
+                }}
+              >
+                {options.socialHandle || '@onecontrol.shop'}
+              </div>
+
+              {activeSocialPlatforms.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                    gap: M.isSpacious ? '6px' : '4px'
+                  }}
+                >
+                  {activeSocialPlatforms.map(net => (
+                    <span
+                      key={net.id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        fontSize: `${M.socialNet}px`,
+                        fontWeight: 800,
+                        color: '#000000',
+                        border: '1px solid #000000',
+                        padding: M.isSpacious ? '1.5px 5px' : '1px 4px',
+                        lineHeight: 1.1
+                      }}
+                    >
+                      <SocialIconSvg type={net.id} size={Math.max(8, M.socialNet)} color="#000000" />
+                      <span>{net.label}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-5 animate-in fade-in duration-200">
@@ -1103,11 +1567,11 @@ export default function StickerPrint({
                   #{form.numeroPedido}
                 </span>
                 <span className="hidden md:inline-block text-[10px] px-2 py-0.5 rounded-full bg-slate-900 text-white font-black">
-                  {activeSize.widthMm}x{activeSize.heightMm}mm · {isBw ? '⚫⚪ B/N' : '🎨 Color'}
+                  {activeSize.widthMm}x{activeSize.heightMm}mm · {isHoriz ? 'Horizontal' : 'Vertical'} · {isBw ? 'B/N' : 'Color'}
                 </span>
               </h2>
               <p className="text-[10px] sm:text-xs text-slate-500 hidden sm:block">
-                Diseño auto-adaptable en Blanco y Negro o Color con redes sociales y página web bien visibles.
+                Diseño minimalista estructurado con orientación Vertical/Horizontal y modo Blanco y Negro.
               </p>
             </div>
           </div>
@@ -1151,7 +1615,7 @@ export default function StickerPrint({
             }`}
           >
             <Eye size={15} />
-            <span>👁️ Ver Sticker</span>
+            <span>Ver Sticker</span>
           </button>
           <button
             type="button"
@@ -1163,7 +1627,7 @@ export default function StickerPrint({
             }`}
           >
             <Sliders size={15} />
-            <span>✏️ Opciones, B/N, Redes & Tamaño</span>
+            <span>Opciones, Orientación & Datos</span>
           </button>
         </div>
 
@@ -1175,70 +1639,112 @@ export default function StickerPrint({
             mobileTab === 'preview' ? 'hidden lg:block' : 'block'
           }`}>
             
-            {/* 1. MODO DE IMPRESIÓN: BLANCO Y NEGRO vs COLOR + TAMAÑO DE LETRA */}
-            <div className="p-3.5 bg-slate-900 text-white rounded-2xl space-y-3 shadow-md">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 text-orange-400">
-                  <Contrast size={14} />
-                  Modo de Impresión del Sticker:
-                </span>
-                <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full">
-                  {isBw ? 'Negro Puro 100% Contraste' : 'Con Color'}
-                </span>
+            {/* 1. MODO BLANCO Y NEGRO, ORIENTACIÓN VERTICAL/HORIZONTAL Y ESCALA */}
+            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3.5 shadow-md">
+              {/* Blanco y Negro vs Color */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10.5px] font-black uppercase tracking-wider flex items-center gap-1.5 text-orange-400">
+                    <Contrast size={13} />
+                    Modo de Color:
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-300">
+                    {isBw ? 'Blanco y Negro Puro' : 'Con Color'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateOptions({ colorMode: 'bw' })}
+                    className={`py-2 px-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2 ${
+                      isBw
+                        ? 'bg-white text-black border-white font-black ring-2 ring-[#FF6B00]'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded bg-black text-white text-[9px] font-black flex items-center justify-center shrink-0">
+                      B/N
+                    </span>
+                    <span className="text-xs font-black">Blanco y Negro</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateOptions({ colorMode: 'color' })}
+                    className={`py-2 px-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2 ${
+                      !isBw
+                        ? 'bg-[#FF6B00] text-white border-[#FF6B00] font-black ring-2 ring-white'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded bg-gradient-to-br from-orange-400 to-emerald-500 text-white text-[9px] font-black flex items-center justify-center shrink-0">
+                      C
+                    </span>
+                    <span className="text-xs font-black">A Color</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => updateOptions({ colorMode: 'bw' })}
-                  className={`py-2.5 px-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
-                    isBw
-                      ? 'bg-white text-black border-white shadow-sm ring-2 ring-[#FF6B00]'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                  }`}
-                >
-                  <div className="w-6 h-6 rounded-lg bg-black text-white font-black text-[10px] flex items-center justify-center shrink-0 border border-slate-400">
-                    B/N
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-black leading-tight">Blanco y Negro</div>
-                    <div className={`text-[9.5px] font-bold leading-tight mt-0.5 ${isBw ? 'text-slate-700' : 'text-slate-400'}`}>
-                      Térmica / Alto contraste ⭐
+              {/* Orientación: Vertical vs Horizontal */}
+              <div className="pt-2.5 border-t border-slate-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10.5px] font-black uppercase tracking-wider flex items-center gap-1.5 text-orange-400">
+                    <LayoutGrid size={13} />
+                    Orientación del Sticker:
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-300">
+                    {activeSize.widthMm} x {activeSize.heightMm} mm
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('vertical')}
+                    className={`py-2 px-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2 ${
+                      !isHoriz
+                        ? 'bg-white text-black border-white font-black ring-2 ring-[#FF6B00]'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    <ArrowUpDown size={15} className={!isHoriz ? 'text-[#FF6B00]' : 'text-slate-400'} />
+                    <div>
+                      <div className="text-xs font-black leading-tight">Vertical</div>
+                      <div className={`text-[9.5px] font-bold ${!isHoriz ? 'text-slate-600' : 'text-slate-400'}`}>
+                        Formato alto
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => updateOptions({ colorMode: 'color' })}
-                  className={`py-2.5 px-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
-                    !isBw
-                      ? 'bg-[#FF6B00] text-white border-[#FF6B00] shadow-sm ring-2 ring-white'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                  }`}
-                >
-                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-500 to-emerald-500 text-white font-black text-[10px] flex items-center justify-center shrink-0">
-                    🎨
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-black leading-tight">A Color</div>
-                    <div className={`text-[9.5px] font-bold leading-tight mt-0.5 ${!isBw ? 'text-orange-100' : 'text-slate-400'}`}>
-                      Detalles en naranja/verde
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('horizontal')}
+                    className={`py-2 px-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2 ${
+                      isHoriz
+                        ? 'bg-white text-black border-white font-black ring-2 ring-[#FF6B00]'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    <ArrowLeftRight size={15} className={isHoriz ? 'text-[#FF6B00]' : 'text-slate-400'} />
+                    <div>
+                      <div className="text-xs font-black leading-tight">Horizontal</div>
+                      <div className={`text-[9.5px] font-bold ${isHoriz ? 'text-slate-600' : 'text-slate-400'}`}>
+                        Formato ancho
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               </div>
 
-              {/* Tamaño de Letra / Escala de Contenido */}
-              <div className="pt-2 border-t border-slate-700/80 flex items-center justify-between gap-2">
+              {/* Tamaño de Letra */}
+              <div className="pt-2.5 border-t border-slate-800 flex items-center justify-between gap-2">
                 <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1">
                   <Type size={13} className="text-orange-400" />
                   Tamaño de Texto:
                 </span>
                 <div className="flex items-center gap-1">
                   {[
-                    { id: 'normal', label: 'Normal' },
-                    { id: 'large', label: 'Grande ⭐' },
+                    { id: 'normal', label: 'Estándar' },
+                    { id: 'large', label: 'Grande' },
                     { id: 'xlarge', label: 'Extra Grande' }
                   ].map(t => (
                     <button
@@ -1258,7 +1764,7 @@ export default function StickerPrint({
               </div>
             </div>
 
-            {/* 2. SELECTOR DE TAMAÑO DE STICKER */}
+            {/* 2. SELECTOR DE MEDIDA DE STICKER */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
@@ -1303,7 +1809,7 @@ export default function StickerPrint({
                         value={customW}
                         onChange={e => handleCustomWChange(Number(e.target.value))}
                         className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900"
-                        min="30"
+                        min="25"
                         max="250"
                       />
                     </div>
@@ -1319,194 +1825,16 @@ export default function StickerPrint({
                       />
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {[
-                      { w: 100, h: 150, label: '100 x 150 mm' },
-                      { w: 100, h: 100, label: '100 x 100 mm' },
-                      { w: 100, h: 75, label: '100 x 75 mm' },
-                      { w: 80, h: 120, label: '80 x 120 mm' },
-                      { w: 75, h: 50, label: '75 x 50 mm' }
-                    ].map(p => (
-                      <button
-                        key={p.label}
-                        type="button"
-                        onClick={() => {
-                          handleCustomWChange(p.w);
-                          handleCustomHChange(p.h);
-                        }}
-                        className="text-[10px] font-black px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-[#FF6B00] hover:text-[#FF6B00] cursor-pointer"
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>
 
-            {/* 3. REDES SOCIALES, PÁGINA WEB & QR (PROMINENTE Y EDITABLE) */}
-            <div className="space-y-3 p-4 bg-orange-50/50 rounded-2xl border-2 border-orange-200/90">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                  <Globe size={15} className="text-[#FF6B00]" />
-                  Página Web, Redes Sociales & QR
-                </span>
-                <label className="flex items-center gap-1.5 text-[11px] font-black text-[#FF6B00] bg-white px-2.5 py-1 rounded-lg border border-orange-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={options.prominentSocials}
-                    onChange={e => updateOptions({ prominentSocials: e.target.checked })}
-                    className="accent-[#FF6B00] rounded cursor-pointer"
-                  />
-                  <span>Bien Grandes / Visibles ⭐</span>
-                </label>
-              </div>
-
-              {/* Página Web */}
-              <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-black text-slate-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={options.showWebsite}
-                      onChange={e => updateOptions({ showWebsite: e.target.checked })}
-                      className="accent-[#FF6B00] rounded cursor-pointer"
-                    />
-                    <span>🌐 Mostrar Página Web</span>
-                  </label>
-                  <span className="text-[10px] font-bold text-slate-400">Destacado en Sticker</span>
-                </div>
-                {options.showWebsite && (
-                  <input
-                    type="text"
-                    value={options.websiteUrl}
-                    onChange={e => updateOptions({ websiteUrl: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-slate-900 focus:outline-none focus:border-[#FF6B00]"
-                    placeholder="www.onecontrol.shop"
-                  />
-                )}
-              </div>
-
-              {/* Redes Sociales */}
-              <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-black text-slate-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={options.showSocials}
-                      onChange={e => updateOptions({ showSocials: e.target.checked })}
-                      className="accent-[#FF6B00] rounded cursor-pointer"
-                    />
-                    <span>📱 Mostrar Redes Sociales</span>
-                  </label>
-                  <span className="text-[10px] font-bold text-slate-400">Con íconos visibles</span>
-                </div>
-
-                {options.showSocials && (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-black text-slate-500 uppercase block mb-1">
-                          Usuario de Redes:
-                        </label>
-                        <input
-                          type="text"
-                          value={options.socialHandle}
-                          onChange={e => updateOptions({ socialHandle: e.target.value })}
-                          className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-slate-900"
-                          placeholder="@onecontrol.shop"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-slate-500 uppercase block mb-1">
-                          WhatsApp / PBX:
-                        </label>
-                        <input
-                          type="text"
-                          value={options.whatsappNumber}
-                          onChange={e => updateOptions({ whatsappNumber: e.target.value })}
-                          className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-slate-900"
-                          placeholder="5965-8803"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] font-black text-slate-500 uppercase block mb-1">
-                        Redes a mostrar en la etiqueta:
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {[
-                          { key: 'showTiktok', label: '♪ TikTok' },
-                          { key: 'showInstagram', label: '📷 Instagram' },
-                          { key: 'showFacebook', label: 'f Facebook' },
-                          { key: 'showWhatsapp', label: '💬 WhatsApp' }
-                        ].map(net => (
-                          <button
-                            key={net.key}
-                            type="button"
-                            onClick={() => updateOptions({ [net.key]: !options[net.key] })}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all cursor-pointer ${
-                              options[net.key]
-                                ? 'bg-slate-900 text-white border-slate-900'
-                                : 'bg-slate-50 text-slate-400 border-slate-200'
-                            }`}
-                          >
-                            {options[net.key] ? '✓ ' : ''}{net.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Código QR */}
-              <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-black text-slate-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={options.showSocialQr}
-                      onChange={e => updateOptions({ showSocialQr: e.target.checked })}
-                      className="accent-[#FF6B00] rounded cursor-pointer"
-                    />
-                    <span>🏁 Mostrar Código QR Escaneable</span>
-                  </label>
-                </div>
-
-                {options.showSocialQr && (
-                  <div className="space-y-2">
-                    <select
-                      value={options.socialQrTarget}
-                      onChange={e => updateOptions({ socialQrTarget: e.target.value })}
-                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00] cursor-pointer"
-                    >
-                      {QR_TARGETS.map(t => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
-                    </select>
-
-                    {options.socialQrTarget === 'custom' && (
-                      <input
-                        type="url"
-                        value={options.customQrUrl}
-                        onChange={e => updateOptions({ customQrUrl: e.target.value })}
-                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium"
-                        placeholder="https://tu-pagina-o-redes.com"
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 4. DATOS DEL DESTINATARIO */}
+            {/* 3. DATOS DEL DESTINATARIO (ORDENADOS POR CAMPO) */}
             <div className="space-y-3 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                   <User size={13} className="text-[#FF6B00]" />
-                  Datos del Destinatario
+                  Datos del Cliente & Dirección
                 </span>
                 {matchedLead && (
                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
@@ -1518,14 +1846,14 @@ export default function StickerPrint({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                    Nombre Completo:
+                    Nombre del Cliente:
                   </label>
                   <input
                     type="text"
                     value={form.cliente}
                     onChange={e => setForm(prev => ({ ...prev, cliente: e.target.value }))}
                     className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
-                    placeholder="Nombre del cliente"
+                    placeholder="Nombre completo"
                   />
                 </div>
 
@@ -1552,41 +1880,158 @@ export default function StickerPrint({
                   value={form.direccion}
                   onChange={e => setForm(prev => ({ ...prev, direccion: e.target.value }))}
                   className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-[#FF6B00]"
-                  placeholder="Calle, avenida, número, colonia, garita, etc."
+                  placeholder="Calle, avenida, número de casa, colonia, referencia..."
                 />
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                    Zona / Sector / Municipio:
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                    Zona / Sector:
                   </label>
-                  {zonaVisual && (
-                    <span className="text-[10px] font-bold text-emerald-600">
-                      Detectado: {zonaVisual}
-                    </span>
+                  <input
+                    type="text"
+                    value={form.zona}
+                    onChange={e => setForm(prev => ({ ...prev, zona: e.target.value }))}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-800 focus:outline-none focus:border-[#FF6B00]"
+                    placeholder="Ej: Zona 14"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                    Municipio / Departamento:
+                  </label>
+                  <input
+                    type="text"
+                    value={form.municipio}
+                    onChange={e => setForm(prev => ({ ...prev, municipio: e.target.value, departamento: '' }))}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
+                    placeholder="Ej: Guatemala, Mixco..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {QUICK_ZONAS.map(z => (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, zona: z }))}
+                    className="text-[9.5px] font-bold px-2 py-0.5 bg-white hover:bg-orange-50 hover:text-orange-700 text-slate-600 border border-slate-200 rounded-lg cursor-pointer transition-colors"
+                  >
+                    {z}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 4. REDES SOCIALES, PÁGINA WEB & QR */}
+            <div className="space-y-3 p-4 bg-orange-50/50 rounded-2xl border border-orange-200/90">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                  <Globe size={14} className="text-[#FF6B00]" />
+                  Página Web, Redes Sociales & QR
+                </span>
+                <label className="flex items-center gap-1.5 text-[10.5px] font-black text-[#FF6B00] bg-white px-2 py-0.5 rounded-lg border border-orange-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={options.prominentSocials}
+                    onChange={e => updateOptions({ prominentSocials: e.target.checked })}
+                    className="accent-[#FF6B00] rounded cursor-pointer"
+                  />
+                  <span>Destacar Tamaño</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                  <label className="flex items-center gap-1.5 text-[11px] font-black text-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={options.showWebsite}
+                      onChange={e => updateOptions({ showWebsite: e.target.checked })}
+                      className="accent-[#FF6B00] rounded cursor-pointer"
+                    />
+                    <span>Página Web</span>
+                  </label>
+                  {options.showWebsite && (
+                    <input
+                      type="text"
+                      value={options.websiteUrl}
+                      onChange={e => updateOptions({ websiteUrl: e.target.value })}
+                      className="w-full px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-slate-900"
+                      placeholder="www.onecontrol.shop"
+                    />
                   )}
                 </div>
-                <input
-                  type="text"
-                  value={form.zona}
-                  onChange={e => setForm(prev => ({ ...prev, zona: e.target.value }))}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-800 focus:outline-none focus:border-[#FF6B00]"
-                  placeholder="Ej: Zona 11, Mixco, Villa Nueva"
-                />
 
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {QUICK_ZONAS.map(z => (
+                <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                  <label className="flex items-center gap-1.5 text-[11px] font-black text-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={options.showSocials}
+                      onChange={e => updateOptions({ showSocials: e.target.checked })}
+                      className="accent-[#FF6B00] rounded cursor-pointer"
+                    />
+                    <span>Usuario de Redes</span>
+                  </label>
+                  {options.showSocials && (
+                    <input
+                      type="text"
+                      value={options.socialHandle}
+                      onChange={e => updateOptions({ socialHandle: e.target.value })}
+                      className="w-full px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-slate-900"
+                      placeholder="@onecontrol.shop"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {options.showSocials && (
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { key: 'showTiktok', label: 'TikTok' },
+                    { key: 'showInstagram', label: 'Instagram' },
+                    { key: 'showFacebook', label: 'Facebook' },
+                    { key: 'showWhatsapp', label: 'WhatsApp' }
+                  ].map(net => (
                     <button
-                      key={z}
+                      key={net.key}
                       type="button"
-                      onClick={() => setForm(prev => ({ ...prev, zona: z }))}
-                      className="text-[9.5px] font-bold px-2 py-0.5 bg-white hover:bg-orange-50 hover:text-orange-700 text-slate-600 border border-slate-200 rounded-lg cursor-pointer transition-colors"
+                      onClick={() => updateOptions({ [net.key]: !options[net.key] })}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all cursor-pointer ${
+                        options[net.key]
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-400 border-slate-200'
+                      }`}
                     >
-                      {z}
+                      {options[net.key] ? '✓ ' : ''}{net.label}
                     </button>
                   ))}
                 </div>
+              )}
+
+              <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-2">
+                <label className="flex items-center gap-1.5 text-[11px] font-black text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={options.showSocialQr}
+                    onChange={e => updateOptions({ showSocialQr: e.target.checked })}
+                    className="accent-[#FF6B00] rounded cursor-pointer"
+                  />
+                  <span>Mostrar Código QR</span>
+                </label>
+                {options.showSocialQr && (
+                  <select
+                    value={options.socialQrTarget}
+                    onChange={e => updateOptions({ socialQrTarget: e.target.value })}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 cursor-pointer"
+                  >
+                    {QR_TARGETS.map(t => (
+                      <option key={t.id} value={t.id}>{t.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
@@ -1594,22 +2039,21 @@ export default function StickerPrint({
             <div className="space-y-3 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
               <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                 <Package size={13} className="text-[#FF6B00]" />
-                Detalles del Pedido & Cobro
+                Producto, Cobro & Observaciones
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div className="sm:col-span-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                    Producto / Contenido:
+                    Producto:
                   </label>
                   <input
                     type="text"
                     value={form.producto}
                     onChange={e => setForm(prev => ({ ...prev, producto: e.target.value }))}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
                   />
                 </div>
-
                 <div>
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
                     Cantidad:
@@ -1618,7 +2062,7 @@ export default function StickerPrint({
                     type="text"
                     value={form.cantidad}
                     onChange={e => setForm(prev => ({ ...prev, cantidad: e.target.value }))}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
                   />
                 </div>
               </div>
@@ -1632,22 +2076,20 @@ export default function StickerPrint({
                     type="text"
                     value={form.precio}
                     onChange={e => setForm(prev => ({ ...prev, precio: e.target.value }))}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-emerald-700 focus:outline-none focus:border-[#FF6B00]"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-emerald-700"
                     placeholder="Ej: Q250.00"
                   />
                 </div>
-
                 <div>
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                    NIT de Facturación:
+                    NIT:
                   </label>
                   <div className="flex gap-1">
                     <input
                       type="text"
                       value={form.nit}
                       onChange={e => setForm(prev => ({ ...prev, nit: e.target.value }))}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#FF6B00]"
-                      placeholder="C/F o NIT"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
                     />
                     <button
                       type="button"
@@ -1660,7 +2102,6 @@ export default function StickerPrint({
                 </div>
               </div>
 
-              {/* Toggle de Tipo de Cobro */}
               <div className="flex items-center gap-3 pt-1">
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
                   <input
@@ -1670,7 +2111,7 @@ export default function StickerPrint({
                     onChange={() => setForm(prev => ({ ...prev, esContraEntrega: true, pagado: false }))}
                     className="accent-[#FF6B00] cursor-pointer"
                   />
-                  <span>⚠️ Cobrar Contra Entrega</span>
+                  <span>Cobrar Contra Entrega</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
@@ -1681,47 +2122,40 @@ export default function StickerPrint({
                     onChange={() => setForm(prev => ({ ...prev, esContraEntrega: false, pagado: true }))}
                     className="accent-emerald-600 cursor-pointer"
                   />
-                  <span>✓ Pagado (No cobrar)</span>
+                  <span>Pagado (No cobrar)</span>
                 </label>
               </div>
 
-              {/* Notas / Instrucciones al Repartidor */}
               <div className="pt-2 border-t border-slate-200/60">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1">
                   <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
                     <FileText size={12} className="text-[#FF6B00]" />
-                    Notas / Instrucciones al Repartidor:
+                    Observaciones adicionales al repartidor:
                   </label>
                   {form.notas && (
                     <button
                       type="button"
                       onClick={() => setForm(prev => ({ ...prev, notas: '' }))}
-                      className="text-[10px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 hover:underline cursor-pointer"
+                      className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer flex items-center gap-1"
                     >
-                      <Trash2 size={11} />
-                      <span>Limpiar notas</span>
+                      <Trash2 size={11} /> Limpiar
                     </button>
                   )}
                 </div>
-
                 <textarea
                   rows={2}
                   value={form.notas}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setForm(prev => ({ ...prev, notas: val }));
-                  }}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF6B00] resize-y"
-                  placeholder="Escribe las notas de entrega o selecciona un atajo abajo..."
+                  onChange={e => setForm(prev => ({ ...prev, notas: e.target.value }))}
+                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800"
+                  placeholder="Instrucciones extra (ej. entregar en garita, llamar antes)..."
                 />
-
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {QUICK_NOTES.map(note => (
                     <button
                       key={note}
                       type="button"
                       onClick={() => appendNote(note)}
-                      className="text-[9.5px] font-medium px-2 py-0.5 bg-white hover:bg-orange-50 hover:text-orange-700 text-slate-600 border border-slate-200 rounded-lg cursor-pointer transition-colors"
+                      className="text-[9.5px] font-medium px-2 py-0.5 bg-white hover:bg-orange-50 text-slate-600 border border-slate-200 rounded-lg cursor-pointer"
                     >
                       + {note}
                     </button>
@@ -1730,7 +2164,6 @@ export default function StickerPrint({
               </div>
             </div>
 
-            {/* BOTÓN: GUARDAR DATOS EN CRM Y PESTAÑA NUEVA */}
             <div className="flex items-center justify-between pt-1">
               <button
                 type="button"
@@ -1741,12 +2174,12 @@ export default function StickerPrint({
                 {savedSuccess ? (
                   <>
                     <CheckCircle2 size={14} className="text-emerald-400" />
-                    <span>¡Guardado en el CRM!</span>
+                    <span>¡Guardado!</span>
                   </>
                 ) : (
                   <>
                     <Save size={14} />
-                    <span>Guardar datos en el Lead & Pedido</span>
+                    <span>Guardar en Lead & Pedido</span>
                   </>
                 )}
               </button>
@@ -1755,66 +2188,73 @@ export default function StickerPrint({
                 type="button"
                 onClick={handleOpenInNewTab}
                 className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
-                title="Abrir vista de impresión en ventana separada"
               >
                 <ExternalLink size={13} />
                 <span>Pestaña nueva / PDF</span>
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setMobileTab('preview')}
-              className="lg:hidden w-full py-2.5 px-4 bg-[#FF6B00] hover:bg-[#e05e00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 cursor-pointer mt-2"
-            >
-              <Eye size={15} />
-              <span>Ver Sticker Generado</span>
-            </button>
           </div>
 
-          {/* COLUMNA DERECHA: VISTA PREVIA WYSIWYG CON CONTROLES RÁPIDOS */}
+          {/* COLUMNA DERECHA: VISTA PREVIA MINIMALISTA CON CONTROLES RÁPIDOS */}
           <div className={`lg:col-span-6 xl:col-span-7 p-3 sm:p-5 bg-slate-100 flex flex-col justify-between items-center overflow-y-auto max-h-[82vh] ${
             mobileTab === 'edit' ? 'hidden lg:flex' : 'flex'
           }`}>
             
-            {/* BARRA RÁPIDA DE OPCIONES EN LA VISTA PREVIA (SIEMPRE VISIBLE EN MÓVIL Y DESKTOP) */}
+            {/* BARRA RÁPIDA DE CONTROLES (B/N, VERTICAL/HORIZONTAL, MEDIDA, ZOOM) */}
             <div className="w-full space-y-2 mb-3 shrink-0">
-              <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs">
-                {/* Toggle Rápido Blanco y Negro vs Color */}
+              <div className="flex flex-wrap items-center justify-between gap-1.5 bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs">
+                {/* Blanco y Negro vs Color */}
                 <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
                   <button
                     type="button"
                     onClick={() => updateOptions({ colorMode: 'bw' })}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 transition-all cursor-pointer ${
-                      isBw
-                        ? 'bg-black text-white shadow-xs'
-                        : 'text-slate-600 hover:text-black'
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                      isBw ? 'bg-black text-white shadow-xs' : 'text-slate-600 hover:text-black'
                     }`}
-                    title="Impresión en Blanco y Negro puro de alto contraste"
                   >
-                    <span>⚫⚪ Blanco y Negro</span>
+                    B/N
                   </button>
                   <button
                     type="button"
                     onClick={() => updateOptions({ colorMode: 'color' })}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 transition-all cursor-pointer ${
-                      !isBw
-                        ? 'bg-[#FF6B00] text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                      !isBw ? 'bg-[#FF6B00] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
-                    title="Impresión a Color"
                   >
-                    <span>🎨 Color</span>
+                    Color
                   </button>
                 </div>
 
-                {/* Selector rápido de tamaño */}
+                {/* Vertical vs Horizontal */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('vertical')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 transition-all cursor-pointer ${
+                      !isHoriz ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <ArrowUpDown size={12} />
+                    <span>Vertical</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange('horizontal')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 transition-all cursor-pointer ${
+                      isHoriz ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <ArrowLeftRight size={12} />
+                    <span>Horizontal</span>
+                  </button>
+                </div>
+
+                {/* Tamaños rápidos */}
                 <div className="flex items-center gap-1">
                   {[
                     { id: '10x15', label: '100x150' },
                     { id: '10x10', label: '100x100' },
-                    { id: '10x7.5', label: '100x75' },
-                    { id: '7.5x5', label: '75x50' }
+                    { id: '10x7.5', label: '100x75' }
                   ].map(sz => (
                     <button
                       key={sz.id}
@@ -1831,24 +2271,22 @@ export default function StickerPrint({
                   ))}
                 </div>
 
-                {/* Controles de Zoom */}
+                {/* Zoom */}
                 <div className="flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-xl border border-slate-200">
                   <button
                     type="button"
                     onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
                     className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
-                    title="Alejar"
                   >
                     <ZoomOut size={13} />
                   </button>
-                  <span className="text-[10px] font-black text-slate-700 w-9 text-center">
+                  <span className="text-[10px] font-black text-slate-700 w-8 text-center">
                     {Math.round(effectiveScale * 100)}%
                   </span>
                   <button
                     type="button"
                     onClick={() => setZoom(z => Math.min(1.5, z + 0.1))}
                     className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
-                    title="Acercar"
                   >
                     <ZoomIn size={13} />
                   </button>
@@ -1856,7 +2294,7 @@ export default function StickerPrint({
               </div>
             </div>
 
-            {/* CONTENEDOR VISUAL DEL STICKER (AUTO-ESCALADO RESPONSIVE Y 100% FIEL A IMPRESIÓN) */}
+            {/* CONTENEDOR VISUAL DEL STICKER */}
             <div
               className="flex-1 flex flex-col items-center justify-start p-1 sm:p-2 w-full overflow-x-auto"
               style={{
@@ -1872,9 +2310,9 @@ export default function StickerPrint({
                   transition: 'transform 0.15s ease-out',
                   marginBottom: effectiveScale < 1 ? `-${Math.round(stickerHeightPx * (1 - effectiveScale))}px` : '0px'
                 }}
-                className="bg-white text-black shadow-2xl rounded-xs overflow-hidden shrink-0 select-none"
+                className="bg-white text-black shadow-2xl overflow-hidden shrink-0 select-none"
               >
-                {/* TARJETA REAL DEL STICKER (USADA EN IMPRESIÓN Y EN EXPORTACIÓN MARKLIFE PNG) */}
+                {/* TARJETA REAL DEL STICKER: GRILLA SUIZA MINIMALISTA */}
                 <div
                   ref={stickerCardRef}
                   style={{
@@ -1882,503 +2320,205 @@ export default function StickerPrint({
                     height: `${stickerHeightPx}px`,
                     maxWidth: `${stickerWidthPx}px`,
                     maxHeight: `${stickerHeightPx}px`,
-                    padding: `${M.pad}px`,
-                    gap: `${M.gap}px`,
-                    border: `${M.borderW}px solid #000000`,
+                    padding: `${M.outerPad}px`,
                     backgroundColor: '#ffffff',
                     color: '#000000',
                     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
                     display: 'flex',
                     flexDirection: 'column',
-                    justifyContent: 'space-between',
                     boxSizing: 'border-box',
                     overflow: 'hidden'
                   }}
                 >
-                  {/* 1. ENCABEZADO (LOGO + ONECONTROL + PEDIDO #) */}
+                  {/* MARCO INTERIOR ESTRUCTURADO MINIMALISTA */}
                   <div
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      borderBottom: `${M.borderW}px solid #000000`,
-                      paddingBottom: `${Math.max(3, Math.round(M.gap * 0.85))}px`,
-                      flexShrink: 0
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: `${Math.max(4, M.gap)}px`, minWidth: 0 }}>
-                      {options.showLogo && (
-                        <img
-                          src={activeLogoSrc}
-                          alt="OneControl"
-                          style={{
-                            height: `${M.logoH}px`,
-                            width: 'auto',
-                            maxWidth: `${Math.round(stickerWidthPx * 0.36)}px`,
-                            objectFit: 'contain',
-                            display: 'block',
-                            flexShrink: 0
-                          }}
-                        />
-                      )}
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: `${M.headerTitle}px`,
-                            fontWeight: 900,
-                            letterSpacing: '-0.3px',
-                            textTransform: 'uppercase',
-                            lineHeight: 1.05,
-                            color: isBw ? '#000000' : '#0f172a'
-                          }}
-                        >
-                          ONECONTROL
-                        </div>
-                        {options.showSender && !M.isTiny && (
-                          <div
-                            style={{
-                              fontSize: `${M.headerSub}px`,
-                              fontWeight: 800,
-                              color: '#000000',
-                              marginTop: '2px',
-                              lineHeight: 1.1
-                            }}
-                          >
-                            📞 PBX/WA: {options.whatsappNumber || '5965-8803'}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div
-                        style={{
-                          backgroundColor: accentColor,
-                          color: '#ffffff',
-                          fontSize: `${M.orderBadge}px`,
-                          fontWeight: 900,
-                          padding: M.isTiny ? '1px 5px' : '2px 8px',
-                          borderRadius: '4px',
-                          lineHeight: 1.15,
-                          display: 'inline-block'
-                        }}
-                      >
-                        PEDIDO #{form.numeroPedido}
-                      </div>
-                      {form.fechaEntrega && !M.isTiny && (
-                        <div
-                          style={{
-                            fontSize: `${M.headerSub}px`,
-                            fontWeight: 800,
-                            color: '#000000',
-                            marginTop: '2px',
-                            lineHeight: 1.1
-                          }}
-                        >
-                          🗓️ {form.fechaEntrega}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 2. SECCIÓN DESTINATARIO (SE ADAPTA Y CRECE EN ETIQUETAS GRANDES) */}
-                  <div
-                    style={{
-                      border: `${M.borderW}px solid #000000`,
-                      borderRadius: '6px',
-                      padding: `${Math.max(4, Math.round(M.pad * 0.75))}px`,
-                      backgroundColor: '#ffffff',
+                      border: frameStyle,
+                      flex: '1 1 auto',
                       display: 'flex',
                       flexDirection: 'column',
-                      justifyContent: 'center',
-                      flex: M.isVerticalLarge ? '1 1 auto' : '0 1 auto',
-                      minHeight: 0
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: `${M.destLabel}px`,
-                        fontWeight: 900,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.6px',
-                        color: '#000000',
-                        lineHeight: 1.1
-                      }}
-                    >
-                      📦 ENTREGAR A:
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: `${M.destName}px`,
-                        fontWeight: 900,
-                        textTransform: 'uppercase',
-                        color: '#000000',
-                        lineHeight: 1.1,
-                        margin: '2px 0',
-                        wordBreak: 'break-word'
-                      }}
-                    >
-                      {form.cliente || 'CLIENTE FINAL'}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: `${M.destPhone}px`,
-                        fontWeight: 900,
-                        color: '#000000',
-                        lineHeight: 1.15,
-                        marginTop: '1px'
-                      }}
-                    >
-                      📞 TEL: {form.phone || 'Sin número'}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: `${M.destAddr}px`,
-                        fontWeight: 800,
-                        color: '#000000',
-                        lineHeight: 1.2,
-                        marginTop: '3px',
-                        wordBreak: 'break-word'
-                      }}
-                    >
-                      {form.direccion || 'Dirección pendiente de confirmación'}
-                    </div>
-
-                    {zonaVisual && (
-                      <div style={{ marginTop: '4px' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            backgroundColor: '#000000',
-                            color: '#ffffff',
-                            fontSize: `${M.zonaBadge}px`,
-                            fontWeight: 900,
-                            padding: M.isTiny ? '1px 5px' : '2px 8px',
-                            borderRadius: '4px',
-                            textTransform: 'uppercase',
-                            lineHeight: 1.2
-                          }}
-                        >
-                          📍 {zonaVisual.toUpperCase()}{form.municipio && form.municipio !== 'Guatemala' ? ' · ' + form.municipio.toUpperCase() : ''}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 3. PRODUCTO Y CANTIDAD */}
-                  <div
-                    style={{
-                      display: 'flex',
                       justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: `${Math.max(3, Math.round(M.gap * 0.7))}px ${Math.max(4, Math.round(M.pad * 0.5))}px`,
-                      borderTop: `${M.borderW}px solid #000000`,
-                      borderBottom: `${M.borderW}px solid #000000`,
-                      backgroundColor: '#ffffff',
-                      flexShrink: 0
+                      overflow: 'hidden'
                     }}
                   >
+                    {/* 1. ENCABEZADO MINIMALISTA */}
                     <div
                       style={{
-                        fontSize: `${M.prodText}px`,
-                        fontWeight: 900,
-                        color: '#000000',
-                        lineHeight: 1.15,
-                        flex: 1,
-                        minWidth: 0,
-                        overflow: 'hidden',
-                        display: '-webkit-box',
-                        WebkitLineClamp: M.isVerticalLarge ? 2 : 1,
-                        WebkitBoxOrient: 'vertical'
-                      }}
-                    >
-                      🛠️ {form.producto || 'Producto sin especificar'}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: `${M.prodQty}px`,
-                        fontWeight: 900,
-                        color: '#000000',
-                        border: `${M.borderW}px solid #000000`,
-                        padding: M.isTiny ? '1px 4px' : '2px 7px',
-                        borderRadius: '4px',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                        backgroundColor: '#ffffff'
-                      }}
-                    >
-                      CANT: {form.cantidad || '1'}
-                    </div>
-                  </div>
-
-                  {/* 4. SECCIÓN MEDIA: COBRO + REDES SOCIALES / PÁGINA WEB / QR */}
-                  {/* En 100x150mm (stackMiddle=true) se apilan a ancho completo para máxima visibilidad */}
-                  <div
-                    style={{
-                      display: M.stackMiddle ? 'flex' : 'grid',
-                      flexDirection: M.stackMiddle ? 'column' : undefined,
-                      gridTemplateColumns: !M.stackMiddle
-                        ? (options.showPrice && (options.showSocialQr || options.showWebsite || options.showSocials) && !M.isTiny ? '0.95fr 1.05fr' : '1fr')
-                        : undefined,
-                      gap: `${M.gap}px`,
-                      alignItems: 'stretch',
-                      flexShrink: 0
-                    }}
-                  >
-                    {/* BLOQUE DE COBRO Y NOTAS */}
-                    {options.showPrice && (
-                      <div
-                        style={{
-                          border: `${M.borderW}px solid #000000`,
-                          borderRadius: '6px',
-                          overflow: 'hidden',
-                          backgroundColor: '#ffffff',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between'
-                        }}
-                      >
-                        <div
-                          style={{
-                            backgroundColor: payAccentBg,
-                            color: '#ffffff',
-                            fontSize: `${M.payTitle}px`,
-                            fontWeight: 900,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            textAlign: 'center',
-                            padding: M.isTiny ? '1px 4px' : '3px 6px',
-                            lineHeight: 1.15
-                          }}
-                        >
-                          {form.esContraEntrega ? '⚠️ COBRO CONTRA ENTREGA' : '✓ ESTADO: PAGADO (NO COBRAR)'}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: `${Math.max(3, Math.round(M.pad * 0.55))}px`,
-                            textAlign: 'center',
-                            display: 'flex',
-                            flexDirection: M.stackMiddle ? 'row' : 'column',
-                            alignItems: 'center',
-                            justifyContent: M.stackMiddle ? 'space-around' : 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: `${M.payAmount}px`,
-                              fontWeight: 900,
-                              color: '#000000',
-                              lineHeight: 1.05
-                            }}
-                          >
-                            {form.esContraEntrega ? (form.precio || 'A CONFIRMAR') : 'NO COBRAR'}
-                          </div>
-
-                          {options.showNit && form.nit && (
-                            <div
-                              style={{
-                                fontSize: `${M.nitText}px`,
-                                fontWeight: 900,
-                                color: '#000000',
-                                border: isBw ? '1.5px solid #000000' : '1px solid #475569',
-                                padding: '1px 6px',
-                                borderRadius: '4px',
-                                lineHeight: 1.15
-                              }}
-                            >
-                              NIT: {form.nit}
-                            </div>
-                          )}
-                        </div>
-
-                        {options.showNotes && form.notas && !M.isTiny && (
-                          <div
-                            style={{
-                              fontSize: `${M.notesText}px`,
-                              fontWeight: 800,
-                              color: '#000000',
-                              borderTop: '1.5px dashed #000000',
-                              padding: '3px 6px',
-                              lineHeight: 1.2,
-                              textAlign: 'left',
-                              wordBreak: 'break-word'
-                            }}
-                          >
-                            📝 <strong>Ref:</strong> {form.notas}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* BLOQUE DESTACADO DE PÁGINA WEB, REDES SOCIALES Y QR */}
-                    {(options.showSocialQr || options.showWebsite || options.showSocials) && !M.isTiny && (
-                      <div
-                        style={{
-                          border: `${M.borderW}px solid #000000`,
-                          borderRadius: '6px',
-                          padding: `${Math.max(4, Math.round(M.pad * 0.6))}px`,
-                          backgroundColor: '#ffffff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: `${Math.max(6, M.gap)}px`
-                        }}
-                      >
-                        {options.showSocialQr && qrBase64 && (
-                          <img
-                            src={qrBase64}
-                            alt="QR OneControl"
-                            style={{
-                              width: `${M.qrSize}px`,
-                              height: `${M.qrSize}px`,
-                              objectFit: 'contain',
-                              border: `${M.borderW}px solid #000000`,
-                              borderRadius: '4px',
-                              backgroundColor: '#ffffff',
-                              flexShrink: 0,
-                              display: 'block'
-                            }}
-                          />
-                        )}
-
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'center',
-                            gap: M.isVerticalLarge ? '4px' : '2px'
-                          }}
-                        >
-                          {/* PÁGINA WEB BIEN VISIBLE */}
-                          {options.showWebsite && options.websiteUrl && (
-                            <div
-                              style={{
-                                backgroundColor: '#000000',
-                                color: '#ffffff',
-                                fontSize: `${M.webText}px`,
-                                fontWeight: 900,
-                                padding: M.isVerticalLarge ? '3px 7px' : '2px 5px',
-                                borderRadius: '4px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.2px',
-                                lineHeight: 1.15,
-                                textAlign: 'center',
-                                wordBreak: 'break-all'
-                              }}
-                            >
-                              🌐 {options.websiteUrl}
-                            </div>
-                          )}
-
-                          {/* USUARIO DE REDES SOCIALES BIEN VISIBLE */}
-                          {options.showSocials && (
-                            <>
-                              <div
-                                style={{
-                                  fontSize: `${M.socialHandle}px`,
-                                  fontWeight: 900,
-                                  color: '#000000',
-                                  lineHeight: 1.15,
-                                  textAlign: 'center',
-                                  marginTop: '1px'
-                                }}
-                              >
-                                📱 {options.socialHandle || '@onecontrol.shop'}
-                              </div>
-
-                              {/* CHIPS DE REDES SOCIALES ACTIVAS CON ALTO CONTRASTE */}
-                              {activeSocialPlatforms.length > 0 && (
-                                <div
-                                  style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    justifyContent: 'center',
-                                    gap: '3px',
-                                    marginTop: '1px'
-                                  }}
-                                >
-                                  {activeSocialPlatforms.map(net => (
-                                    <span
-                                      key={net.id}
-                                      style={{
-                                        fontSize: `${M.socialChips}px`,
-                                        fontWeight: 900,
-                                        color: '#000000',
-                                        border: '1.5px solid #000000',
-                                        borderRadius: '3px',
-                                        padding: M.isVerticalLarge ? '1.5px 5px' : '0.5px 3.5px',
-                                        lineHeight: 1.1,
-                                        backgroundColor: '#ffffff',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      {net.label}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* EN MINI STICKERS (50x25mm): BARRA VISIBLE DE WEB Y REDES */}
-                  {M.isTiny && (options.showWebsite || options.showSocials) && (
-                    <div
-                      style={{
-                        backgroundColor: '#000000',
-                        color: '#ffffff',
-                        fontSize: `${M.webText}px`,
-                        fontWeight: 900,
-                        textAlign: 'center',
-                        padding: '1px 4px',
-                        borderRadius: '3px',
-                        lineHeight: 1.1
-                      }}
-                    >
-                      🌐 {options.websiteUrl || 'onecontrol.shop'} · {options.socialHandle || '@onecontrol.shop'}
-                    </div>
-                  )}
-
-                  {/* 5. PIE DE CÓDIGO DE BARRAS */}
-                  {options.showBarcode && (
-                    <div
-                      style={{
-                        marginTop: 'auto',
-                        paddingTop: '2px',
-                        textAlign: 'center',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: M.cellPad,
+                        borderBottom: frameStyle,
                         flexShrink: 0
                       }}
                     >
-                      <div
-                        dangerouslySetInnerHTML={{
-                          __html: generateBarcodeSvg(barcodeCodeText, M.barcodeH)
-                        }}
-                      />
-                      <div
-                        style={{
-                          fontSize: `${M.barcodeText}px`,
-                          fontFamily: 'monospace',
-                          fontWeight: 900,
-                          letterSpacing: '1.5px',
-                          color: '#000000',
-                          marginTop: '1px',
-                          lineHeight: 1
-                        }}
-                      >
-                        *{barcodeCodeText}*
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        {options.showLogo && (
+                          <img
+                            src={activeLogoSrc}
+                            alt="OneControl"
+                            style={{
+                              height: `${M.logoH}px`,
+                              width: 'auto',
+                              maxWidth: `${Math.round(stickerWidthPx * 0.34)}px`,
+                              objectFit: 'contain',
+                              display: 'block',
+                              flexShrink: 0
+                            }}
+                          />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: `${M.brandTitle}px`,
+                              fontWeight: 900,
+                              letterSpacing: '0.4px',
+                              textTransform: 'uppercase',
+                              lineHeight: 1,
+                              color: '#000000'
+                            }}
+                          >
+                            ONECONTROL
+                          </div>
+                          {options.showSender && !M.isTiny && (
+                            <div
+                              style={{
+                                fontSize: `${M.brandSub}px`,
+                                fontWeight: 700,
+                                color: '#000000',
+                                marginTop: '2px',
+                                letterSpacing: '0.2px',
+                                lineHeight: 1.1
+                              }}
+                            >
+                              PBX / WA: {options.whatsappNumber || '5965-8803'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div
+                          style={{
+                            backgroundColor: accentBg,
+                            color: '#ffffff',
+                            fontSize: `${M.orderNum}px`,
+                            fontWeight: 900,
+                            padding: M.isTiny ? '1px 5px' : '2px 8px',
+                            letterSpacing: '0.5px',
+                            lineHeight: 1.15,
+                            display: 'inline-block'
+                          }}
+                        >
+                          PEDIDO #{form.numeroPedido}
+                        </div>
+                        {form.fechaEntrega && !M.isTiny && (
+                          <div
+                            style={{
+                              fontSize: `${M.brandSub}px`,
+                              fontWeight: 800,
+                              color: '#000000',
+                              marginTop: '2px',
+                              textTransform: 'uppercase',
+                              lineHeight: 1.1
+                            }}
+                          >
+                            ENTREGA: {form.fechaEntrega}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
+
+                    {/* 2. CUERPO CENTRAL ADAPTADO A ORIENTACIÓN (VERTICAL vs HORIZONTAL) */}
+                    {isHoriz && !M.isTiny ? (
+                      /* ── DISTRIBUCIÓN HORIZONTAL (2 COLUMNAS ESTRUCTURADAS) ── */
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1.25fr 0.95fr',
+                          flex: '1 1 auto',
+                          minHeight: 0,
+                          borderBottom: options.showBarcode ? lineStyle : 'none'
+                        }}
+                      >
+                        {/* Columna Izquierda: Datos del Cliente + Producto */}
+                        <div
+                          style={{
+                            borderRight: lineStyle,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            minWidth: 0
+                          }}
+                        >
+                          {renderRecipientTable(true)}
+                          {renderProductRow(false)}
+                        </div>
+
+                        {/* Columna Derecha: Cobro + Web / Redes / QR */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            minWidth: 0
+                          }}
+                        >
+                          {renderPaymentBlock(true)}
+                          <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            {renderSocialAndWebBlock(false)}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ── DISTRIBUCIÓN VERTICAL (FILAS LIMPIAS DE ANCHO COMPLETO) ── */
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          flex: '1 1 auto',
+                          justifyContent: 'space-between',
+                          minHeight: 0
+                        }}
+                      >
+                        {renderRecipientTable(true)}
+                        {renderProductRow(true)}
+                        {renderPaymentBlock(true)}
+                        {renderSocialAndWebBlock(options.showBarcode)}
+                      </div>
+                    )}
+
+                    {/* 3. PIE DE CÓDIGO DE BARRAS MINIMALISTA */}
+                    {options.showBarcode && (
+                      <div
+                        style={{
+                          padding: M.isTiny ? '2px 4px' : '4px 10px',
+                          textAlign: 'center',
+                          backgroundColor: '#ffffff',
+                          flexShrink: 0
+                        }}
+                      >
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: generateBarcodeSvg(barcodeCodeText, M.barcodeH)
+                          }}
+                        />
+                        <div
+                          style={{
+                            fontSize: `${M.barcodeLabel}px`,
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            letterSpacing: '2.5px',
+                            color: '#000000',
+                            marginTop: '2px',
+                            lineHeight: 1
+                          }}
+                        >
+                          {barcodeCodeText}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2386,7 +2526,7 @@ export default function StickerPrint({
             {/* BOTÓN INFERIOR DE IMPRESIÓN (DESKTOP) */}
             <div className="w-full hidden sm:flex items-center justify-between pt-4 border-t border-slate-200 shrink-0">
               <span className="text-xs text-slate-500 font-medium">
-                Optimizado en {isBw ? 'Blanco y Negro puro' : 'Color'} para {activeSize.widthMm}x{activeSize.heightMm}mm.
+                Formato {isHoriz ? 'Horizontal' : 'Vertical'} ({activeSize.widthMm}x{activeSize.heightMm}mm) · {isBw ? 'Blanco y Negro' : 'Color'}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -2454,9 +2594,7 @@ export default function StickerPrint({
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs z-60 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                <span>¿Cómo deseas imprimir?</span>
-              </h3>
+              <h3 className="text-sm font-black text-slate-900">¿Cómo deseas imprimir?</h3>
               <button
                 onClick={() => setShowPrintChoiceModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
@@ -2474,7 +2612,7 @@ export default function StickerPrint({
                 }}
                 className="w-full p-3.5 rounded-2xl bg-orange-50 hover:bg-orange-100/90 border-2 border-[#FF6B00] text-left transition-all cursor-pointer flex items-center gap-3 shadow-xs"
               >
-                <div className="w-10 h-10 rounded-xl bg-[#FF6B00] text-white flex items-center justify-center font-black shrink-0 shadow-sm shadow-orange-500/30">
+                <div className="w-10 h-10 rounded-xl bg-[#FF6B00] text-white flex items-center justify-center font-black shrink-0">
                   <Smartphone size={20} />
                 </div>
                 <div className="flex-1">
@@ -2483,7 +2621,7 @@ export default function StickerPrint({
                     <span className="text-[9px] bg-[#FF6B00] text-white px-1.5 py-0.5 rounded-md font-black">Recomendado</span>
                   </div>
                   <div className="text-[11px] text-orange-900/80 font-medium mt-0.5 leading-snug">
-                    Guarda la etiqueta en tu galería ({isBw ? 'en Blanco y Negro nítido' : 'a Color'}) y abre Marklife.
+                    Guarda la etiqueta en tu galería y abre Marklife.
                   </div>
                 </div>
               </button>
@@ -2500,9 +2638,7 @@ export default function StickerPrint({
                   <Printer size={20} />
                 </div>
                 <div>
-                  <div className="text-xs font-black text-slate-900">
-                    Impresora del Teléfono / PDF
-                  </div>
+                  <div className="text-xs font-black text-slate-900">Impresora del Teléfono / PDF</div>
                   <div className="text-[11px] text-slate-500 font-medium mt-0.5 leading-snug">
                     Impresoras Wi-Fi, AirPrint de red o guardar archivo en PDF.
                   </div>
@@ -2517,7 +2653,6 @@ export default function StickerPrint({
       {showMarklifeModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs z-60 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-md p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto">
-            
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-[#FF6B00] flex items-center justify-center font-black">
@@ -2526,7 +2661,7 @@ export default function StickerPrint({
                 <div>
                   <h3 className="text-sm font-black text-slate-900">Imprimir con App Marklife</h3>
                   <p className="text-[11px] text-slate-500">
-                    {activeSize.widthMm}x{activeSize.heightMm}mm · {isBw ? 'Blanco y Negro Puro' : 'A Color'}
+                    {activeSize.widthMm}x{activeSize.heightMm}mm ({isHoriz ? 'Horizontal' : 'Vertical'}) · {isBw ? 'Blanco y Negro' : 'Color'}
                   </p>
                 </div>
               </div>
@@ -2567,26 +2702,6 @@ export default function StickerPrint({
                   </>
                 )}
               </button>
-
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
-                <div className="font-black text-slate-800 text-[11px] uppercase tracking-wider">
-                  Luego dentro de la app Marklife:
-                </div>
-                <div className="space-y-2 text-[11.5px] text-slate-700">
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-orange-100 text-[#FF6B00] font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <span>Configura tu etiqueta en <strong>{activeSize.widthMm}x{activeSize.heightMm}mm</strong> y toca en <strong>"Imagen"</strong>.</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-orange-100 text-[#FF6B00] font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
-                    <span>Elige el sticker recién guardado (es la primera imagen de tu galería).</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-orange-100 text-[#FF6B00] font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
-                    <span>¡Toca el botón <strong>Imprimir</strong> por Bluetooth y listo!</span>
-                  </div>
-                </div>
-              </div>
 
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
