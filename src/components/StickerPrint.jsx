@@ -1128,6 +1128,9 @@ export default function StickerPrint({
   const M = layoutMetrics;
   const isBw = M.isBw;
   const isHoriz = M.isHorizontal;
+  // Factor para encoger la letra del producto si el nombre es largo (así cabe completo).
+  const prodLen = String(form.producto || '').length;
+  const prodFontScale = prodLen > 70 ? 0.66 : prodLen > 52 ? 0.76 : prodLen > 38 ? 0.87 : 1;
   const lineStyle = `${M.gridBorder}px solid #000000`;
   const frameStyle = `${M.frameBorder}px solid #000000`;
   const accentBg = isBw ? '#000000' : '#FF6B00';
@@ -1297,14 +1300,17 @@ export default function StickerPrint({
         <span style={microLabelCss}>PRODUCTO / DESCRIPCIÓN</span>
         <div
           style={{
-            fontSize: `${M.prodName}px`,
+            // Encoger la letra cuando el nombre es largo, para que SIEMPRE quepa
+            // completo en máx. 2-3 líneas sin desbordar la etiqueta (alto fijo).
+            fontSize: `${Math.round(M.prodName * prodFontScale * 10) / 10}px`,
             fontWeight: 900,
             color: '#000000',
             lineHeight: 1.15,
             overflow: 'hidden',
             display: '-webkit-box',
-            WebkitLineClamp: M.isSpacious ? 2 : 1,
-            WebkitBoxOrient: 'vertical'
+            WebkitLineClamp: M.isTiny ? 1 : 2,
+            WebkitBoxOrient: 'vertical',
+            wordBreak: 'break-word'
           }}
         >
           {form.producto || 'Producto de catálogo'}
