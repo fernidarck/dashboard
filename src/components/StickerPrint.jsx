@@ -293,7 +293,7 @@ export default function StickerPrint({
     });
   };
 
-  const [qrBase64, setQrBase64] = useState('');
+  const [qrSvg, setQrSvg] = useState('');
   const [croppedLogos, setCroppedLogos] = useState({
     bw: ONE_CONTROL_LOGO_BASE64,
     color: ONE_CONTROL_LOGO_BASE64
@@ -459,17 +459,30 @@ export default function StickerPrint({
 
   useEffect(() => {
     let isMounted = true;
-    QRCode.toDataURL(currentQrUrl, {
+    // QR en SVG VECTORIAL: nítido a cualquier tamaño y en impresión térmica (sin pixelado).
+    QRCode.toString(currentQrUrl, {
+      type: 'svg',
       margin: 1,
-      width: 260,
       errorCorrectionLevel: 'M',
       color: {
         dark: '#000000',
         light: '#ffffff'
       }
     })
-      .then(url => {
-        if (isMounted) setQrBase64(url);
+      .then(svg => {
+        if (!isMounted) return;
+        // Forzar que el SVG llene su contenedor y se dibuje con bordes nítidos.
+        let clean = svg
+          .replace(/<\?xml[^>]*\?>/g, '')
+          .replace(/width="[^"]*"/, 'width="100%"')
+          .replace(/height="[^"]*"/, 'height="100%"');
+        if (!/shape-rendering=/.test(clean)) {
+          clean = clean.replace('<svg ', '<svg shape-rendering="crispEdges" ');
+        }
+        if (!/preserveAspectRatio=/.test(clean)) {
+          clean = clean.replace('<svg ', '<svg preserveAspectRatio="xMidYMid meet" ');
+        }
+        setQrSvg(clean);
       })
       .catch(err => {
         console.error('Error generando QR:', err);
@@ -1431,12 +1444,12 @@ export default function StickerPrint({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: options.showSocialQr && qrBase64 ? 'auto 1fr' : '1fr',
+          gridTemplateColumns: options.showSocialQr && qrSvg ? 'auto 1fr' : '1fr',
           borderBottom: withBottomBorder ? lineStyle : 'none',
           alignItems: 'stretch'
         }}
       >
-        {options.showSocialQr && qrBase64 && (
+        {options.showSocialQr && qrSvg && (
           <div
             style={{
               padding: M.cellPad,
@@ -1446,16 +1459,15 @@ export default function StickerPrint({
               justifyContent: 'center'
             }}
           >
-            <img
-              src={qrBase64}
-              alt="QR OneControl"
+            <div
+              aria-label="QR OneControl"
               style={{
                 width: `${M.qrSize}px`,
                 height: `${M.qrSize}px`,
-                objectFit: 'contain',
                 display: 'block',
                 backgroundColor: '#ffffff'
               }}
+              dangerouslySetInnerHTML={{ __html: qrSvg }}
             />
           </div>
         )}
