@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import Jimp from 'jimp';
 import ffmpegPath from 'ffmpeg-static';
 import { spawnSync } from 'child_process';
+import { mountAdsMcp } from './ads-mcp.js';
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -543,6 +544,15 @@ async function setup() {
       created_at TEXT
     )`); } catch(e){}
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_sent_media_wamid ON sent_media(wamid)"); } catch(e){}
+    // Gasto de publicidad por anuncio (lo registra el dueño o Claude desde Meta). Para la
+    // sección Publicidad: cruzado con leads/ventas da ROI, costo por lead y por venta.
+    try { await db.exec(`CREATE TABLE IF NOT EXISTS ad_spend (
+      ad_source_id TEXT PRIMARY KEY,
+      campaign TEXT,
+      gasto REAL DEFAULT 0,
+      notas TEXT,
+      updated_at TEXT
+    )`); } catch(e){}
     // SESIONES DE PRUEBA DEL PROBADOR: cada "chat de prueba" tiene su propio hilo (memoria)
     // guardado como JSON. Sirve para simular conversaciones completas con el bot, con
     // contexto, y poder crear/guardar/borrar varias. No toca leads ni conversaciones reales.
@@ -4133,11 +4143,75 @@ app.get('/api/ads/performance', async (_req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Catálogo compacto (para el MCP: qué productos existen).
+async function listCatalog() {
+  const prods = await db.all("SELECT nombre, precio, categoria, stock FROM products WHERE activo = 1 ORDER BY nombre");
+  return { total: prods.length, productos: prods };
+}
+
+// Gasto por anuncio (lo que registra el dueño o Claude desde Meta). Upsert por ad_source_id.
+async function upsertAdSpend({ ad_source_id, campaign, gasto, notas }) {
+  const id = String(ad_source_id || '').trim();
+  if (!id) throw new Error('Falta ad_source_id');
+  const now = new Date(Date.now() - 6 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 16);
+  await db.run(
+    `INSERT INTO ad_spend (ad_source_id, campaign, gasto, notas, updated_at) VALUES (?,?,?,?,?)
+     ON CONFLICT(ad_source_id) DO UPDATE SET
+       campaign=COALESCE(excluded.campaign, ad_spend.campaign),
+       gasto=excluded.gasto, notas=COALESCE(excluded.notas, ad_spend.notas), updated_at=excluded.updated_at`,
+    id, campaign || null, Number(gasto) || 0, notas || null, now
+  );
+  return { ok: true, ad_source_id: id, gasto: Number(gasto) || 0 };
+}
+
+// Reporte de publicidad: rendimiento + gasto registrado → ROI, costo por lead y por venta.
+async function buildAdReport() {
+  const ads = await adPerformanceRows();
+  let spendRows = [];
+  try { spendRows = await db.all("SELECT ad_source_id, campaign, gasto, notas, updated_at FROM ad_spend"); } catch (e) {}
+  const spend = {};
+  spendRows.forEach(s => { spend[String(s.ad_source_id).trim()] = s; });
+  const rows = ads.map(a => {
+    const s = spend[String(a.ad_source_id).trim()] || {};
+    const gasto = Number(s.gasto) || 0;
+    return {
+      ...a,
+      campaign: s.campaign || null,
+      gasto,
+      costo_por_lead: a.leads ? +(gasto / a.leads).toFixed(2) : null,
+      costo_por_venta: a.ventas ? +(gasto / a.ventas).toFixed(2) : null,
+      actualizado: s.updated_at || null
+    };
+  });
+  const tot = rows.reduce((t, r) => {
+    t.gasto += r.gasto; t.leads += r.leads; t.ventas += r.ventas; return t;
+  }, { gasto: 0, leads: 0, ventas: 0 });
+  return {
+    anuncios: rows,
+    totales: {
+      ...tot,
+      gasto: +tot.gasto.toFixed(2),
+      costo_por_lead: tot.leads ? +(tot.gasto / tot.leads).toFixed(2) : null,
+      costo_por_venta: tot.ventas ? +(tot.gasto / tot.ventas).toFixed(2) : null
+    }
+  };
+}
+
+app.get('/api/ads/report', async (_req, res) => {
+  try { res.json({ ok: true, ...(await buildAdReport()) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/ads/spend', async (req, res) => {
+  try { res.json(await upsertAdSpend(req.body || {})); }
+  catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
 // Contexto completo para crear un anuncio de un producto (?q=palos de trekking).
-app.get('/api/insights/ad-context', async (req, res) => {
+async function buildAdContext(qRaw) {
+  const q = String(qRaw || '').trim();
+  if (!q) return { ok: false, error: 'Falta q (producto)' };
   try {
-    const q = String(req.query.q || '').trim();
-    if (!q) return res.status(400).json({ ok: false, error: 'Falta q (producto)' });
     const GEN = new Set(['de','la','el','los','las','para','con','modelo','y','en','un','una','par','sobre']);
     const qToks = q.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !GEN.has(w));
 
@@ -4189,11 +4263,11 @@ app.get('/api/insights/ad-context', async (req, res) => {
         const rows = await db.all(
           `SELECT m.text FROM messages m WHERE m.sender='client' AND m.text IS NOT NULL AND m.text != '' AND ${likeClause('m.text')} ORDER BY m.id DESC LIMIT 15`,
           ...likeArgs);
-        voz = rows.map(r => String(r.text).replace(/\s+/g, ' ').slice(0, 160));
+        voz = rows.map(r => String(r.text).replace(/\s+/g, ' ').replace(/\+?\d[\d\s-]{6,}\d/g, '[tel]').slice(0, 160));
       } catch (e) {}
     }
 
-    res.json({
+    return {
       ok: true,
       match_query: q,
       producto: prod ? {
@@ -4205,9 +4279,19 @@ app.get('/api/insights/ad-context', async (req, res) => {
       anuncios,
       zonas_compradoras: zonas.map(z => ({ zona: z.z, ventas: z.n })),
       voz_del_cliente: voz
-    });
+    };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+
+app.get('/api/insights/ad-context', async (req, res) => {
+  try {
+    const out = await buildAdContext(req.query.q);
+    res.status(out.ok ? 200 : 400).json(out);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+
+// Conector MCP remoto (/mcp) para la app de escritorio y el teléfono de Claude.
+mountAdsMcp(app, { listCatalog, buildAdContext, adPerformanceRows, buildAdReport, upsertAdSpend });
 
 // SUBIR IMAGEN DE PRODUCTO
 app.post('/api/products/upload-image', productImagesUpload.single('image'), async (req, res) => {
