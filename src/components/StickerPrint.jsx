@@ -471,16 +471,15 @@ export default function StickerPrint({
     })
       .then(svg => {
         if (!isMounted) return;
-        // Forzar que el SVG llene su contenedor y se dibuje con bordes nítidos.
+        // El SVG de la librería trae viewBox pero NO width/height. Hay que
+        // INYECTARlos (no reemplazarlos) para que llene el cuadro sin deformarse.
         let clean = svg
           .replace(/<\?xml[^>]*\?>/g, '')
-          .replace(/width="[^"]*"/, 'width="100%"')
-          .replace(/height="[^"]*"/, 'height="100%"');
+          .replace(/\s(width|height)="[^"]*"/g, ''); // quitar cualquier tamaño previo
+        const inject = 'width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block" ';
+        clean = clean.replace('<svg ', '<svg ' + inject);
         if (!/shape-rendering=/.test(clean)) {
           clean = clean.replace('<svg ', '<svg shape-rendering="crispEdges" ');
-        }
-        if (!/preserveAspectRatio=/.test(clean)) {
-          clean = clean.replace('<svg ', '<svg preserveAspectRatio="xMidYMid meet" ');
         }
         setQrSvg(clean);
       })
