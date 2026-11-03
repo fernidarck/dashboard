@@ -4099,6 +4099,116 @@ app.get('/api/ads/unmapped', async (_req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── INSIGHTS PARA ANUNCIOS (alimentan el MCP de OneControl) ───────────────────
+// Solo lectura. Le dan a Claude contexto real del dashboard para crear anuncios con
+// cabeza: rendimiento de anuncios (anuncio → leads → ventas → conversión) y, por
+// producto, qué se vendió, de qué zonas compran y la "voz del cliente" (lo que escriben).
+
+// Rendimiento de cada anuncio: leads, ventas y conversión, mapeado a su producto (ad_ids).
+async function adPerformanceRows() {
+  const ads = await db.all(
+    `SELECT ad_source_id,
+       COUNT(*) as leads,
+       SUM(CASE WHEN estado='Venta' THEN 1 ELSE 0 END) as ventas,
+       MAX(ad_headline) as headline, MAX(ad_source_url) as url
+     FROM leads WHERE ad_source_id IS NOT NULL AND ad_source_id != ''
+     GROUP BY ad_source_id ORDER BY leads DESC`
+  );
+  const prods = await db.all("SELECT nombre, ad_ids FROM products WHERE ad_ids IS NOT NULL AND ad_ids != ''");
+  const map = {};
+  prods.forEach(p => String(p.ad_ids).split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).forEach(id => { map[id] = p.nombre; }));
+  return ads.map(a => {
+    const leads = Number(a.leads) || 0, ventas = Number(a.ventas) || 0;
+    return {
+      ad_source_id: a.ad_source_id,
+      producto: map[String(a.ad_source_id).trim()] || null,
+      headline: a.headline || null, url: a.url || null,
+      leads, ventas, conversion_pct: leads ? +(100 * ventas / leads).toFixed(1) : 0
+    };
+  });
+}
+
+app.get('/api/ads/performance', async (_req, res) => {
+  try { res.json({ ok: true, anuncios: await adPerformanceRows() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Contexto completo para crear un anuncio de un producto (?q=palos de trekking).
+app.get('/api/insights/ad-context', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.status(400).json({ ok: false, error: 'Falta q (producto)' });
+    const GEN = new Set(['de','la','el','los','las','para','con','modelo','y','en','un','una','par','sobre']);
+    const qToks = q.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !GEN.has(w));
+
+    // 1) Mejor producto que coincide con la búsqueda
+    const prods = await db.all("SELECT * FROM products WHERE activo = 1");
+    let prod = null, best = 0;
+    for (const p of prods) {
+      const name = String(p.nombre || '').toLowerCase();
+      let sc = name.includes(q.toLowerCase()) ? 50 : 0;
+      qToks.forEach(t => { if (name.includes(t)) sc += 10; });
+      if (sc > best) { best = sc; prod = p; }
+    }
+    const pToks = (prod ? String(prod.nombre || '').toLowerCase().split(/\s+/) : qToks)
+      .filter(w => w.length > 3 && !GEN.has(w));
+    const likeClause = (col) => pToks.length ? '(' + pToks.map(() => `LOWER(${col}) LIKE ?`).join(' OR ') + ')' : '1=0';
+    const likeArgs = pToks.map(t => `%${t}%`);
+
+    // 2) Ventas del producto (pedidos)
+    let ventas = 0;
+    if (pToks.length) { try { const r = await db.get(`SELECT COUNT(*) c FROM pedidos WHERE ${likeClause('producto')}`, ...likeArgs); ventas = r?.c || 0; } catch (e) {} }
+
+    // 3) Anuncios de este producto
+    const allAds = await adPerformanceRows();
+    const adIds = prod && prod.ad_ids ? String(prod.ad_ids).split(/[\s,;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const anuncios = allAds.filter(a => adIds.includes(String(a.ad_source_id).trim()) || (prod && a.producto === prod.nombre));
+
+    // 4) Zonas de compradores
+    let zonas = [];
+    try {
+      if (adIds.length) {
+        zonas = await db.all(
+          `SELECT COALESCE(NULLIF(TRIM(zona),''), NULLIF(TRIM(direccion),'')) z, COUNT(*) n
+           FROM leads WHERE estado='Venta' AND ad_source_id IN (${adIds.map(() => '?').join(',')})
+           AND COALESCE(NULLIF(TRIM(zona),''), NULLIF(TRIM(direccion),'')) IS NOT NULL
+           GROUP BY z ORDER BY n DESC LIMIT 5`, ...adIds);
+      }
+      if (!zonas.length) {
+        zonas = await db.all(
+          `SELECT COALESCE(NULLIF(TRIM(zona),''), NULLIF(TRIM(direccion),'')) z, COUNT(*) n
+           FROM leads WHERE estado='Venta' AND COALESCE(NULLIF(TRIM(zona),''), NULLIF(TRIM(direccion),'')) IS NOT NULL
+           GROUP BY z ORDER BY n DESC LIMIT 5`);
+      }
+    } catch (e) {}
+
+    // 5) Voz del cliente: mensajes recientes que mencionan el producto
+    let voz = [];
+    if (pToks.length) {
+      try {
+        const rows = await db.all(
+          `SELECT m.text FROM messages m WHERE m.sender='client' AND m.text IS NOT NULL AND m.text != '' AND ${likeClause('m.text')} ORDER BY m.id DESC LIMIT 15`,
+          ...likeArgs);
+        voz = rows.map(r => String(r.text).replace(/\s+/g, ' ').slice(0, 160));
+      } catch (e) {}
+    }
+
+    res.json({
+      ok: true,
+      match_query: q,
+      producto: prod ? {
+        nombre: prod.nombre, precio: prod.precio, precio_oferta: prod.precio_oferta || null,
+        categoria: prod.categoria, stock: prod.stock, descripcion: prod.descripcion || '',
+        reglas_bot: prod.reglas_bot || '', compatibilidad: prod.compatibilidad || ''
+      } : null,
+      ventas_totales: ventas,
+      anuncios,
+      zonas_compradoras: zonas.map(z => ({ zona: z.z, ventas: z.n })),
+      voz_del_cliente: voz
+    });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 // SUBIR IMAGEN DE PRODUCTO
 app.post('/api/products/upload-image', productImagesUpload.single('image'), async (req, res) => {
   try {

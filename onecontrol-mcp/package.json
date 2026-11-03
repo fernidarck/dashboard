@@ -1,0 +1,11 @@
+{
+  "name": "onecontrol-mcp",
+  "version": "1.0.0",
+  "description": "MCP local que le da a Claude el contexto del dashboard OneControl para crear anuncios con cabeza (producto, ventas, rendimiento de anuncios, zonas, voz del cliente).",
+  "type": "module",
+  "bin": { "onecontrol-mcp": "index.js" },
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}
