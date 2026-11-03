@@ -110,6 +110,34 @@ function generateBarcodeSvg(text, height = 24) {
   return `<svg viewBox="0 0 ${totalWidth} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px; display: block;">${rects.join('')}</svg>`;
 }
 
+// ── GENERADOR DE QR COMO SVG DE CUADRITOS EXACTOS (VECTOR PURO, NÍTIDO) ──────
+// La librería genera el QR con trazos (stroke) que a tamaño pequeño se ven
+// disparejos/borrosos. Aquí lo construimos módulo por módulo con <rect>, lo que
+// da un QR cuadrado, nítido y minimalista a cualquier tamaño y en impresión.
+function buildQrSvg(text) {
+  let qr;
+  try {
+    qr = QRCode.create(String(text || 'https://onecontrol.shop'), { errorCorrectionLevel: 'M' });
+  } catch (e) {
+    return '';
+  }
+  const n = qr.modules.size;
+  const data = qr.modules.data;
+  const margin = 2;            // zona de silencio (quiet zone) para que escanee bien
+  const dim = n + margin * 2;
+  let rects = '';
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if (data[y * n + x]) {
+        // 1.03 de ancho/alto solapa ligeramente los módulos para evitar
+        // líneas blancas finas entre cuadros al escalar.
+        rects += `<rect x="${x + margin}" y="${y + margin}" width="1.03" height="1.03"/>`;
+      }
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${dim} ${dim}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="display:block"><rect width="${dim}" height="${dim}" fill="#ffffff"/><g fill="#000000">${rects}</g></svg>`;
+}
+
 // ── ÍCONOS VECTORIALES MINIMALISTAS (PURO SVG EN NEGRO, SIN EMOJIS) ─────────
 function SocialIconSvg({ type, size = 11, color = '#000000' }) {
   const style = { width: `${size}px`, height: `${size}px`, display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 };
@@ -458,35 +486,8 @@ export default function StickerPrint({
   }, [options.socialQrTarget, options.customQrUrl]);
 
   useEffect(() => {
-    let isMounted = true;
-    // QR en SVG VECTORIAL: nítido a cualquier tamaño y en impresión térmica (sin pixelado).
-    QRCode.toString(currentQrUrl, {
-      type: 'svg',
-      margin: 1,
-      errorCorrectionLevel: 'M',
-      color: {
-        dark: '#000000',
-        light: '#ffffff'
-      }
-    })
-      .then(svg => {
-        if (!isMounted) return;
-        // El SVG de la librería trae viewBox pero NO width/height. Hay que
-        // INYECTARlos (no reemplazarlos) para que llene el cuadro sin deformarse.
-        let clean = svg
-          .replace(/<\?xml[^>]*\?>/g, '')
-          .replace(/\s(width|height)="[^"]*"/g, ''); // quitar cualquier tamaño previo
-        const inject = 'width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block" ';
-        clean = clean.replace('<svg ', '<svg ' + inject);
-        if (!/shape-rendering=/.test(clean)) {
-          clean = clean.replace('<svg ', '<svg shape-rendering="crispEdges" ');
-        }
-        setQrSvg(clean);
-      })
-      .catch(err => {
-        console.error('Error generando QR:', err);
-      });
-    return () => { isMounted = false; };
+    // QR vectorial de cuadritos exactos: nítido en pantalla e impresión térmica.
+    setQrSvg(buildQrSvg(currentQrUrl));
   }, [currentQrUrl]);
 
   // Manejar cambio de tamaño de sticker
