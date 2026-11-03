@@ -553,6 +553,11 @@ async function setup() {
       notas TEXT,
       updated_at TEXT
     )`); } catch(e){}
+    // Tokens OAuth emitidos al conector MCP (persisten entre redeploys para no reconectar).
+    try { await db.exec(`CREATE TABLE IF NOT EXISTS oauth_tokens (
+      token TEXT PRIMARY KEY,
+      created_at TEXT
+    )`); } catch(e){}
     // SESIONES DE PRUEBA DEL PROBADOR: cada "chat de prueba" tiene su propio hilo (memoria)
     // guardado como JSON. Sirve para simular conversaciones completas con el bot, con
     // contexto, y poder crear/guardar/borrar varias. No toca leads ni conversaciones reales.
@@ -4290,8 +4295,17 @@ app.get('/api/insights/ad-context', async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
+// Tokens OAuth del conector MCP (persistidos en DB).
+async function oauthSaveToken(token) {
+  try { await db.run("INSERT OR IGNORE INTO oauth_tokens (token, created_at) VALUES (?, ?)", token, new Date().toISOString()); } catch (e) {}
+}
+async function oauthHasToken(token) {
+  if (!token) return false;
+  try { const r = await db.get("SELECT 1 FROM oauth_tokens WHERE token = ?", token); return !!r; } catch (e) { return false; }
+}
+
 // Conector MCP remoto (/mcp) para la app de escritorio y el teléfono de Claude.
-mountAdsMcp(app, { listCatalog, buildAdContext, adPerformanceRows, buildAdReport, upsertAdSpend });
+mountAdsMcp(app, { listCatalog, buildAdContext, adPerformanceRows, buildAdReport, upsertAdSpend, oauthSaveToken, oauthHasToken });
 
 // SUBIR IMAGEN DE PRODUCTO
 app.post('/api/products/upload-image', productImagesUpload.single('image'), async (req, res) => {
