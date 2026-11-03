@@ -677,7 +677,7 @@ export default function StickerPrint({
         payAmount: px(12.5),
         nitText: px(8),
         notesText: px(8),
-        qrSize: rawPx(38),
+        qrSize: rawPx(44),
         webUrl: Math.round(px(9) * socialBoost),
         socialHandle: Math.round(px(8.5) * socialBoost),
         socialNet: px(7.5),
@@ -708,7 +708,7 @@ export default function StickerPrint({
         payAmount: px(15),
         nitText: px(9),
         notesText: px(8.5),
-        qrSize: rawPx(isHorizontal ? 46 : 52),
+        qrSize: rawPx(isHorizontal ? 56 : 62),
         webUrl: Math.round(px(10.5) * socialBoost),
         socialHandle: Math.round(px(10) * socialBoost),
         socialNet: px(8),
@@ -739,7 +739,7 @@ export default function StickerPrint({
         payAmount: px(18),
         nitText: px(10),
         notesText: px(9.5),
-        qrSize: rawPx(60),
+        qrSize: rawPx(74),
         webUrl: Math.round(px(11.5) * socialBoost),
         socialHandle: Math.round(px(11) * socialBoost),
         socialNet: px(9),
@@ -769,7 +769,7 @@ export default function StickerPrint({
       payAmount: px(isHorizontal ? 19.5 : 22),
       nitText: px(11),
       notesText: px(10.5),
-      qrSize: rawPx(isHorizontal ? 68 : 78),
+      qrSize: rawPx(isHorizontal ? 84 : 96),
       webUrl: Math.round(px(isHorizontal ? 12.5 : 13.5) * socialBoost),
       socialHandle: Math.round(px(isHorizontal ? 11.5 : 13) * socialBoost),
       socialNet: px(10),
@@ -1529,12 +1529,13 @@ export default function StickerPrint({
                 <div
                   style={{
                     display: 'flex',
-                    flexWrap: 'wrap',
+                    flexWrap: 'nowrap',
                     justifyContent: 'center',
-                    gap: M.isSpacious ? '6px' : '4px'
+                    alignItems: 'center',
+                    gap: M.isSpacious ? '9px' : '6px'
                   }}
                 >
-                  {activeSocialPlatforms.map(net => (
+                  {activeSocialPlatforms.map((net, i) => (
                     <span
                       key={net.id}
                       style={{
@@ -1542,14 +1543,14 @@ export default function StickerPrint({
                         alignItems: 'center',
                         gap: '3px',
                         fontSize: `${M.socialNet}px`,
-                        fontWeight: 800,
+                        fontWeight: 700,
                         color: '#000000',
-                        border: '1px solid #000000',
-                        padding: M.isSpacious ? '1.5px 5px' : '1px 4px',
-                        lineHeight: 1.1
+                        lineHeight: 1.1,
+                        paddingLeft: i === 0 ? 0 : (M.isSpacious ? '9px' : '6px'),
+                        borderLeft: i === 0 ? 'none' : '1px solid #00000022'
                       }}
                     >
-                      <SocialIconSvg type={net.id} size={Math.max(8, M.socialNet)} color="#000000" />
+                      <SocialIconSvg type={net.id} size={Math.max(9, M.socialNet + 1)} color="#000000" />
                       <span>{net.label}</span>
                     </span>
                   ))}
