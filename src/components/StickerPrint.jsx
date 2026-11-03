@@ -1440,125 +1440,137 @@ export default function StickerPrint({
       );
     }
 
+    const hasQr = options.showSocialQr && qrSvg;
+    const hasSocials = options.showSocials;
+
     return (
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: options.showSocialQr && qrSvg ? 'auto 1fr' : '1fr',
           borderBottom: withBottomBorder ? lineStyle : 'none',
-          alignItems: 'stretch'
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
-        {options.showSocialQr && qrSvg && (
+        {/* PÁGINA WEB: BARRA DE ANCHO COMPLETO ARRIBA (siempre cabe, nunca se desborda) */}
+        {options.showWebsite && options.websiteUrl && (
           <div
             style={{
-              padding: M.cellPad,
-              borderRight: lineStyle,
+              backgroundColor: '#000000',
+              color: '#ffffff',
+              padding: M.isSpacious ? '3px 8px' : '2px 6px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              gap: '6px',
+              overflow: 'hidden',
+              minWidth: 0,
+              borderBottom: (hasQr || hasSocials) ? lineStyle : 'none'
             }}
           >
-            <div
-              aria-label="QR OneControl"
+            <SocialIconSvg type="web" size={Math.max(9, M.webUrl - 2)} color="#ffffff" />
+            <span
               style={{
-                width: `${M.qrSize}px`,
-                height: `${M.qrSize}px`,
-                display: 'block',
-                backgroundColor: '#ffffff'
+                fontSize: `${M.webUrl}px`,
+                fontWeight: 900,
+                textTransform: 'uppercase',
+                letterSpacing: '0.3px',
+                lineHeight: 1.1,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                minWidth: 0
               }}
-              dangerouslySetInnerHTML={{ __html: qrSvg }}
-            />
+            >
+              {options.websiteUrl}
+            </span>
           </div>
         )}
 
-        <div
-          style={{
-            padding: M.cellPad,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: M.isSpacious ? '5px' : '3px',
-            minWidth: 0
-          }}
-        >
-          {/* PÁGINA WEB MINIMALISTA Y MUY VISIBLE */}
-          {options.showWebsite && options.websiteUrl && (
-            <div
-              style={{
-                backgroundColor: '#000000',
-                color: '#ffffff',
-                padding: M.isSpacious ? '3px 8px' : '2px 6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '5px'
-              }}
-            >
-              <SocialIconSvg type="web" size={Math.max(10, M.webUrl - 1)} color="#ffffff" />
-              <span
-                style={{
-                  fontSize: `${M.webUrl}px`,
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  lineHeight: 1.1
-                }}
-              >
-                {options.websiteUrl}
-              </span>
-            </div>
-          )}
-
-          {/* REDES SOCIALES MINIMALISTAS Y MUY VISIBLES */}
-          {options.showSocials && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+        {/* ABAJO: QR (izq) + HANDLE y REDES SOLO-ÍCONOS (der) */}
+        {(hasQr || hasSocials) && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: hasQr && hasSocials ? 'auto 1fr' : '1fr',
+              alignItems: 'stretch'
+            }}
+          >
+            {hasQr && (
               <div
                 style={{
-                  fontSize: `${M.socialHandle}px`,
-                  fontWeight: 900,
-                  color: '#000000',
-                  letterSpacing: '0.2px',
-                  lineHeight: 1.1
+                  padding: M.cellPad,
+                  borderRight: hasSocials ? lineStyle : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
-                {options.socialHandle || '@onecontrol.shop'}
+                <div
+                  aria-label="QR OneControl"
+                  style={{
+                    width: `${M.qrSize}px`,
+                    height: `${M.qrSize}px`,
+                    display: 'block',
+                    backgroundColor: '#ffffff'
+                  }}
+                  dangerouslySetInnerHTML={{ __html: qrSvg }}
+                />
               </div>
+            )}
 
-              {activeSocialPlatforms.length > 0 && (
+            {hasSocials && (
+              <div
+                style={{
+                  padding: M.cellPad,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: M.isSpacious ? '5px' : '4px',
+                  minWidth: 0,
+                  maxWidth: '100%'
+                }}
+              >
                 <div
                   style={{
-                    display: 'flex',
-                    flexWrap: 'nowrap',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    gap: M.isSpacious ? '9px' : '6px'
+                    fontSize: `${M.socialHandle}px`,
+                    fontWeight: 900,
+                    color: '#000000',
+                    letterSpacing: '0.2px',
+                    lineHeight: 1.1,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '100%'
                   }}
                 >
-                  {activeSocialPlatforms.map((net, i) => (
-                    <span
-                      key={net.id}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        fontSize: `${M.socialNet}px`,
-                        fontWeight: 700,
-                        color: '#000000',
-                        lineHeight: 1.1,
-                        paddingLeft: i === 0 ? 0 : (M.isSpacious ? '9px' : '6px'),
-                        borderLeft: i === 0 ? 'none' : '1px solid #00000022'
-                      }}
-                    >
-                      <SocialIconSvg type={net.id} size={Math.max(9, M.socialNet + 1)} color="#000000" />
-                      <span>{net.label}</span>
-                    </span>
-                  ))}
+                  {options.socialHandle || '@onecontrol.shop'}
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                {activeSocialPlatforms.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'nowrap',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: M.isSpacious ? '12px' : '9px'
+                    }}
+                  >
+                    {activeSocialPlatforms.map(net => (
+                      <SocialIconSvg
+                        key={net.id}
+                        type={net.id}
+                        size={Math.max(13, Math.round(M.socialNet + 5))}
+                        color="#000000"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
