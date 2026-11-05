@@ -14,6 +14,7 @@ import Jimp from 'jimp';
 import ffmpegPath from 'ffmpeg-static';
 import { spawnSync } from 'child_process';
 import { mountAdsMcp } from './ads-mcp.js';
+import { parseCantidad, parseMontosBot, fmtQ } from './pedido-parse.js';
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -1701,7 +1702,35 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
 
     const productName = matchedProduct ? matchedProduct.nombre : 'Producto por confirmar';
     const productPrice = matchedProduct ? `Q${matchedProduct.precio}` : '';
-    const notas = clientMsg ? `Detectado por IA: "${clientMsg.slice(0, 150)}"` : 'Pedido automático';
+    let notas = clientMsg ? `Detectado por IA: "${clientMsg.slice(0, 150)}"` : 'Pedido automático';
+
+    // CANTIDAD y TOTAL (no inventamos montos):
+    //  - cantidad: la que dijo el CLIENTE en el chat ("2 unidades", "el par"…). Default 1.
+    //  - precio: el total que el BOT ya cotizó explícito ("total de Q600"); si no lo dijo,
+    //    y hay varias unidades, unitario×cantidad como mejor estimación; si no, el unitario.
+    //  - notas: dejamos los montos que el bot citó (par con descuento, envío…) para que el
+    //    dueño confirme el total aunque el bot no lo haya sumado.
+    let cantidad = 1;
+    let precioFinal = productPrice;
+    try {
+      const conv = await db.all(
+        "SELECT sender, text FROM messages WHERE lead_id = ? AND text IS NOT NULL AND text != '' ORDER BY id DESC LIMIT 20",
+        leadId
+      );
+      const clientText = conv.filter(r => r.sender === 'client').map(r => r.text).join(' ');
+      const botText    = conv.filter(r => r.sender === 'bot').map(r => r.text).join(' ');
+      cantidad = parseCantidad((clientMsg || '') + ' ' + clientText);
+      const { total, montos } = parseMontosBot((botMsg || '') + ' ' + botText);
+      const unitNum = matchedProduct ? parseFloat(String(matchedProduct.precio).replace(/[^0-9.]/g, '')) : NaN;
+      if (total != null) {
+        precioFinal = fmtQ(total);                        // el bot dio un total explícito
+      } else if (!isNaN(unitNum) && cantidad > 1) {
+        precioFinal = fmtQ(unitNum * cantidad);           // best-effort: unitario × cantidad
+      }
+      if (montos.length > 1) {
+        notas += ` | Montos citados por el bot: ${montos.map(fmtQ).join(', ')} (confirmar total)`;
+      }
+    } catch (e) { /* si falla, dejamos cantidad 1 y precio unitario */ }
 
     const now = new Date();
     const guateTime = new Date(now.getTime() - (6 * 60 * 60 * 1000));
@@ -1713,13 +1742,13 @@ async function detectAndCreatePedidoFromMessage(leadId, clientPhone, clientName,
 
     const result = await db.run(
       `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, timestamp) VALUES (?,?,?,?,?,?,'Nuevo',?)`,
-      clientName || 'Cliente WhatsApp', clientPhone || '', productName, '1', productPrice, notas, timestamp
+      clientName || 'Cliente WhatsApp', clientPhone || '', productName, String(cantidad), precioFinal, notas, timestamp
     );
 
     console.log(`🛒 [IA Pedido Auto-Detectado] Creado Pedido #${result.lastID} para ${clientName} (${clientPhone}) - ${productName}`);
 
     // Notificar al dueño
-    const alerta = `🛒 *NUEVO PEDIDO DETECTADO POR IA #${result.lastID}*\n\n👤 Cliente: ${clientName || 'Cliente'}\n📱 Tel: ${clientPhone}\n📦 Producto: ${productName}\n💰 Precio: ${productPrice}\n📝 Notas: ${notas}\n\n✅ Revisalo en el Dashboard (sección Pedidos IA).`;
+    const alerta = `🛒 *NUEVO PEDIDO DETECTADO POR IA #${result.lastID}*\n\n👤 Cliente: ${clientName || 'Cliente'}\n📱 Tel: ${clientPhone}\n📦 Producto: ${productName}\n🔢 Cantidad: ${cantidad}\n💰 Precio: ${precioFinal}\n📝 Notas: ${notas}\n\n✅ Revisalo en el Dashboard (sección Pedidos IA).`;
     await notificarDueno(alerta, channelPhone, leadId);
 
     return result.lastID;
