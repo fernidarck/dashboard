@@ -4673,12 +4673,13 @@ app.get('/api/rag/context', async (req, res) => {
     //  - AGOTADO  → no se ofrece; solo aparece (a pedido) si el cliente lo nombra específicamente.
     //  - A PEDIDO / FABRICACIÓN → SÍ se ofrece, pero aclarando que es a pedido (~4 días).
     //  - DISPONIBLE (en stock / número) → se ofrece normal, como disponible.
-    const AGOT_STOCK = /(^0$|agot|sin\s*stock|sin\s*existencia|no\s*hay)/i;
-    const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
     const APEDIDO    = /a\s*pedido|bajo\s*pedido|por\s*encargo|encargo|fabricaci|producci/i;
     const prods = prodRows.map(p => {
       const stockStr = String(p.stock || '').trim();
-      const agotado  = AGOT_STOCK.test(stockStr) || AGOT_RULE.test(String(p.reglas_bot));
+      // "agotado" para el catálogo = igual que para la media: solo si el PRODUCTO está agotado
+      // de verdad (campo stock) o hay regla explícita de no ofrecer. Un COLOR "agotado" en las
+      // reglas (ej. "negro agotado") NO marca el producto como agotado. Ver media-rules.js.
+      const agotado  = mediaBloqueada(p);
       const aPedido  = !agotado && APEDIDO.test(stockStr);
       // FOTO POR NOMBRE (anti-foto-equivocada): ya NO le damos la URL a la IA (antes la
       // copiaba y a veces pegaba la del producto equivocado). En su lugar le damos un CÓDIGO
