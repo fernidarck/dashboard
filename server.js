@@ -15,6 +15,7 @@ import ffmpegPath from 'ffmpeg-static';
 import { spawnSync } from 'child_process';
 import { mountAdsMcp } from './ads-mcp.js';
 import { parseCantidad, parseMontosBot, fmtQ } from './pedido-parse.js';
+import { mediaBloqueada, matchProductoPorNombre, esFotoEnviable } from './media-rules.js';
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -3818,7 +3819,6 @@ async function computeAutoAttachMedia(clientMsgRaw, botMsgRaw, phoneRaw) {
     const ctxText = text + ' \n ' + ctx;             // para saber qué producto está EN JUEGO
 
     const prods = await db.all("SELECT * FROM products WHERE activo = 1");
-    const AGOT_RULE  = /agot|sin\s*stock|sin\s*existencia|no\s*(la|lo|los|las)?\s*(ofrezcas|ofrecer|ofrescas|vendas|env[ií]es)/i;
     const STOP = new Set(['mesa','noche','melamina','madera','para','con','del','los','las','una','uno','modelo','color','motor','control']);
     // Palabras demasiado comunes en las etiquetas: no sirven como disparador por sí solas.
     const TRIG_STOP = new Set(['como','para','este','esta','esto','cuando','video','favor','foto','fotos','pidan','pida','pregunten','pregunte','pregunta','quieran','mostra','mostrala','mostrar','muestra','manda','dale','sobre','enviar','envia','este']);
@@ -3836,10 +3836,10 @@ async function computeAutoAttachMedia(clientMsgRaw, botMsgRaw, phoneRaw) {
     const videos = [];
 
     for (const p of prods) {
-      const reglas   = String(p.reglas_bot || '').toLowerCase();
-      // Los agotados se venden a pedido, así que SÍ se muestran sus fotos.
-      // Solo se excluye si el producto tiene una regla EXPLÍCITA de "no ofrecer".
-      if (AGOT_RULE.test(reglas)) continue;
+      // Un COLOR/variante "agotado" en las reglas (ej. "negro agotado") NO apaga la media:
+      // el producto sí existe y se vende en los demás colores. Solo se bloquea si el PRODUCTO
+      // está agotado de verdad (campo stock) o una regla EXPLÍCITA dice no ofrecer. Ver media-rules.js.
+      if (mediaBloqueada(p)) continue;
 
       // ¿producto EN JUEGO? su "modelo N" o una palabra distintiva de su nombre aparece en el texto
       const nombre = String(p.nombre || '').toLowerCase();
@@ -3897,6 +3897,41 @@ app.post('/api/photos/auto-attach', async (req, res) => {
   try {
     const r = await computeAutoAttachMedia(req.body.clientMsg, req.body.botMsg, req.body.phone);
     res.json({ ...r, videos: [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// FOTO POR NOMBRE (anti-foto-equivocada). n8n lo llama cuando la IA escribe [[FOTO:nombre]].
+// Recibe el NOMBRE del producto (lo que la IA copió del contexto) y devuelve el link REAL de
+// SU foto — nunca el de otro producto. Así la IA ya no copia URLs (donde se equivocaba);
+// solo nombra, y el sistema resuelve. GET ?name=... o POST { name } / { names:[...] }.
+async function resolverFotosPorNombre(nombres) {
+  const prods = await db.all("SELECT * FROM products WHERE activo = 1");
+  const out = [];
+  const vistos = new Set();
+  for (const nombre of nombres) {
+    if (!nombre) continue;
+    const p = matchProductoPorNombre(nombre, prods);
+    if (!p || mediaBloqueada(p)) continue;              // sin match o producto agotado → no mandar foto
+    // Fotos enviables de ESE producto (principal primero); nunca videos ni /product/.
+    for (const img of normalizeProductImages(p)) {
+      const url = img && img.url;
+      if (url && esFotoEnviable(url) && !vistos.has(url)) { vistos.add(url); out.push({ nombre: p.nombre, url }); }
+    }
+  }
+  return out;
+}
+app.all('/api/products/photo-by-name', async (req, res) => {
+  try {
+    let nombres = [];
+    const b = req.body || {};
+    if (Array.isArray(b.names)) nombres = b.names;
+    else if (b.name) nombres = [b.name];
+    else if (req.query.name) nombres = [req.query.name];
+    else if (req.query.names) nombres = String(req.query.names).split('|');
+    const fotos = await resolverFotosPorNombre(nombres);
+    res.json({ found: fotos.length > 0, fotos, urls: fotos.map(f => f.url) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -4645,8 +4680,12 @@ app.get('/api/rag/context', async (req, res) => {
       const stockStr = String(p.stock || '').trim();
       const agotado  = AGOT_STOCK.test(stockStr) || AGOT_RULE.test(String(p.reglas_bot));
       const aPedido  = !agotado && APEDIDO.test(stockStr);
-      // Formato IDÉNTICO al anterior para los disponibles (no rompe nada).
-      let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + ' - Imagen: ' + p.imagen + (p.whatsapp_link ? ' - Link WhatsApp (compartilo para que vean el producto): ' + p.whatsapp_link : '') + (p.catalog_link ? ' - Link tienda onecontrol.shop (compartilo para más info): ' + p.catalog_link : '');
+      // FOTO POR NOMBRE (anti-foto-equivocada): ya NO le damos la URL a la IA (antes la
+      // copiaba y a veces pegaba la del producto equivocado). En su lugar le damos un CÓDIGO
+      // con el NOMBRE; la IA solo lo copia y el sistema (n8n → /api/products/photo-by-name)
+      // resuelve y manda la foto REAL correcta. Ver media-rules.js / matchProductoPorNombre.
+      const fotoTag = p.imagen ? ` - FOTO: para enviar la foto de este producto escribí EXACTO y solo este código [[FOTO:${p.nombre}]] (el sistema manda la foto correcta). NUNCA escribas una URL de imagen.` : '';
+      let content = p.descripcion + ' - Precio: ' + p.precio + (p.precio_oferta ? ' - OFERTA: ' + p.precio_oferta : '') + fotoTag + (p.whatsapp_link ? ' - Link WhatsApp (compartilo para que vean el producto): ' + p.whatsapp_link : '') + (p.catalog_link ? ' - Link tienda onecontrol.shop (compartilo para más info): ' + p.catalog_link : '');
       // MÁS PEDIDO / CAMPAÑA: el dueño marca estos. El bot los ofrece PRIMERO como "los más
       // pedidos" (son los que más se venden) y sabe cuáles están en campaña activa.
       if (p.mas_vendido)    content += ' - ⭐ MÁS PEDIDO (de los que más se venden; ofrecelo entre los primeros como "uno de los más pedidos").';
