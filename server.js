@@ -2948,6 +2948,45 @@ app.get('/api/settings', async (req, res) => {
       }
     }
 
+    // CONTEXTO DE CONVERSACIÓN (ADITIVO, fail-open): si viene ?phone=, adjuntamos el historial
+    // reciente del chat (cliente + bot + asesor MANUAL) como texto, para que el bot NO pierda lo
+    // que el asesor habló en manual cuando se reactiva la IA. SIN ?phone= se comporta EXACTAMENTE
+    // igual que antes (no afecta al editor ni a ningún otro consumidor de /api/settings).
+    if (req.query.phone) {
+      try {
+        const cleanPhone = String(req.query.phone).replace(/\D/g, '');
+        const cleanChan = String(req.query.channel_phone || '').replace(/\D/g, '');
+        if (cleanPhone) {
+          let lead = null;
+          if (cleanChan) {
+            lead = await db.get(
+              "SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? AND REPLACE(REPLACE(REPLACE(channel_phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1",
+              cleanPhone, cleanChan
+            );
+          }
+          if (!lead) {
+            lead = await db.get(
+              "SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') = ? ORDER BY id DESC LIMIT 1",
+              cleanPhone
+            );
+          }
+          if (lead) {
+            const msgs = await db.all(
+              "SELECT sender, text FROM messages WHERE lead_id = ? AND text IS NOT NULL AND TRIM(text) != '' ORDER BY id DESC LIMIT 16",
+              lead.id
+            );
+            msgs.reverse();
+            if (msgs.length) {
+              const etiqueta = { client: 'Cliente', bot: 'Bot', agent: 'Asesor' };
+              settings.historial = msgs
+                .map(m => `${etiqueta[m.sender] || m.sender}: ${String(m.text).trim().slice(0, 300)}`)
+                .join('\n');
+            }
+          }
+        }
+      } catch (e) { console.warn('historial /api/settings:', e.message); }
+    }
+
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
