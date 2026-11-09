@@ -1883,6 +1883,7 @@ export default function ViewConversaciones({
                 onInsertText={handleInsertQuoteText}
                 onSavePedido={onSavePedido}
                 onCreateCita={onCreateCita}
+                onUpdateLead={onUpdateLead}
                 hideHeader={true}
                 className="w-full h-full border-0"
               />

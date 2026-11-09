@@ -313,6 +313,7 @@ async function setup() {
         notas TEXT,
         estado TEXT DEFAULT 'Nuevo',
         fecha_entrega TEXT,
+        metodo_pago TEXT,
         timestamp TEXT
       );
 
@@ -479,6 +480,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE leads ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"); } catch(e){}
     try { await db.exec("ALTER TABLE agenda ADD COLUMN notas TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE pedidos ADD COLUMN fecha_entrega TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE pedidos ADD COLUMN metodo_pago TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
@@ -2789,7 +2791,7 @@ app.post('/api/system-alert/clear', async (_req, res) => {
 
 app.post('/api/pedidos', async (req, res) => {
   try {
-    const { cliente, phone, producto, cantidad, precio, notas, fecha_entrega, estado } = req.body;
+    const { cliente, phone, producto, cantidad, precio, notas, fecha_entrega, estado, metodo_pago } = req.body;
     if (!producto) return res.status(400).json({ error: 'Falta el producto' });
     // estado opcional: 'Cotización' para guardar una cotización pendiente (no es pedido aún).
     const est = (estado && String(estado).trim()) ? String(estado).trim() : 'Nuevo';
@@ -2802,8 +2804,8 @@ app.post('/api/pedidos', async (req, res) => {
       String(guateTime.getUTCHours()).padStart(2,'0') + ':' +
       String(guateTime.getUTCMinutes()).padStart(2,'0');
     const result = await db.run(
-      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, timestamp) VALUES (?,?,?,?,?,?,?,?,?)`,
-      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', est, fecha_entrega || '', timestamp
+      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, metodo_pago, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', est, fecha_entrega || '', metodo_pago || '', timestamp
     );
     console.log(`🛒 ${esCotizacion ? 'Cotización' : 'Nuevo pedido'} #${result.lastID}: ${producto} — ${cliente} (Entrega/Visita: ${fecha_entrega || 'Sin fecha'})`);
 
@@ -2820,7 +2822,7 @@ app.post('/api/pedidos', async (req, res) => {
     // Notificar al dueño SOLO si es un pedido real (una cotización pendiente NO avisa,
     // para no ser invasivo — queda guardada en el tablero para revisarla cuando quiera).
     if (!esCotizacion) {
-      const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${fecha_entrega ? '\n🗓️ *Visita / Entrega:* ' + fecha_entrega : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
+      const msg = `🛒 *NUEVO PEDIDO #${result.lastID}*\n\n👤 Cliente: ${cliente || 'Sin nombre'}\n📱 Tel: ${phone || 'Sin teléfono'}\n📦 Producto: ${producto}\n🔢 Cantidad: ${cantidad || '1'}${precio ? '\n💰 Precio: ' + precio : ''}${metodo_pago ? '\n💳 Pago: ' + metodo_pago : ''}${fecha_entrega ? '\n🗓️ *Visita / Entrega:* ' + fecha_entrega : ''}${notas ? '\n📝 Notas: ' + notas : ''}\n\n⏰ ${timestamp}\n\n✅ Ve al Dashboard para gestionar el pedido.`;
       await notificarDueno(msg, channelPhone, targetLeadId);
     }
     res.json({ success: true, id: result.lastID });
@@ -2873,11 +2875,15 @@ app.post('/api/pedidos/status', async (req, res) => {
 
 app.put('/api/pedidos/:id', async (req, res) => {
   try {
-    const { cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega } = req.body;
+    const { cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, metodo_pago } = req.body;
     await db.run(
       'UPDATE pedidos SET cliente=?, phone=?, producto=?, cantidad=?, precio=?, notas=?, estado=?, fecha_entrega=? WHERE id=?',
       cliente, phone, producto, cantidad || '1', precio || '', notas || '', estado, fecha_entrega || '', req.params.id
     );
+    // metodo_pago se actualiza solo si viene en el body (no se borra en ediciones que no lo mandan)
+    if (metodo_pago !== undefined) {
+      await db.run('UPDATE pedidos SET metodo_pago=? WHERE id=?', metodo_pago || '', req.params.id);
+    }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });

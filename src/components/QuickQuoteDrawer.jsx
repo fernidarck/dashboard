@@ -52,6 +52,7 @@ export default function QuickQuoteDrawer({
   onInsertText,
   onSavePedido,
   onCreateCita,
+  onUpdateLead,
   hideHeader = false,
   className = ''
 }) {
@@ -83,6 +84,14 @@ export default function QuickQuoteDrawer({
     'Entrega inmediata y armada lista para funcionar': true,
     'Cotización válida por 15 días': true,
     'Instalación técnica profesional garantizada': false,
+  });
+
+  // Formas de pago (se eligen por cotización, salen en el PDF/WhatsApp y se guardan en el pedido).
+  const [payMethods, setPayMethods] = useState({
+    'Efectivo / contra entrega': true,
+    'Transferencia o depósito bancario': true,
+    'Tarjeta (Visa/MC) — sujeto a recargo por comisión bancaria': false,
+    'Anticipo 50% y 50% contra entrega / instalación': false,
   });
 
   const searchInputRef = useRef(null);
@@ -199,6 +208,26 @@ export default function QuickQuoteDrawer({
     nit: clientForm.nit.trim() || selectedLead?.nit || ''
   }), [selectedLead, clientForm]);
 
+  // Formas de pago activas (las marcadas) y su texto para guardar en el pedido.
+  const activePayMethods = useMemo(
+    () => Object.entries(payMethods).filter(([_, on]) => on).map(([k]) => k),
+    [payMethods]
+  );
+  const metodoPagoText = useMemo(() => activePayMethods.join(' · '), [activePayMethods]);
+
+  // Si el asesor corrigió nombre/dirección/NIT a mano, guardarlo también en el registro
+  // del cliente (sin tocar el resto de sus datos). Solo escribe los campos que llenó.
+  const persistClientEdits = () => {
+    if (!onUpdateLead || !selectedLead?.id) return;
+    const patch = {};
+    if (clientForm.nombre.trim()) patch.nombre = clientForm.nombre.trim();
+    if (clientForm.direccion.trim()) patch.direccion = clientForm.direccion.trim();
+    if (clientForm.nit.trim()) patch.nit = clientForm.nit.trim();
+    if (Object.keys(patch).length) {
+      try { onUpdateLead({ ...selectedLead, ...patch }); } catch (e) { console.warn('No se pudo guardar datos del cliente:', e); }
+    }
+  };
+
   // Generar texto para WhatsApp
   const generateWhatsAppMessage = () => {
     const dateStr = new Date().toLocaleDateString('es-GT', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -234,6 +263,11 @@ export default function QuickQuoteDrawer({
       if (customNotes.trim()) {
         text += `ℹ️ ${customNotes.trim()}\n`;
       }
+    }
+
+    if (activePayMethods.length > 0) {
+      text += `\n💳 *Formas de pago:*\n`;
+      activePayMethods.forEach(m => { text += `• ${m}\n`; });
     }
 
     text += `\n🤝 _¿Deseas que coordinemos la entrega o instalación? Con gusto te asistimos._`;
@@ -289,6 +323,9 @@ export default function QuickQuoteDrawer({
         fechaEntregaCombined = scheduledTime;
       }
 
+      // Guardar también los datos del cliente corregidos a mano (si los hubo)
+      persistClientEdits();
+
       await onSavePedido({
         cliente: effectiveLead?.nombre || 'Cliente WhatsApp',
         phone: selectedLead?.phone || '',
@@ -297,6 +334,7 @@ export default function QuickQuoteDrawer({
         precio: `Q${fmtQ(total)}`,
         notas: `Cotizado desde chat. Subtotal: Q${fmtQ(subtotal)}, Descuento: Q${fmtQ(discountAmount)}. ${customNotes || ''}`,
         fecha_entrega: fechaEntregaCombined,
+        metodo_pago: metodoPagoText,
         estado: asCotizacion ? 'Cotización' : (fechaEntregaCombined ? 'Visita Programada' : 'Nuevo')
       });
 
@@ -453,6 +491,15 @@ export default function QuickQuoteDrawer({
     </tbody>
   </table>
 
+  ${activePayMethods.length > 0 ? `
+    <div class="terms" style="background:#f0f9ff;border-color:#bae6fd;">
+      <h4 style="color:#0369a1;">Formas de Pago:</h4>
+      <ul>
+        ${activePayMethods.map(m => `<li>${m}</li>`).join('')}
+      </ul>
+    </div>
+  ` : ''}
+
   ${(activePresets.length > 0 || customNotes.trim()) ? `
     <div class="terms">
       <h4>Términos de la Oferta y Garantía:</h4>
@@ -487,7 +534,7 @@ export default function QuickQuoteDrawer({
     }
     try {
       const { file, quoteNum } = generateQuotePdf({
-        selectedLead: effectiveLead, items, subtotal, discountAmount, total, presetNotes, customNotes
+        selectedLead: effectiveLead, items, subtotal, discountAmount, total, presetNotes, customNotes, payMethods: activePayMethods
       });
       const url = URL.createObjectURL(file);
       setPreview({ url, file, quoteNum });
@@ -512,6 +559,7 @@ export default function QuickQuoteDrawer({
     try {
       const caption = `📄 *Cotización Formal ONE CONTROL (${preview.quoteNum})*\nHola ${effectiveLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
       await onSendDocument(selectedLead.id, preview.file, caption);
+      persistClientEdits();
       handleClosePreview();
       setPdfSentSuccess(true);
       setTimeout(() => setPdfSentSuccess(false), 4000);
@@ -539,13 +587,15 @@ export default function QuickQuoteDrawer({
         discountAmount,
         total,
         presetNotes,
-        customNotes
+        customNotes,
+        payMethods: activePayMethods
       });
 
       const caption = `📄 *Cotización Formal ONE CONTROL (${quoteNum})*\nHola ${effectiveLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
 
       if (onSendDocument) {
         await onSendDocument(selectedLead.id, file, caption);
+        persistClientEdits();
         setPdfSentSuccess(true);
         setTimeout(() => setPdfSentSuccess(false), 4000);
       } else {
@@ -576,7 +626,8 @@ export default function QuickQuoteDrawer({
         discountAmount,
         total,
         presetNotes,
-        customNotes
+        customNotes,
+        payMethods: activePayMethods
       });
       const url = URL.createObjectURL(file);
       const a = document.createElement('a');
@@ -1016,6 +1067,25 @@ export default function QuickQuoteDrawer({
                     className="rounded border-slate-300 text-[#FF6B00] focus:ring-[#FF6B00] cursor-pointer"
                   />
                   <span className="truncate">{k}</span>
+                </label>
+              ))}
+            </div>
+
+            {/* Checklist de Formas de Pago */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-200/80">
+              <p className="text-[9px] font-black uppercase tracking-wider text-sky-600 flex items-center gap-1">
+                <DollarSign size={11} className="text-sky-500" />
+                Formas de pago (salen en la cotización y se guardan)
+              </p>
+              {Object.entries(payMethods).map(([k, active]) => (
+                <label key={k} className="flex items-start space-x-2 text-[11px] font-medium text-slate-700 cursor-pointer hover:text-slate-900">
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    onChange={e => setPayMethods(prev => ({ ...prev, [k]: e.target.checked }))}
+                    className="mt-0.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
+                  />
+                  <span className="leading-snug">{k}</span>
                 </label>
               ))}
             </div>

@@ -558,6 +558,14 @@ export default function ViewPedidos({
                         )}
                       </div>
 
+                      {/* Forma de pago (si se guardó desde el cotizador) */}
+                      {pedido.metodo_pago && (
+                        <div className="p-2.5 bg-sky-50 border border-sky-100 rounded-xl text-[11px] text-sky-800 font-semibold leading-relaxed flex items-start gap-1.5">
+                          <span className="shrink-0">💳</span>
+                          <span>{pedido.metodo_pago}</span>
+                        </div>
+                      )}
+
                       {/* Notas / Dirección */}
                       {pedido.notas && (
                         <div className="p-2.5 bg-slate-50 rounded-xl text-[11px] text-slate-600 font-medium leading-relaxed">

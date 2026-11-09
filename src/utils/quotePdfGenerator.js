@@ -17,7 +17,8 @@ export function generateQuotePdf({
   discountAmount = 0,
   total = 0,
   presetNotes = {},
-  customNotes = ''
+  customNotes = '',
+  payMethods = []
 }) {
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
   const dateStr = new Date().toLocaleDateString('es-GT', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -278,6 +279,39 @@ export function generateQuotePdf({
   doc.setFontSize(14);
   doc.setTextColor(255, 107, 0); // #FF6B00
   doc.text(`Q${fmtQ(total)}`, 562, y, { align: 'right' });
+
+  // 7.5 Formas de Pago (caja azul suave)
+  const payList = Array.isArray(payMethods) ? payMethods.filter(Boolean) : [];
+  if (payList.length > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    const payLines = [];
+    payList.forEach(m => {
+      const wrapped = doc.splitTextToSize(`•  ${m}`, 505);
+      payLines.push(...wrapped);
+    });
+    const payBoxH = 24 + (payLines.length * 11.5) + 6;
+
+    if (y + payBoxH > 730) { doc.addPage('letter'); y = 40; } else { y += 18; }
+
+    doc.setFillColor(240, 249, 255);
+    doc.setDrawColor(186, 230, 253);
+    doc.setLineWidth(1);
+    doc.roundedRect(40, y, 532, payBoxH, 4, 4, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(3, 105, 161);
+    doc.text('FORMAS DE PAGO:', 52, y + 14);
+
+    let py = y + 26;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    payLines.forEach(line => { doc.text(line, 54, py); py += 11.5; });
+
+    y += payBoxH;
+  }
 
   // 8. Términos y Garantías (Caja inferior con diseño y ajuste de texto)
   if (activePresets.length > 0 || (customNotes && customNotes.trim())) {
