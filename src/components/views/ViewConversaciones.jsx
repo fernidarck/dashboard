@@ -8,6 +8,16 @@ import {
   UserCircle, Users, ThumbsUp, Copy, HeartHandshake
 } from 'lucide-react';
 import QuickQuoteDrawer from '../QuickQuoteDrawer.jsx';
+import StickerPrint from '../StickerPrint.jsx';
+
+// Opciones de pago (mismas que el Cotizador y Pedidos). Se guardan unidas con ' · '.
+const PAY_OPTIONS_CHAT = [
+  'Efectivo / contra entrega',
+  'Transferencia o depósito bancario',
+  'Tarjeta (Visa/MC) — sujeto a recargo por comisión bancaria',
+  'Anticipo 50% y 50% contra entrega / instalación',
+];
+const splitPagoChat = (s) => String(s || '').split(' · ').map(x => x.trim()).filter(Boolean);
 
 // Configuraciones y etapas reales del Lead (embudo oficial de Leads / CRM de OneControl)
 export const LEAD_STAGES = [
@@ -335,6 +345,9 @@ export default function ViewConversaciones({
   // Muestra el pedido más reciente del cliente y permite marcarlo Entregado desde el chat.
   // Al marcarlo, sube solo el total "Cobrado/Entregado" de la vista Pedidos.
   const [savingPedidoId, setSavingPedidoId] = useState(null);
+  const [pickedPedidoId, setPickedPedidoId] = useState(null); // cuál pedido del cliente se ve/edita
+  const [stickerPedido, setStickerPedido] = useState(null);   // pedido para imprimir sticker desde el chat
+  const [editPedido, setEditPedido] = useState(null);         // pedido en edición rápida desde el chat
   const leadDigits = String(selectedLead?.phone || selectedLead?.telefono || '').replace(/\D/g, '');
   const pedidosDelLead = !leadDigits ? [] : (pedidos || [])
     .filter(p => {
@@ -343,7 +356,8 @@ export default function ViewConversaciones({
     })
     .filter(p => p.estado !== 'Cancelado' && p.estado !== 'Cotización')
     .sort((a, b) => (b.id || 0) - (a.id || 0));
-  const pedidoActual = pedidosDelLead[0] || null;
+  // El pedido que se muestra: el que eligió el dueño en el selector, o el más reciente.
+  const pedidoActual = pedidosDelLead.find(p => p.id === pickedPedidoId) || pedidosDelLead[0] || null;
   const pedidoEntregado = pedidoActual && /complet|entreg/i.test(String(pedidoActual.estado || ''));
   const handleMarcarPedido = async (id, estado) => {
     if (!id || !onUpdatePedidoEstado || savingPedidoId) return;
@@ -2006,11 +2020,28 @@ export default function ViewConversaciones({
                         {pedidoEntregado ? '✓ Entregado' : (pedidoActual.estado || 'Nuevo')}
                       </span>
                     </div>
+                    {/* Si el cliente tiene varios pedidos, elegir cuál ver/editar (para no confundirse) */}
+                    {pedidosDelLead.length > 1 && (
+                      <select
+                        value={pedidoActual.id}
+                        onChange={e => setPickedPedidoId(Number(e.target.value))}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:border-[#FF6B00] cursor-pointer"
+                      >
+                        {pedidosDelLead.map(p => (
+                          <option key={p.id} value={p.id}>
+                            #{p.id} · {(p.producto || 'Producto').slice(0, 32)} · {p.estado || 'Nuevo'}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 space-y-0.5">
                       <p className="text-[11px] font-black text-slate-700 truncate">{pedidoActual.producto || 'Producto'}</p>
                       <p className="text-[10px] font-bold text-slate-500">
                         {pedidoActual.cantidad ? `Cant: ${pedidoActual.cantidad} · ` : ''}{pedidoActual.precio ? `Q${String(pedidoActual.precio).replace(/[^0-9.,]/g, '')}` : 'Sin precio'}
                       </p>
+                      {pedidoActual.metodo_pago && (
+                        <p className="text-[9.5px] font-bold text-sky-700 flex items-start gap-1">💳 <span>{pedidoActual.metodo_pago}</span></p>
+                      )}
                     </div>
                     {!pedidoEntregado ? (
                       <button
@@ -2033,9 +2064,21 @@ export default function ViewConversaciones({
                           : 'Deshacer (volver a pendiente)'}
                       </button>
                     )}
-                    {pedidosDelLead.length > 1 && (
-                      <p className="text-[8px] text-slate-300 italic text-center">+{pedidosDelLead.length - 1} pedido(s) más de este cliente (ver en Pedidos)</p>
-                    )}
+                    {/* Acciones rápidas sin salir del chat: editar el pedido e imprimir el sticker */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setEditPedido({ ...pedidoActual })}
+                        className="flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all"
+                      >
+                        <Tag size={12} /> Editar
+                      </button>
+                      <button
+                        onClick={() => setStickerPedido({ ...pedidoActual })}
+                        className="flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-900 hover:bg-black text-white transition-all"
+                      >
+                        <FileText size={12} /> Sticker
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
@@ -2099,6 +2142,90 @@ export default function ViewConversaciones({
             )}
           </div>
         </div>
+      )}
+
+      {/* MODAL: edición rápida del pedido desde el chat (sin ir a Pedidos) */}
+      {editPedido && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4" onClick={() => setEditPedido(null)}>
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 space-y-3 shadow-2xl max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-sm font-black text-slate-900">Editar Pedido #{editPedido.id}</h3>
+              <button onClick={() => setEditPedido(null)} className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500"><X size={15} /></button>
+            </div>
+            <div className="space-y-2.5">
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase">Producto</label>
+                <input type="text" value={editPedido.producto || ''} onChange={e => setEditPedido({ ...editPedido, producto: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#FF6B00]" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Precio</label>
+                  <input type="text" value={editPedido.precio || ''} onChange={e => setEditPedido({ ...editPedido, precio: e.target.value })}
+                    placeholder="Q1,000" className="w-full mt-0.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#FF6B00]" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Cantidad</label>
+                  <input type="text" value={editPedido.cantidad || '1'} onChange={e => setEditPedido({ ...editPedido, cantidad: e.target.value })}
+                    className="w-full mt-0.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#FF6B00]" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase">Nombre cliente</label>
+                <input type="text" value={editPedido.cliente || ''} onChange={e => setEditPedido({ ...editPedido, cliente: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:border-[#FF6B00]" />
+              </div>
+              {/* Forma de pago */}
+              <div className="p-2.5 bg-sky-50/70 rounded-xl border border-sky-200/70 space-y-1">
+                <label className="text-[10px] font-black text-sky-800 uppercase">💳 Forma de pago</label>
+                {PAY_OPTIONS_CHAT.map(opt => {
+                  const checked = splitPagoChat(editPedido.metodo_pago).includes(opt);
+                  return (
+                    <label key={opt} className="flex items-start gap-2 text-[11px] font-medium text-slate-700 cursor-pointer">
+                      <input type="checkbox" checked={checked} onChange={() => setEditPedido(prev => {
+                        const arr = splitPagoChat(prev.metodo_pago);
+                        const i = arr.indexOf(opt); if (i >= 0) arr.splice(i, 1); else arr.push(opt);
+                        return { ...prev, metodo_pago: arr.join(' · ') };
+                      })} className="mt-0.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0" />
+                      <span className="leading-snug">{opt}</span>
+                    </label>
+                  );
+                })}
+                <input type="text" value={editPedido.metodo_pago || ''} onChange={e => setEditPedido({ ...editPedido, metodo_pago: e.target.value })}
+                  placeholder="O escribe la forma de pago…" className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-sky-200 bg-white text-[11px] font-medium focus:outline-none focus:border-sky-400" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase">Estado</label>
+                <select value={editPedido.estado || 'Nuevo'} onChange={e => setEditPedido({ ...editPedido, estado: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#FF6B00] cursor-pointer">
+                  {['Nuevo', 'Visita Programada', 'En Proceso', 'Completado', 'Cancelado'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase">Dirección / Notas</label>
+                <textarea rows={2} value={editPedido.notas || ''} onChange={e => setEditPedido({ ...editPedido, notas: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:border-[#FF6B00] resize-none" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setEditPedido(null)} className="flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase bg-slate-100 hover:bg-slate-200 text-slate-600">Cancelar</button>
+                <button onClick={async () => { await onSavePedido?.(editPedido); setEditPedido(null); }}
+                  className="flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: imprimir sticker de envío del pedido desde el chat */}
+      {stickerPedido && (
+        <StickerPrint
+          isOpen={Boolean(stickerPedido)}
+          onClose={() => setStickerPedido(null)}
+          pedido={stickerPedido}
+          leads={leads}
+          onUpdateLead={onUpdateLead}
+          onSavePedido={onSavePedido}
+        />
       )}
     </div>
   );
