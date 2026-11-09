@@ -72,6 +72,11 @@ export default function QuickQuoteDrawer({
   // Vista previa del PDF antes de enviarlo (paso "ver antes de enviar")
   const [preview, setPreview] = useState(null); // { url, file, quoteNum }
 
+  // Datos del cliente OPCIONALES: por si el bot no capturó bien el nombre/dirección/NIT.
+  // Si se deja vacío, se usa lo que capturó el bot (comportamiento de siempre).
+  const [clientForm, setClientForm] = useState({ nombre: '', direccion: '', nit: '' });
+  const [showClientEdit, setShowClientEdit] = useState(false);
+
   // Notas predeterminadas tipo checklist
   const [presetNotes, setPresetNotes] = useState({
     'Garantía por escrito de 1 año en motores y equipos': true,
@@ -185,11 +190,20 @@ export default function QuickQuoteDrawer({
     return Math.max(0, subtotal - discountAmount);
   }, [subtotal, discountAmount]);
 
+  // Cliente efectivo: si el asesor escribió algo en los campos opcionales, eso gana;
+  // si no, se usa lo que capturó el bot (selectedLead). El teléfono/ID NUNCA se cambian.
+  const effectiveLead = useMemo(() => ({
+    ...selectedLead,
+    nombre: clientForm.nombre.trim() || selectedLead?.nombre || '',
+    direccion: clientForm.direccion.trim() || selectedLead?.direccion || selectedLead?.zona || '',
+    nit: clientForm.nit.trim() || selectedLead?.nit || ''
+  }), [selectedLead, clientForm]);
+
   // Generar texto para WhatsApp
   const generateWhatsAppMessage = () => {
     const dateStr = new Date().toLocaleDateString('es-GT', { day: '2-digit', month: '2-digit', year: 'numeric' });
     let text = `📄 *COTIZACIÓN — ONECONTROL*\n`;
-    if (selectedLead?.nombre) text += `👤 *Cliente:* ${selectedLead.nombre}\n`;
+    if (effectiveLead?.nombre) text += `👤 *Cliente:* ${effectiveLead.nombre}\n`;
     text += `📅 *Fecha:* ${dateStr}\n\n`;
     text += `🛍️ *Detalle de Equipos y Servicios:*\n`;
 
@@ -276,7 +290,7 @@ export default function QuickQuoteDrawer({
       }
 
       await onSavePedido({
-        cliente: selectedLead?.nombre || 'Cliente WhatsApp',
+        cliente: effectiveLead?.nombre || 'Cliente WhatsApp',
         phone: selectedLead?.phone || '',
         producto: prodSummary,
         cantidad: '1',
@@ -293,7 +307,7 @@ export default function QuickQuoteDrawer({
         if (fechaISO) {
           try {
             await onCreateCita({
-              cliente: selectedLead?.nombre || 'Cliente WhatsApp',
+              cliente: effectiveLead?.nombre || 'Cliente WhatsApp',
               phone: selectedLead?.phone || '',
               fecha: fechaISO,
               hora: scheduledTime || '',
@@ -324,7 +338,7 @@ export default function QuickQuoteDrawer({
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Cotización ${quoteNum} - ${selectedLead?.nombre || 'Cliente'}</title>
+  <title>Cotización ${quoteNum} - ${effectiveLead?.nombre || 'Cliente'}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #1e293b; padding: 40px; background: #fff; }
@@ -380,19 +394,19 @@ export default function QuickQuoteDrawer({
   <div class="client-card">
     <div>
       <p class="label">Cliente</p>
-      <p class="val">${selectedLead?.nombre || 'Consumidor Final'}</p>
+      <p class="val">${effectiveLead?.nombre || 'Consumidor Final'}</p>
     </div>
     <div>
       <p class="label">Teléfono / WhatsApp</p>
-      <p class="val">${selectedLead?.phone || '—'}</p>
+      <p class="val">${effectiveLead?.phone || '—'}</p>
     </div>
     <div>
       <p class="label">Ubicación / Zona</p>
-      <p class="val">${selectedLead?.direccion || selectedLead?.zona || 'Ciudad de Guatemala'}</p>
+      <p class="val">${effectiveLead?.direccion || 'Ciudad de Guatemala'}</p>
     </div>
     <div>
       <p class="label">NIT</p>
-      <p class="val">${selectedLead?.nit || 'CF'}</p>
+      <p class="val">${effectiveLead?.nit || 'CF'}</p>
     </div>
   </div>
 
@@ -473,7 +487,7 @@ export default function QuickQuoteDrawer({
     }
     try {
       const { file, quoteNum } = generateQuotePdf({
-        selectedLead, items, subtotal, discountAmount, total, presetNotes, customNotes
+        selectedLead: effectiveLead, items, subtotal, discountAmount, total, presetNotes, customNotes
       });
       const url = URL.createObjectURL(file);
       setPreview({ url, file, quoteNum });
@@ -496,7 +510,7 @@ export default function QuickQuoteDrawer({
     if (!onSendDocument) { alert('No se puede enviar desde aquí.'); return; }
     setSendingPdf(true);
     try {
-      const caption = `📄 *Cotización Formal ONE CONTROL (${preview.quoteNum})*\nHola ${selectedLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
+      const caption = `📄 *Cotización Formal ONE CONTROL (${preview.quoteNum})*\nHola ${effectiveLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
       await onSendDocument(selectedLead.id, preview.file, caption);
       handleClosePreview();
       setPdfSentSuccess(true);
@@ -519,7 +533,7 @@ export default function QuickQuoteDrawer({
     setSendingPdf(true);
     try {
       const { file, quoteNum } = generateQuotePdf({
-        selectedLead,
+        selectedLead: effectiveLead,
         items,
         subtotal,
         discountAmount,
@@ -528,7 +542,7 @@ export default function QuickQuoteDrawer({
         customNotes
       });
 
-      const caption = `📄 *Cotización Formal ONE CONTROL (${quoteNum})*\nHola ${selectedLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
+      const caption = `📄 *Cotización Formal ONE CONTROL (${quoteNum})*\nHola ${effectiveLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
 
       if (onSendDocument) {
         await onSendDocument(selectedLead.id, file, caption);
@@ -556,7 +570,7 @@ export default function QuickQuoteDrawer({
     if (items.length === 0) return;
     try {
       const { file } = generateQuotePdf({
-        selectedLead,
+        selectedLead: effectiveLead,
         items,
         subtotal,
         discountAmount,
@@ -672,6 +686,65 @@ export default function QuickQuoteDrawer({
             </button>
           </div>
         )}
+
+        {/* DATOS DEL CLIENTE (OPCIONAL) — por si el bot no capturó bien el nombre/dirección/NIT */}
+        <div className="border border-slate-200 rounded-2xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowClientEdit(v => !v)}
+            className="w-full px-3 py-2.5 bg-slate-50 hover:bg-slate-100 flex items-center justify-between transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Pencil size={13} className="text-slate-500 shrink-0" />
+              <div className="min-w-0 text-left">
+                <p className="text-[11px] font-black text-slate-700 uppercase tracking-wide">Datos del cliente <span className="text-slate-400 normal-case font-bold">(opcional)</span></p>
+                <p className="text-[10px] text-slate-400 truncate">
+                  {(clientForm.nombre.trim() || selectedLead?.nombre) ? `Saldrá como: ${clientForm.nombre.trim() || selectedLead.nombre}` : 'Corrige el nombre, dirección o NIT si el bot no los tomó bien'}
+                </p>
+              </div>
+            </div>
+            {showClientEdit ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
+          </button>
+
+          {showClientEdit && (
+            <div className="p-3 space-y-2.5 bg-white border-t border-slate-100">
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wide">Nombre</label>
+                <input
+                  type="text"
+                  value={clientForm.nombre}
+                  onChange={e => setClientForm(f => ({ ...f, nombre: e.target.value }))}
+                  placeholder={selectedLead?.nombre || 'Nombre del cliente'}
+                  className="w-full mt-0.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wide">Dirección / Zona</label>
+                <input
+                  type="text"
+                  value={clientForm.direccion}
+                  onChange={e => setClientForm(f => ({ ...f, direccion: e.target.value }))}
+                  placeholder={selectedLead?.direccion || selectedLead?.zona || 'Ciudad de Guatemala'}
+                  className="w-full mt-0.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wide">NIT</label>
+                <input
+                  type="text"
+                  value={clientForm.nit}
+                  onChange={e => setClientForm(f => ({ ...f, nit: e.target.value }))}
+                  placeholder={selectedLead?.nit || 'CF'}
+                  className="w-full mt-0.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] transition-all"
+                />
+              </div>
+              <p className="text-[9.5px] text-slate-400 leading-snug flex items-center gap-1">
+                <Check size={11} className="text-emerald-500 shrink-0" />
+                Si lo dejás vacío, usa lo que capturó el bot. El teléfono no cambia.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* BUSCADOR DE PRODUCTOS */}
         <div className="relative">
