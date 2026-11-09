@@ -576,7 +576,13 @@ export function useAppData(apiBase, authToken) {
       notify('⏳ Enviando archivo...', 1500);
       const res = await apiFetch(`${apiBase}/api/messages/send-document`, { method: 'POST', body: fd });
       if (!res.ok) { notify('❌ Error al enviar archivo: ' + res.status); fetchLeads(); return false; }
+      const data = await res.json().catch(() => ({}));
       await Promise.all([fetchMessages(leadId), fetchLeads()]);
+      // El backend ahora dice si el archivo REALMENTE llegó al cliente por WhatsApp.
+      if (data && data.delivered === false) {
+        notify('⚠️ Guardado, pero el archivo NO llegó al cliente: ' + (data.deliveryError || 'revisá la ventana de 24h o la API key de YCloud del canal'), 9000);
+        return false;
+      }
       notify('✅ Archivo enviado', 2000);
       return true;
     } catch { notify('❌ Error de red'); fetchLeads(); return false; }

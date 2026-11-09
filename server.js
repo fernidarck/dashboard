@@ -896,7 +896,11 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
     const channel = await getChannelConfig(channelPhone);
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
-    if (!apiKey || !fromNum || !toPhone || !docUrl) return;
+    if (!apiKey || !fromNum || !toPhone || !docUrl) {
+      const falta = !apiKey ? 'API key de YCloud' : !fromNum ? 'número de envío (from)' : !toPhone ? 'teléfono del cliente' : 'archivo';
+      console.error(`❌ No se puede enviar documento: falta ${falta} (canal ${channelPhone || 'default'})`);
+      return { ok: false, error: `El canal no tiene configurado: ${falta}` };
+    }
 
     const cleanFrom = String(fromNum).startsWith('+') ? String(fromNum) : `+${String(fromNum).replace(/\D/g, '')}`;
     const cleanTo = String(toPhone).startsWith('+') ? String(toPhone) : `+${String(toPhone).replace(/\D/g, '')}`;
@@ -943,10 +947,16 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
       body: JSON.stringify({ from: cleanFrom, to: cleanTo, type: 'document', document: documentPayload })
     });
-    if (!r.ok) { const t = await r.text(); console.error(`❌ Error documento YCloud: ${r.status} ${t}`); }
-    else console.log(`📄 Documento enviado a ${cleanTo} desde ${cleanFrom}: ${fileName} (${mediaId ? 'por ID subido' : 'por link'})`);
+    if (!r.ok) {
+      const t = await r.text();
+      console.error(`❌ Error documento YCloud: ${r.status} ${t}`);
+      return { ok: false, error: `YCloud ${r.status}: ${String(t).slice(0, 220)}` };
+    }
+    console.log(`📄 Documento enviado a ${cleanTo} desde ${cleanFrom}: ${fileName} (${mediaId ? 'por ID subido' : 'por link'})`);
+    return { ok: true };
   } catch(e) {
     console.error('❌ Error enviando documento via YCloud:', e.message);
+    return { ok: false, error: 'YCloud no responde: ' + e.message };
   }
 }
 
@@ -3513,17 +3523,24 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     const isInstagram = lead?.origen && String(lead.origen).toLowerCase().includes('instagram');
     const isFacebook = lead?.origen && String(lead.origen).toLowerCase().includes('facebook');
 
+    // AHORA ESPERAMOS el envío real y capturamos el error (igual que el envío de texto),
+    // para que el dashboard diga la verdad: si el PDF/archivo NO llegó al cliente, se ve el
+    // motivo (ej. el canal sin API key de YCloud) en vez de decir "enviado" en falso.
+    let deliveryError = null;
     if (isInstagram || isFacebook) {
       const recipientId = lead.whatsapp_id || lead.phone;
       if (recipientId) {
         await sendMetaMessage(recipientId, caption || '', docUrl, isImage ? 'image' : isVideo ? 'video' : 'document');
       }
     } else if (lead.phone) {
-      if (isImage)      sendImageViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
-      else if (isVideo) sendVideoViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
-      else              sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
+      let r;
+      if (isImage)      r = await sendImageViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
+      else if (isVideo) r = await sendVideoViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
+      else              r = await sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
+      if (r && r.ok === false) deliveryError = r.error;
     }
-    res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType });
+    if (deliveryError) console.error(`⚠️ Lead ${leadId}: archivo guardado pero NO entregado → ${deliveryError}`);
+    res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType, delivered: !deliveryError, deliveryError });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
