@@ -5667,21 +5667,26 @@ app.post('/api/training/test', async (req, res) => {
         const setRows = await db.all("SELECT key, value FROM settings");
         setRows.forEach(r => S[r.key] = r.value);
       }
-      // SIMULADOR IDÉNTICO AL VIVO: si hay llave de OpenAI (probador_openai_key), usamos el MISMO
-      // modelo que el bot real (GPT-4o) y la MISMA visión (gpt-4o-mini). Si no, cae a DeepSeek.
-      const useOpenAI = !!(S.probador_openai_key && String(S.probador_openai_key).trim());
-      const apiKey = useOpenAI ? S.probador_openai_key : S.deepseek_api_key;
-      if (apiKey) {
-        const baseUrl = useOpenAI ? 'https://api.openai.com/v1' : String(S.deepseek_base_url || 'https://api.deepseek.com').replace(/\/+$/, '');
-        const model = useOpenAI ? 'gpt-4o' : (S.deepseek_model || 'deepseek-v4-pro');
+      // SIMULADOR CON RESPALDO: intenta primero GPT-4o (igual que el bot en vivo, con visión)
+      // y si esa llave falla (vencida/401/sin crédito) cae AUTOMÁTICAMENTE a DeepSeek, que es el
+      // mismo cerebro de respaldo del bot web. Así el simulador NUNCA se queda con la plantilla
+      // tonta si hay al menos una llave viva. El orden es: OpenAI → DeepSeek.
+      const providers = [];
+      if (S.probador_openai_key && String(S.probador_openai_key).trim())
+        providers.push({ name: 'gpt-4o', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', key: String(S.probador_openai_key).trim(), vision: true });
+      if (S.deepseek_api_key && String(S.deepseek_api_key).trim())
+        providers.push({ name: 'deepseek', baseUrl: String(S.deepseek_base_url || 'https://api.deepseek.com').replace(/\/+$/, ''), model: (S.deepseek_model || 'deepseek-chat'), key: String(S.deepseek_api_key).trim(), vision: false });
+
+      if (providers.length) {
         // VISIÓN (igual que el bot en vivo): si el cliente mandó una FOTO, la describe gpt-4o-mini
-        // y esa descripción entra a la charla, tal como hace n8n con "Analyze image1".
+        // (solo con la llave de OpenAI). Si esa llave está muerta, la visión simplemente se omite.
+        const visionProv = providers.find(p => p.vision);
         let imgDesc = '';
-        if (hasImg && useOpenAI) {
+        if (hasImg && visionProv) {
           try {
             const vres = await fetch('https://api.openai.com/v1/chat/completions', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${visionProv.key}` },
               body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 300, messages: [{ role: 'user', content: [
                 { type: 'text', text: 'Describí en español, breve y concreto, qué se ve en esta imagen para una tienda de portones/muebles: si es un motor, control remoto, riel, mesa de noche u otro; y la marca/modelo SOLO si se distingue con claridad (no inventes).' },
                 { type: 'image_url', image_url: { url: imageDataUrl } }
@@ -5705,19 +5710,24 @@ app.post('/api/training/test', async (req, res) => {
         } catch (e) { console.error('sim RAG:', e.message); }
         // MISMO system message que el agente "recepcionista" en n8n.
         const sys = `Eres ${S.agent_nombre || 'el asistente'}, ${S.agent_rol || 'asistente virtual'} de ${S.agent_empresa || 'la empresa'}.\n\nEMPRESA:\n${S.agent_descripcion || ''}\n\nINSTRUCCIONES:\n${S.prompt_recepcionista || ''}\n\nSé conciso en WhatsApp (máximo 3-4 líneas). Responde siempre en Español.\n\n📸 REGLA SOBRE IMÁGENES Y ANUNCIOS:\n- Si el cliente viene de un [ANUNCIO de origen] o menciona un modelo específico (ej: Mesa de noche modelo 5, Motor LiftMaster, Control Genius): NO preguntes cuál busca. Da el precio de inmediato y envía la foto de ese modelo con [Ver Imagen](URL_EXACTA_DEL_RAG).\n- Si el cliente pregunta de forma general por una categoría o artículo sin modelo (ej: "¿Venden botoneras?"): Confirma el producto disponible, dale el precio, pregúntale cuál modelo busca y adjunta [Ver Imagen](URL) de la que tenemos.\n- JAMÁS inventes URLs de imágenes. Usa ÚNICAMENTE las URLs que aparezcan textualmente en la INFORMACIÓN DE REFERENCIA.` + (ragFound && ragCtx ? '\n\n📚 INFORMACIÓN DE REFERENCIA — úsala para responder con precisión y extraer las fotos:\n' + ragCtx : '');
-        const ctrl = new AbortController();
-        const to = setTimeout(() => ctrl.abort(), 30000);
-        const llmRes = await fetch(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, temperature: 0.5, messages: [{ role: 'system', content: sys }, ...hist, { role: 'user', content: userTurn }] }),
-          signal: ctrl.signal
-        }).finally(() => clearTimeout(to));
-        const llmJson = await llmRes.json();
-        const txt = llmJson?.choices?.[0]?.message?.content;
-        visionDesc = imgDesc; modelUsed = useOpenAI ? 'gpt-4o' : 'deepseek';
-        if (txt && txt.trim()) { finalReply = txt.trim(); replySource = 'bot-real'; }
-        else if (llmJson?.error) { console.error('sim LLM error:', JSON.stringify(llmJson.error).slice(0, 200)); }
+        visionDesc = imgDesc;
+        // Intentar cada proveedor en orden; el primero que devuelva texto gana.
+        for (const prov of providers) {
+          try {
+            const ctrl = new AbortController();
+            const to = setTimeout(() => ctrl.abort(), 30000);
+            const llmRes = await fetch(`${prov.baseUrl}/chat/completions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${prov.key}` },
+              body: JSON.stringify({ model: prov.model, temperature: 0.5, messages: [{ role: 'system', content: sys }, ...hist, { role: 'user', content: userTurn }] }),
+              signal: ctrl.signal
+            }).finally(() => clearTimeout(to));
+            const llmJson = await llmRes.json();
+            const txt = llmJson?.choices?.[0]?.message?.content;
+            if (txt && txt.trim()) { finalReply = txt.trim(); replySource = 'bot-real'; modelUsed = prov.name; break; }
+            if (llmJson?.error) console.error(`sim LLM ${prov.name} error:`, JSON.stringify(llmJson.error).slice(0, 200));
+          } catch (e) { console.error(`sim LLM ${prov.name}:`, e.message); }
+        }
       }
     } catch (e) { console.error('simulador LLM:', e.message); }
 
