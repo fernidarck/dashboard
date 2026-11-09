@@ -44,7 +44,9 @@ const emptyProduct = {
   whatsapp_link: '',
   ad_ids: '',
   compatibilidad: '',
-  tabla_precios: ''
+  tabla_precios: '',
+  variantes_disponibles: '',
+  variantes_agotadas: ''
 };
 
 // Helper para obtener fotos con descripción de cualquier producto o tarjeta
@@ -899,6 +901,11 @@ export default function ViewRAG({
                 <label className="text-[10px] font-black text-emerald-700 uppercase tracking-widest ml-2 block pt-3">✅ Compatibilidad (marcas de motor)</label>
                 <input type="text" value={newProduct.compatibilidad || ''} onChange={e => setNewProduct({...newProduct, compatibilidad: e.target.value})} className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all text-emerald-900 placeholder:text-emerald-400" placeholder="Ej: LiftMaster, Chamberlain  ·  o: Genius  ·  o: Universal" />
                 <p className="text-[9px] text-emerald-700/80 italic ml-2">Para controles/botoneras/repuestos: con qué marcas de motor SÍ sirve. El bot solo lo ofrece a esos motores y no promete lo que no funciona.</p>
+                <label className="text-[10px] font-black text-indigo-700 uppercase tracking-widest ml-2 block pt-3">🎨 Colores / variantes DISPONIBLES</label>
+                <input type="text" value={newProduct.variantes_disponibles || ''} onChange={e => setNewProduct({...newProduct, variantes_disponibles: e.target.value})} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-all text-indigo-900 placeholder:text-indigo-300" placeholder="Ej: rojo, plateado   (también sirve para tamaños/modelos)" />
+                <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest ml-2 block pt-2">🚫 Colores / variantes AGOTADOS</label>
+                <input type="text" value={newProduct.variantes_agotadas || ''} onChange={e => setNewProduct({...newProduct, variantes_agotadas: e.target.value})} className="w-full px-4 py-3 bg-white border border-rose-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-400 transition-all text-rose-900 placeholder:text-rose-300" placeholder="Ej: negro, azul" />
+                <p className="text-[9px] text-indigo-700/80 italic ml-2">El bot ofrece SOLO los disponibles desde el inicio y nunca los agotados. (Esto NO apaga las fotos — ponelo aquí, no en las Reglas.)</p>
               </div>
 
               <TablaPreciosEditor value={newProduct.tabla_precios || ''} onChange={v => setNewProduct({...newProduct, tabla_precios: v})} />
@@ -992,6 +999,11 @@ export default function ViewRAG({
                 <label className="text-[10px] font-black text-emerald-700 uppercase tracking-widest ml-2 block pt-3">✅ Compatibilidad (marcas de motor)</label>
                 <input type="text" value={editingProduct.compatibilidad || ''} onChange={e => setEditingProduct({...editingProduct, compatibilidad: e.target.value})} className="w-full px-4 py-3 bg-white border border-emerald-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all text-emerald-900 placeholder:text-emerald-400" placeholder="Ej: LiftMaster, Chamberlain  ·  o: Genius  ·  o: Universal" />
                 <p className="text-[9px] text-emerald-700/80 italic ml-2">Para controles/botoneras/repuestos: con qué marcas de motor SÍ sirve. El bot solo lo ofrece a esos motores y no promete lo que no funciona.</p>
+                <label className="text-[10px] font-black text-indigo-700 uppercase tracking-widest ml-2 block pt-3">🎨 Colores / variantes DISPONIBLES</label>
+                <input type="text" value={editingProduct.variantes_disponibles || ''} onChange={e => setEditingProduct({...editingProduct, variantes_disponibles: e.target.value})} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-all text-indigo-900 placeholder:text-indigo-300" placeholder="Ej: rojo, plateado   (también sirve para tamaños/modelos)" />
+                <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest ml-2 block pt-2">🚫 Colores / variantes AGOTADOS</label>
+                <input type="text" value={editingProduct.variantes_agotadas || ''} onChange={e => setEditingProduct({...editingProduct, variantes_agotadas: e.target.value})} className="w-full px-4 py-3 bg-white border border-rose-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-400 transition-all text-rose-900 placeholder:text-rose-300" placeholder="Ej: negro, azul" />
+                <p className="text-[9px] text-indigo-700/80 italic ml-2">El bot ofrece SOLO los disponibles desde el inicio y nunca los agotados. (Esto NO apaga las fotos — ponelo aquí, no en las Reglas.)</p>
               </div>
 
               <TablaPreciosEditor value={editingProduct.tabla_precios || ''} onChange={v => setEditingProduct({...editingProduct, tabla_precios: v})} />

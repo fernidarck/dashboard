@@ -25,8 +25,19 @@ export function mediaBloqueada(p) {
   const stock  = norm(p && p.stock);
   const reglas = norm(p && p.reglas_bot);
   const stockAgotado = /^0$|agotad|sin\s*stock|sin\s*existencia|no\s*hay/.test(stock);
-  // "no lo ofrezcas", "no la envíes", "no mostrar", "no vendas"... (acción negativa explícita)
-  const reglaNoOfrecer = /\bno\s+(?:la|lo|los|las|le|les)?\s*(?:ofrezcas|ofrecer|ofrescas|muestres|mostrar|env[ií]es|enviar|mandes|mandar|vendas|vender)\b/.test(reglas);
+  // Bloqueo por regla EXPLÍCITA de no ofrecer EL PRODUCTO (su foto/video). OJO: una regla como
+  // "no ofrezcas negro ni azul" se refiere a COLORES agotados, NO al producto → NO debe apagar la
+  // media (bug real 9-nov-2026: bastones dejaron de mandar foto por eso). Por eso solo bloquea si
+  // el verbo negativo apunta al PRODUCTO o a la MEDIA, no a un color/variante suelto:
+  //   a) pronombre de producto antes del verbo: "no LO ofrezcas", "no LA envíes", "no LOS muestres"
+  //   b) objeto producto/media después del verbo: "no ofrezcas ESTE PRODUCTO", "no envíes FOTOS"
+  // Un color detrás del verbo ("no ofrezcas negro") NO calza ninguno → NO bloquea.
+  // (Para marcar TODO el producto como no disponible, usar el campo STOCK = agotado.)
+  const verbo = '(?:ofrezcas|ofrecer|ofrescas|muestres|mostrar|env[ií]es|enviar|mandes|mandar|vendas|vender)';
+  const objProd = '(?:este|esta|esto|producto|art[ií]culo|modelo|item|foto|fotos|imagen|im[aá]genes|imagenes|video|videos|nada)';
+  const reglaNoOfrecer =
+        new RegExp('\\bno\\s+(?:la|lo|los|las|le|les)\\s+' + verbo + '\\b').test(reglas) ||
+        new RegExp('\\bno\\s+' + verbo + '\\s+' + objProd + '\\b').test(reglas);
   return stockAgotado || reglaNoOfrecer;
 }
 

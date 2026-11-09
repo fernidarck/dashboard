@@ -485,6 +485,11 @@ async function setup() {
     try { await db.exec("ALTER TABLE products ADD COLUMN whatsapp_link TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN precio_oferta TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN reglas_bot TEXT"); } catch(e){}
+    // Colores/variantes por producto: el dueño escribe cuáles SÍ hay y cuáles están agotados.
+    // El sistema arma solo la orden para el bot (ofrecer solo los disponibles). Viven aparte de
+    // reglas_bot a propósito: así NUNCA apagan la foto/video (ver media-rules.js / mediaBloqueada).
+    try { await db.exec("ALTER TABLE products ADD COLUMN variantes_disponibles TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE products ADD COLUMN variantes_agotadas TEXT"); } catch(e){}
     // created_at real en mensajes (para el seguimiento automático de 12h) y flag por lead.
     try { await db.exec("ALTER TABLE messages ADD COLUMN created_at TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE leads ADD COLUMN seguimiento_enviado INTEGER DEFAULT 0"); } catch(e){}
@@ -4121,14 +4126,14 @@ app.get('/api/products', async (_req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, tabla_precios } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, tabla_precios, variantes_disponibles, variantes_agotadas } = req.body;
     if (!nombre) return res.status(400).json({ error: "Nombre requerido" });
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     const ts = new Date().toLocaleString();
     const r = await db.run(
-      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, tabla_precios, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', normalizeAdIds(ad_ids), compatibilidad || '', normalizeTablaPrecios(tabla_precios), ts
+      "INSERT INTO products (nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, compatibilidad, tabla_precios, variantes_disponibles, variantes_agotadas, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      nombre, descripcion || '', reglas_bot || '', precio || '', precio_oferta || '', categoria || 'General', stock ?? '', urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link || '', whatsapp_link || '', normalizeAdIds(ad_ids), compatibilidad || '', normalizeTablaPrecios(tabla_precios), variantes_disponibles || '', variantes_agotadas || '', ts
     );
     res.json({ success: true, id: r.lastID });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4136,19 +4141,22 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, post_ids, compatibilidad, tabla_precios } = req.body;
+    const { nombre, descripcion, reglas_bot, precio, precio_oferta, categoria, stock, activo, imagen, imagenes, imagenes_meta, catalog_link, whatsapp_link, ad_ids, post_ids, compatibilidad, tabla_precios, variantes_disponibles, variantes_agotadas } = req.body;
     const meta = (Array.isArray(imagenes_meta) ? imagenes_meta : (Array.isArray(imagenes) ? imagenes.map(img => typeof img === 'string' ? { url: img, desc: '' } : img) : (imagen ? [{ url: imagen, desc: '' }] : []))).filter(Boolean).slice(0, 5);
     const urls = meta.map(m => m.url || m);
     // Flags "más vendido" / "campaña activa": si no vienen en el body, se preservan (para no
     // pisarlos cuando se guarda el producto desde otra pantalla que no los manda).
-    const existingFlags = await db.get("SELECT mas_vendido, campana_activa, tabla_precios FROM products WHERE id=?", req.params.id);
+    const existingFlags = await db.get("SELECT mas_vendido, campana_activa, tabla_precios, variantes_disponibles, variantes_agotadas FROM products WHERE id=?", req.params.id);
     const masVendido    = req.body.mas_vendido    !== undefined ? (req.body.mas_vendido    ? 1 : 0) : (existingFlags?.mas_vendido    || 0);
     const campanaActiva = req.body.campana_activa !== undefined ? (req.body.campana_activa ? 1 : 0) : (existingFlags?.campana_activa || 0);
     // Tabla de precios: si no viene en el body, se preserva (no pisarla desde otra pantalla).
     const tablaPrecios  = tabla_precios !== undefined ? normalizeTablaPrecios(tabla_precios) : (existingFlags?.tabla_precios || '');
+    // Colores/variantes: si no vienen en el body, se preservan (no pisarlos desde otra pantalla).
+    const varDisp = variantes_disponibles !== undefined ? (variantes_disponibles || '') : (existingFlags?.variantes_disponibles || '');
+    const varAgot = variantes_agotadas    !== undefined ? (variantes_agotadas    || '') : (existingFlags?.variantes_agotadas    || '');
     await db.run(
-      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, post_ids=?, compatibilidad=?, tabla_precios=?, mas_vendido=?, campana_activa=? WHERE id=?",
-      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), normalizeAdIds(post_ids), compatibilidad ?? '', tablaPrecios, masVendido, campanaActiva, req.params.id
+      "UPDATE products SET nombre=?, descripcion=?, reglas_bot=?, precio=?, precio_oferta=?, categoria=?, stock=?, activo=?, imagen=?, imagenes=?, imagenes_meta=?, catalog_link=?, whatsapp_link=?, ad_ids=?, post_ids=?, compatibilidad=?, tabla_precios=?, variantes_disponibles=?, variantes_agotadas=?, mas_vendido=?, campana_activa=? WHERE id=?",
+      nombre, descripcion, reglas_bot ?? '', precio, precio_oferta ?? '', categoria, stock ?? '', activo ?? 1, urls[0] || imagen || '', JSON.stringify(urls), JSON.stringify(meta), catalog_link ?? '', whatsapp_link ?? '', normalizeAdIds(ad_ids), normalizeAdIds(post_ids), compatibilidad ?? '', tablaPrecios, varDisp, varAgot, masVendido, campanaActiva, req.params.id
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4667,7 +4675,7 @@ app.get('/api/rag/context', async (req, res) => {
 
     // Cargar documentos y productos
     const docs = await db.all("SELECT name, category, COALESCE(content, '') as content FROM documents");
-    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(imagenes,'') as imagenes, COALESCE(imagenes_meta,'') as imagenes_meta, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad, COALESCE(mas_vendido,0) as mas_vendido, COALESCE(campana_activa,0) as campana_activa, COALESCE(tabla_precios,'') as tabla_precios FROM products WHERE activo = 1");
+    const prodRows = await db.all("SELECT nombre, categoria, COALESCE(descripcion,'') as descripcion, COALESCE(precio,'Consultar') as precio, COALESCE(precio_oferta,'') as precio_oferta, COALESCE(imagen,'') as imagen, COALESCE(imagenes,'') as imagenes, COALESCE(imagenes_meta,'') as imagenes_meta, COALESCE(catalog_link,'') as catalog_link, COALESCE(whatsapp_link,'') as whatsapp_link, COALESCE(stock,'') as stock, COALESCE(reglas_bot,'') as reglas_bot, COALESCE(compatibilidad,'') as compatibilidad, COALESCE(mas_vendido,0) as mas_vendido, COALESCE(campana_activa,0) as campana_activa, COALESCE(tabla_precios,'') as tabla_precios, COALESCE(variantes_disponibles,'') as variantes_disponibles, COALESCE(variantes_agotadas,'') as variantes_agotadas FROM products WHERE activo = 1");
     // Detecta agotado (sin stock inmediato). Los muebles se fabrican a pedido en ~4 días.
     // 3 estados de stock:
     //  - AGOTADO  → no se ofrece; solo aparece (a pedido) si el cliente lo nombra específicamente.
@@ -4698,6 +4706,17 @@ app.get('/api/rag/context', async (req, res) => {
       // Reglas específicas del producto (antes NO llegaban al bot): ahora sí.
       if (p.reglas_bot && String(p.reglas_bot).trim()) {
         content += ` - REGLA IMPORTANTE (cumplila): ${String(p.reglas_bot).trim()}`;
+      }
+      // COLORES / VARIANTES (campos estructurados): el dueño dice cuáles SÍ hay y cuáles están
+      // agotadas; acá se arma SOLO la orden proactiva para el bot (ofrecer solo las disponibles
+      // desde el inicio y nunca las agotadas). Van aparte de reglas_bot a propósito: así NO
+      // apagan la foto/video del producto (ver media-rules.js / mediaBloqueada).
+      const vDisp = String(p.variantes_disponibles || '').trim();
+      const vAgot = String(p.variantes_agotadas || '').trim();
+      if (vDisp || vAgot) {
+        content += ' - 🎨 COLORES/VARIANTES:';
+        if (vDisp) content += ` DISPONIBLES: ${vDisp}. Ofrecé SIEMPRE solo estos desde el inicio y preguntá cuál quiere.`;
+        if (vAgot) content += ` AGOTADOS (NO los ofrezcas ni los menciones como opción): ${vAgot}. Si el cliente pide uno agotado, decile amable que por ahora no hay en ese y ofrecé los disponibles.`;
       }
       // TABLA DE PRECIOS POR MEDIDA (opcional): solo para productos con muchas variantes
       // que cambian de medida (ej. portones). Si el producto NO tiene tabla, nada de esto

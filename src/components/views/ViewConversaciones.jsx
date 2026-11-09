@@ -214,6 +214,9 @@ export default function ViewConversaciones({
   const likeTemplatesRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+  // Edición manual de "Datos Capturados" (para llenar dirección/NIT cuando el bot no los capturó)
+  const [editData, setEditData] = useState({});
+  const [savingData, setSavingData] = useState(false);
 
   // Cerrar dropdown de etiquetas y de plantillas al hacer clic afuera
   useEffect(() => {
@@ -298,6 +301,30 @@ export default function ViewConversaciones({
     };
 
     await onUpdateLead(updated);
+  };
+
+  // ── Datos Capturados editables ──────────────────────────────────────────────
+  // Permite llenar/corregir a mano dirección, NIT, zona, notas, etc. cuando el
+  // bot no los capturó (ej. atención manual). Reutiliza updateLead (PUT /api/leads/:id).
+  const DATOS_KEYS = ['nombre', 'direccion', 'nit', 'motor', 'falla', 'zona', 'notas'];
+  // Sincronizar al abrir/cambiar de chat (NO al refrescar mensajes, para no borrar lo que se escribe).
+  useEffect(() => {
+    const base = {};
+    for (const k of DATOS_KEYS) base[k] = selectedLead?.[k] || '';
+    setEditData(base);
+  }, [selectedLead?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const datosDirty = !!(selectedLead && selectedLead.id) &&
+    DATOS_KEYS.some(k => (editData[k] ?? '') !== (selectedLead[k] ?? ''));
+
+  const handleSaveDatos = async () => {
+    if (!selectedLead || !selectedLead.id || !onUpdateLead || savingData) return;
+    setSavingData(true);
+    try {
+      await onUpdateLead({ ...selectedLead, ...editData });
+    } finally {
+      setSavingData(false);
+    }
   };
 
   // Al navegar desde Leads/Dashboard/notificación (cambia openChatNonce), abrir el chat
@@ -1946,7 +1973,10 @@ export default function ViewConversaciones({
                   ))}
                 </div>
                 <div className="space-y-4 pt-4 border-t border-slate-100">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Datos Capturados</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Datos Capturados</h4>
+                    <span className="text-[8px] font-bold text-slate-300 lowercase not-italic flex items-center gap-1"><MapPin size={9} /> editable</span>
+                  </div>
                   <div className="space-y-2.5">
                     {[
                       { label: 'Nombre', key: 'nombre' },
@@ -1956,15 +1986,48 @@ export default function ViewConversaciones({
                       { label: 'Falla', key: 'falla' },
                       { label: 'Zona', key: 'zona' },
                       { label: 'Notas', key: 'notas' },
-                    ].map(({ label, key }) => (
-                      <div key={key} className="space-y-1">
-                        <p className="text-[8px] font-black text-slate-300 uppercase ml-2">{label}</p>
-                        <div className={`p-2.5 rounded-xl border text-[10px] font-bold truncate italic ${selectedLead[key] ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                          {selectedLead[key] || '—'}
+                    ].map(({ label, key }) => {
+                      const val = editData[key] ?? '';
+                      const cls = `w-full p-2.5 rounded-xl border text-[10px] font-bold italic outline-none transition focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 ${val ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`;
+                      return (
+                        <div key={key} className="space-y-1">
+                          <p className="text-[8px] font-black text-slate-300 uppercase ml-2">{label}</p>
+                          {key === 'notas' ? (
+                            <textarea
+                              value={val}
+                              rows={2}
+                              placeholder="Escriba aquí…"
+                              onChange={(e) => setEditData(d => ({ ...d, [key]: e.target.value }))}
+                              className={`${cls} resize-none`}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={val}
+                              placeholder="Escriba aquí…"
+                              onChange={(e) => setEditData(d => ({ ...d, [key]: e.target.value }))}
+                              className={cls}
+                            />
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
+                  <button
+                    onClick={handleSaveDatos}
+                    disabled={savingData || !datosDirty}
+                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      datosDirty && !savingData
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {savingData
+                      ? <><RefreshCw size={12} className="animate-spin" /> Guardando…</>
+                      : datosDirty
+                        ? <><Check size={12} /> Guardar cambios</>
+                        : <><Check size={12} /> Guardado</>}
+                  </button>
                 </div>
               </div>
             )}
