@@ -3368,6 +3368,11 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// Marcador de versión para confirmar qué código está desplegado (diagnóstico de deploys).
+app.get('/api/version', (req, res) => {
+  res.json({ version: 'senddoc-nonblocking-v2', ts: new Date().toISOString() });
+});
+
 app.post('/api/auth/change-token', async (req, res) => {
   try {
     const { newToken } = req.body;
