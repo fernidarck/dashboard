@@ -6067,10 +6067,25 @@ async function generateDirectMessageReply(customerMsg, leadId, platform = 'Faceb
 
     // Extraer foto si el bot la incluyó, y limpiar el texto (markdown de imagen, URLs, hashtags)
     let mediaUrl = null;
-    const imgM = text.match(/\[(?:Ver Imagen|Ver Foto|Imagen|Foto)\]\((https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|jfif))(?:\?[^\s)]*)?\)/i)
-              || text.match(/(https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|jfif))(?:\?[^\s]*)?/i);
-    if (imgM && !/\.webp/i.test(imgM[1]) && !/\/product\//i.test(imgM[1])) mediaUrl = imgM[1];
+    // (1) SISTEMA NUEVO: el bot escribe el código [[FOTO:Nombre]] (igual que WhatsApp). Lo
+    //     resolvemos a la foto REAL con resolverFotosPorNombre (respeta agotados/mediaBloqueada).
+    //     Antes acá SOLO se buscaba una URL pegada (método viejo), pero el RAG ya no da URL sino
+    //     el código → por eso FB/Instagram/WebChat dejaron de mandar foto y filtraban el [[FOTO:...]].
+    try {
+      const fotoCodes = [...text.matchAll(/\[\[FOTO:([^\]]+)\]\]/gi)].map(m => m[1].trim()).filter(Boolean);
+      if (fotoCodes.length) {
+        const fotos = await resolverFotosPorNombre(fotoCodes);
+        if (fotos && fotos[0] && fotos[0].url) mediaUrl = fotos[0].url;
+      }
+    } catch (e) {}
+    // (2) RESPALDO método viejo: una URL de imagen pegada directamente en el texto.
+    if (!mediaUrl) {
+      const imgM = text.match(/\[(?:Ver Imagen|Ver Foto|Imagen|Foto)\]\((https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|jfif))(?:\?[^\s)]*)?\)/i)
+                || text.match(/(https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|jfif))(?:\?[^\s]*)?/i);
+      if (imgM && !/\.webp/i.test(imgM[1]) && !/\/product\//i.test(imgM[1])) mediaUrl = imgM[1];
+    }
     text = text
+      .replace(/\[\[FOTO:[^\]]+\]\]/gi, '')   // quitar el código [[FOTO:...]] para que NUNCA le llegue al cliente
       .replace(/\[(?:Ver Imagen|Ver Foto|Imagen|Foto|Link|Ver más)\]\([^)]*\)/gi, '')
       .replace(/https?:\/\/\S+\.(?:jpg|jpeg|png|jfif|webp|gif|mp4|mov)\S*/gi, '')
       .replace(/#(?:PEDIDO_LISTO|SOLICITA_HUMANO|VENTA\w*|BODEGA|SOPORTE|FLUJO_NORMAL|PRODUCTO)\b/gi, '')
