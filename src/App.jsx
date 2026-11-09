@@ -535,6 +535,7 @@ export default function App() {
                 onFetchStatuses={fetchDeliveryStatuses}
                 onToggleBot={handleToggleBot}
                 onSavePedido={savePedido}
+                onCreateCita={createCita}
                 pedidos={pedidos}
                 onUpdatePedidoEstado={updatePedidoEstado}
                 onUpdateLead={updateLead}

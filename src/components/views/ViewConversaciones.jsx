@@ -184,6 +184,7 @@ export default function ViewConversaciones({
   onFetchStatuses,
   onToggleBot,
   onSavePedido,
+  onCreateCita,
   pedidos = [],
   onUpdatePedidoEstado,
   onUpdateLead,
@@ -1881,6 +1882,7 @@ export default function ViewConversaciones({
                 onSendDocument={(leadId, file, caption) => onSendDocument?.(leadId || selectedChatId, file, caption)}
                 onInsertText={handleInsertQuoteText}
                 onSavePedido={onSavePedido}
+                onCreateCita={onCreateCita}
                 hideHeader={true}
                 className="w-full h-full border-0"
               />

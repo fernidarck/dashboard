@@ -4,7 +4,7 @@ import {
   ShoppingBag, Search, Sparkles, Check, DollarSign,
   Percent, FileText, ChevronDown, ChevronUp, Package,
   RotateCcw, ShieldCheck, Truck, Clock, CheckCircle2,
-  RefreshCw, Download
+  RefreshCw, Download, Eye, Pencil, CalendarCheck
 } from 'lucide-react';
 import { generateQuotePdf } from '../utils/quotePdfGenerator.js';
 
@@ -12,6 +12,35 @@ const fmtQ = (n) => new Intl.NumberFormat('es-GT', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 }).format(parseFloat(n) || 0);
+
+// Convierte una etiqueta de día suelta ("Hoy", "Mañana", "Sábado") a una fecha real
+// YYYY-MM-DD, para que la visita del cotizador se pueda guardar como cita en la Agenda.
+const DIAS_SEMANA = {
+  'domingo': 0, 'lunes': 1, 'martes': 2, 'miercoles': 3, 'miércoles': 3,
+  'jueves': 4, 'viernes': 5, 'sabado': 6, 'sábado': 6
+};
+function resolveDayToISO(label) {
+  if (!label) return '';
+  const l = String(label).toLowerCase().trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(l)) return l; // ya es fecha
+  const d = new Date();
+  const toISO = (dt) => {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  if (l === 'hoy') return toISO(d);
+  if (l === 'mañana' || l === 'manana') { d.setDate(d.getDate() + 1); return toISO(d); }
+  if (l in DIAS_SEMANA) {
+    const target = DIAS_SEMANA[l];
+    let diff = (target - d.getDay() + 7) % 7;
+    if (diff === 0) diff = 7; // la PRÓXIMA ocurrencia, no hoy
+    d.setDate(d.getDate() + diff);
+    return toISO(d);
+  }
+  return ''; // no se pudo resolver → la cita usará lo que haya o se omite
+}
 
 export default function QuickQuoteDrawer({
   selectedLead = {},
@@ -22,6 +51,7 @@ export default function QuickQuoteDrawer({
   onSendDocument,
   onInsertText,
   onSavePedido,
+  onCreateCita,
   hideHeader = false,
   className = ''
 }) {
@@ -39,6 +69,8 @@ export default function QuickQuoteDrawer({
   const [savedQuote, setSavedQuote] = useState(false);
   const [scheduledDay, setScheduledDay] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
+  // Vista previa del PDF antes de enviarlo (paso "ver antes de enviar")
+  const [preview, setPreview] = useState(null); // { url, file, quoteNum }
 
   // Notas predeterminadas tipo checklist
   const [presetNotes, setPresetNotes] = useState({
@@ -253,6 +285,27 @@ export default function QuickQuoteDrawer({
         fecha_entrega: fechaEntregaCombined,
         estado: asCotizacion ? 'Cotización' : (fechaEntregaCombined ? 'Visita Programada' : 'Nuevo')
       });
+
+      // CONECTAR CON LA AGENDA: si la venta lleva una visita/entrega agendada, crearla también
+      // como cita en la Agenda IA (ligada al cliente por teléfono), para verla en un solo lugar.
+      if (!asCotizacion && scheduledDay && onCreateCita) {
+        const fechaISO = resolveDayToISO(scheduledDay);
+        if (fechaISO) {
+          try {
+            await onCreateCita({
+              cliente: selectedLead?.nombre || 'Cliente WhatsApp',
+              phone: selectedLead?.phone || '',
+              fecha: fechaISO,
+              hora: scheduledTime || '',
+              servicio: `Visita/Entrega: ${prodSummary}`.slice(0, 120),
+              duracion: '1 hora',
+              estado: 'Pendiente',
+              notas: `Generada desde cotización. Total: Q${fmtQ(total)}.`
+            });
+          } catch (e) { console.error('No se pudo crear la cita en la Agenda:', e); }
+        }
+      }
+
       setTimeout(() => { asCotizacion ? setSavedQuote(false) : setSavedOrder(false); }, 3000);
     } catch (e) {
       console.error('Error guardando cotización/pedido:', e);
@@ -408,6 +461,51 @@ export default function QuickQuoteDrawer({
     if (win) {
       win.document.write(printHtml);
       win.document.close();
+    }
+  };
+
+  // Acción: VER ANTES DE ENVIAR — genera el PDF REAL y lo muestra en pantalla para revisarlo.
+  const handleOpenPreview = () => {
+    if (items.length === 0) return;
+    if (!selectedLead || !selectedLead.id) {
+      alert('Selecciona un chat o cliente para cotizar.');
+      return;
+    }
+    try {
+      const { file, quoteNum } = generateQuotePdf({
+        selectedLead, items, subtotal, discountAmount, total, presetNotes, customNotes
+      });
+      const url = URL.createObjectURL(file);
+      setPreview({ url, file, quoteNum });
+    } catch (err) {
+      console.error('Error generando vista previa:', err);
+      alert('Error al generar la vista previa: ' + err.message);
+    }
+  };
+
+  const handleClosePreview = () => {
+    setPreview(prev => {
+      if (prev?.url) { try { URL.revokeObjectURL(prev.url); } catch {} }
+      return null;
+    });
+  };
+
+  // Enviar EXACTAMENTE el PDF que se está viendo en la vista previa (WYSIWYG real).
+  const handleConfirmSendPreview = async () => {
+    if (!preview?.file) return;
+    if (!onSendDocument) { alert('No se puede enviar desde aquí.'); return; }
+    setSendingPdf(true);
+    try {
+      const caption = `📄 *Cotización Formal ONE CONTROL (${preview.quoteNum})*\nHola ${selectedLead.nombre || ''}, te adjunto la cotización formal en PDF con los detalles y precios solicitados. ¡Quedo a la orden ante cualquier duda!`;
+      await onSendDocument(selectedLead.id, preview.file, caption);
+      handleClosePreview();
+      setPdfSentSuccess(true);
+      setTimeout(() => setPdfSentSuccess(false), 4000);
+    } catch (err) {
+      console.error('Error enviando PDF desde preview:', err);
+      alert('Error al enviar el PDF: ' + err.message);
+    } finally {
+      setSendingPdf(false);
     }
   };
 
@@ -968,14 +1066,14 @@ export default function QuickQuoteDrawer({
           {/* BOTÓN 1: ENVIAR COTIZACIÓN PDF POR WHATSAPP */}
           <button
             type="button"
-            onClick={handleSendPdfWhatsApp}
+            onClick={handleOpenPreview}
             disabled={sendingPdf || sending}
             className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 ${
               pdfSentSuccess
                 ? 'bg-emerald-600 text-white'
                 : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'
             }`}
-            title="Genera el archivo PDF membretado formal y lo envía al chat de WhatsApp"
+            title="Muestra el PDF membretado real para revisarlo ANTES de enviarlo al cliente"
           >
             {pdfSentSuccess ? (
               <>
@@ -985,12 +1083,12 @@ export default function QuickQuoteDrawer({
             ) : sendingPdf ? (
               <>
                 <RefreshCw size={14} className="animate-spin text-slate-300" />
-                <span>Generando y enviando PDF...</span>
+                <span>Generando PDF...</span>
               </>
             ) : (
               <>
-                <FileText size={14} className="text-amber-400" />
-                <span>Enviar cotización PDF por WhatsApp</span>
+                <Eye size={14} className="text-amber-400" />
+                <span>Ver antes de enviar (PDF)</span>
               </>
             )}
           </button>
@@ -1063,6 +1161,76 @@ export default function QuickQuoteDrawer({
               )}
             </button>
           )}
+        </div>
+      )}
+
+      {/* MODAL: VISTA PREVIA DEL PDF ANTES DE ENVIAR (paso "ver antes de enviar") */}
+      {preview && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Encabezado */}
+            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Eye size={16} className="text-amber-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-wider truncate">Vista previa — {preview.quoteNum}</p>
+                  <p className="text-[10px] text-slate-400 truncate">Revísela antes de enviarla a {selectedLead?.nombre || 'el cliente'}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleClosePreview}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shrink-0"
+                title="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* PDF real embebido */}
+            <div className="flex-1 bg-slate-100 overflow-hidden">
+              <iframe
+                src={preview.url}
+                title="Vista previa de la cotización"
+                className="w-full h-full border-0"
+              />
+            </div>
+
+            {/* Botones: Editar (cerrar) / Abrir en pestaña / Enviar */}
+            <div className="p-3 border-t border-slate-100 bg-white flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleClosePreview}
+                disabled={sendingPdf}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                title="Cerrar y seguir editando la cotización"
+              >
+                <Pencil size={14} className="text-slate-500" />
+                <span>Editar</span>
+              </button>
+              <a
+                href={preview.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2.5 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                title="Abrir el PDF en una pestaña nueva"
+              >
+                <Download size={14} className="text-slate-400" />
+              </a>
+              <button
+                type="button"
+                onClick={handleConfirmSendPreview}
+                disabled={sendingPdf}
+                className="flex-[2] py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                {sendingPdf ? (
+                  <><RefreshCw size={14} className="animate-spin" /><span>Enviando...</span></>
+                ) : (
+                  <><SendHorizontal size={14} /><span>Enviar por WhatsApp</span></>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
