@@ -184,6 +184,8 @@ export default function ViewConversaciones({
   onFetchStatuses,
   onToggleBot,
   onSavePedido,
+  pedidos = [],
+  onUpdatePedidoEstado,
   onUpdateLead,
   messagesContainerRef,
   messagesEndRef,
@@ -325,6 +327,27 @@ export default function ViewConversaciones({
     } finally {
       setSavingData(false);
     }
+  };
+
+  // ── Pedido del cliente (control de entrega / dinero) ────────────────────────
+  // Liga el pedido con la conversación por el TELÉFONO (en pedidos no hay lead_id).
+  // Muestra el pedido más reciente del cliente y permite marcarlo Entregado desde el chat.
+  // Al marcarlo, sube solo el total "Cobrado/Entregado" de la vista Pedidos.
+  const [savingPedidoId, setSavingPedidoId] = useState(null);
+  const leadDigits = String(selectedLead?.phone || selectedLead?.telefono || '').replace(/\D/g, '');
+  const pedidosDelLead = !leadDigits ? [] : (pedidos || [])
+    .filter(p => {
+      const d = String(p.phone || '').replace(/\D/g, '');
+      return d && (d === leadDigits || (d.length >= 8 && leadDigits.length >= 8 && d.slice(-8) === leadDigits.slice(-8)));
+    })
+    .filter(p => p.estado !== 'Cancelado' && p.estado !== 'Cotización')
+    .sort((a, b) => (b.id || 0) - (a.id || 0));
+  const pedidoActual = pedidosDelLead[0] || null;
+  const pedidoEntregado = pedidoActual && /complet|entreg/i.test(String(pedidoActual.estado || ''));
+  const handleMarcarPedido = async (id, estado) => {
+    if (!id || !onUpdatePedidoEstado || savingPedidoId) return;
+    setSavingPedidoId(id);
+    try { await onUpdatePedidoEstado(id, estado); } finally { setSavingPedidoId(null); }
   };
 
   // Al navegar desde Leads/Dashboard/notificación (cambia openChatNonce), abrir el chat
@@ -1972,6 +1995,46 @@ export default function ViewConversaciones({
                     </div>
                   ))}
                 </div>
+                {pedidoActual && (
+                  <div className="space-y-2.5 pt-4 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">🛒 Pedido #{pedidoActual.id}</h4>
+                      <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${pedidoEntregado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {pedidoEntregado ? '✓ Entregado' : (pedidoActual.estado || 'Nuevo')}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 space-y-0.5">
+                      <p className="text-[11px] font-black text-slate-700 truncate">{pedidoActual.producto || 'Producto'}</p>
+                      <p className="text-[10px] font-bold text-slate-500">
+                        {pedidoActual.cantidad ? `Cant: ${pedidoActual.cantidad} · ` : ''}{pedidoActual.precio ? `Q${String(pedidoActual.precio).replace(/[^0-9.,]/g, '')}` : 'Sin precio'}
+                      </p>
+                    </div>
+                    {!pedidoEntregado ? (
+                      <button
+                        onClick={() => handleMarcarPedido(pedidoActual.id, 'Completado')}
+                        disabled={savingPedidoId === pedidoActual.id}
+                        className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${savingPedidoId === pedidoActual.id ? 'bg-slate-100 text-slate-400 cursor-wait' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200'}`}
+                      >
+                        {savingPedidoId === pedidoActual.id
+                          ? <><RefreshCw size={12} className="animate-spin" /> Guardando…</>
+                          : <><Check size={12} /> Marcar Entregado</>}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleMarcarPedido(pedidoActual.id, 'Nuevo')}
+                        disabled={savingPedidoId === pedidoActual.id}
+                        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all"
+                      >
+                        {savingPedidoId === pedidoActual.id
+                          ? <><RefreshCw size={11} className="animate-spin" /> …</>
+                          : 'Deshacer (volver a pendiente)'}
+                      </button>
+                    )}
+                    {pedidosDelLead.length > 1 && (
+                      <p className="text-[8px] text-slate-300 italic text-center">+{pedidosDelLead.length - 1} pedido(s) más de este cliente (ver en Pedidos)</p>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <div className="flex items-center justify-between">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Datos Capturados</h4>

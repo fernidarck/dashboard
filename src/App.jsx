@@ -535,6 +535,8 @@ export default function App() {
                 onFetchStatuses={fetchDeliveryStatuses}
                 onToggleBot={handleToggleBot}
                 onSavePedido={savePedido}
+                pedidos={pedidos}
+                onUpdatePedidoEstado={updatePedidoEstado}
                 onUpdateLead={updateLead}
                 onOpenLeads={(leadId) => {
                   if (leadId) setSelectedChatId(leadId);
