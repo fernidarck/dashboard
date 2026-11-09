@@ -819,6 +819,19 @@ function parseImageFromText(text) {
 }
 
 // Helper: envía imagen vía YCloud WhatsApp API
+// fetch con límite de tiempo: evita que un YCloud lento/caído deje el envío colgado para
+// siempre (el botón "Generando PDF..." quedaba girando sin fin). Si pasa el tiempo, aborta
+// y el llamador devuelve un error claro en vez de esperar indefinidamente.
+async function fetchWithTimeout(url, options = {}, ms = 20000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone = null) {
   try {
     const channel = await getChannelConfig(channelPhone);
@@ -924,15 +937,15 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
         if (fs.existsSync(localPath)) bytes = fs.readFileSync(localPath);
       }
       if (!bytes) { // si no está local, lo bajamos del link
-        const dl = await fetch(link);
+        const dl = await fetchWithTimeout(link, {}, 12000);
         if (dl.ok) bytes = Buffer.from(await dl.arrayBuffer());
       }
       if (bytes) {
         const fd = new FormData();
         fd.append('file', new Blob([bytes]), fileName);
-        const up = await fetch(`https://api.ycloud.com/v2/whatsapp/media/${encodeURIComponent(cleanFrom)}/upload`, {
+        const up = await fetchWithTimeout(`https://api.ycloud.com/v2/whatsapp/media/${encodeURIComponent(cleanFrom)}/upload`, {
           method: 'POST', headers: { 'X-API-Key': apiKey }, body: fd
-        });
+        }, 18000);
         if (up.ok) { const uj = await up.json().catch(() => ({})); if (uj && uj.id) mediaId = String(uj.id); }
         else { console.error(`⚠️ Subida a YCloud falló (${up.status}), uso link como respaldo`); }
       }
@@ -942,11 +955,11 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
       ? { id: mediaId, filename: fileName, ...(caption ? { caption } : {}) }
       : { link, filename: fileName, ...(caption ? { caption } : {}) };
 
-    const r = await fetch('https://api.ycloud.com/v2/whatsapp/messages', {
+    const r = await fetchWithTimeout('https://api.ycloud.com/v2/whatsapp/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
       body: JSON.stringify({ from: cleanFrom, to: cleanTo, type: 'document', document: documentPayload })
-    });
+    }, 18000);
     if (!r.ok) {
       const t = await r.text();
       console.error(`❌ Error documento YCloud: ${r.status} ${t}`);
@@ -3523,24 +3536,27 @@ app.post('/api/messages/send-document', productImagesUpload.single('file'), asyn
     const isInstagram = lead?.origen && String(lead.origen).toLowerCase().includes('instagram');
     const isFacebook = lead?.origen && String(lead.origen).toLowerCase().includes('facebook');
 
-    // AHORA ESPERAMOS el envío real y capturamos el error (igual que el envío de texto),
-    // para que el dashboard diga la verdad: si el PDF/archivo NO llegó al cliente, se ve el
-    // motivo (ej. el canal sin API key de YCloud) en vez de decir "enviado" en falso.
-    let deliveryError = null;
+    // Respondemos YA (sin esperar a YCloud) para que el dashboard NO se quede colgado en
+    // "Generando PDF..." si el número está lento/en recuperación. El envío real corre en
+    // segundo plano con timeout; si falla, queda en los logs y el motivo. (Antes sí dejaba
+    // enviar rápido porque no esperaba; al esperar se colgaba — por eso volvemos a no esperar.)
+    res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType });
+
     if (isInstagram || isFacebook) {
       const recipientId = lead.whatsapp_id || lead.phone;
       if (recipientId) {
-        await sendMetaMessage(recipientId, caption || '', docUrl, isImage ? 'image' : isVideo ? 'video' : 'document');
+        sendMetaMessage(recipientId, caption || '', docUrl, isImage ? 'image' : isVideo ? 'video' : 'document')
+          .catch(e => console.error(`⚠️ Lead ${leadId}: archivo no entregado (Meta):`, e.message));
       }
     } else if (lead.phone) {
-      let r;
-      if (isImage)      r = await sendImageViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
-      else if (isVideo) r = await sendVideoViaYCloud(lead.phone, docUrl, caption || '', lead.channel_phone);
-      else              r = await sendDocumentViaYCloud(lead.phone, docUrl, fileName, caption || '', lead.channel_phone);
-      if (r && r.ok === false) deliveryError = r.error;
+      const sender = isImage ? sendImageViaYCloud : isVideo ? sendVideoViaYCloud : sendDocumentViaYCloud;
+      const args = isImage || isVideo
+        ? [lead.phone, docUrl, caption || '', lead.channel_phone]
+        : [lead.phone, docUrl, fileName, caption || '', lead.channel_phone];
+      Promise.resolve(sender(...args))
+        .then(r => { if (r && r.ok === false) console.error(`⚠️ Lead ${leadId}: archivo guardado pero NO entregado → ${r.error}`); })
+        .catch(e => console.error(`⚠️ Lead ${leadId}: error enviando archivo:`, e.message));
     }
-    if (deliveryError) console.error(`⚠️ Lead ${leadId}: archivo guardado pero NO entregado → ${deliveryError}`);
-    res.json({ success: true, id: result.lastID, url: docUrl, fileName, mediaType, delivered: !deliveryError, deliveryError });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
