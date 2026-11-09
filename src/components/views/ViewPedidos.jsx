@@ -27,6 +27,15 @@ const parseMoney = (val) => {
   return m ? (parseFloat(m[0]) || 0) : 0;
 };
 
+// Opciones de pago (mismas que el Cotizador). Se guardan unidas con ' · '.
+const PAY_OPTIONS = [
+  'Efectivo / contra entrega',
+  'Transferencia o depósito bancario',
+  'Tarjeta (Visa/MC) — sujeto a recargo por comisión bancaria',
+  'Anticipo 50% y 50% contra entrega / instalación',
+];
+const splitPago = (s) => String(s || '').split(' · ').map(x => x.trim()).filter(Boolean);
+
 export default function ViewPedidos({
   pedidos = [],
   products = [],
@@ -109,6 +118,14 @@ export default function ViewPedidos({
       };
     });
   };
+
+  // Marcar/desmarcar una forma de pago en el pedido que se está editando.
+  const togglePago = (opt) => setEditingPedido(prev => {
+    const arr = splitPago(prev.metodo_pago);
+    const i = arr.indexOf(opt);
+    if (i >= 0) arr.splice(i, 1); else arr.push(opt);
+    return { ...prev, metodo_pago: arr.join(' · ') };
+  });
 
   const handleSave = async (e) => {
     if (e) e.preventDefault();
@@ -975,6 +992,37 @@ export default function ViewPedidos({
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#FF6B00]"
                   />
                 </div>
+              </div>
+
+              {/* Forma de pago (se guarda en el pedido y sale en la cotización) */}
+              <div className="space-y-1.5 p-3 bg-sky-50/70 rounded-2xl border border-sky-200/80">
+                <label className="text-xs font-black text-sky-800 flex items-center gap-1.5">
+                  <DollarSign size={13} className="text-sky-500" />
+                  Forma de pago:
+                </label>
+                <div className="space-y-1">
+                  {PAY_OPTIONS.map(opt => {
+                    const checked = splitPago(editingPedido.metodo_pago).includes(opt);
+                    return (
+                      <label key={opt} className="flex items-start gap-2 text-[11px] font-medium text-slate-700 cursor-pointer hover:text-slate-900">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => togglePago(opt)}
+                          className="mt-0.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
+                        />
+                        <span className="leading-snug">{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <input
+                  type="text"
+                  value={editingPedido.metodo_pago || ''}
+                  onChange={e => setEditingPedido({ ...editingPedido, metodo_pago: e.target.value })}
+                  placeholder="O escribe la forma de pago a mano..."
+                  className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-sky-200 bg-white text-[11px] font-medium text-slate-800 focus:outline-none focus:border-sky-400"
+                />
               </div>
 
               {/* Cliente y Teléfono */}
