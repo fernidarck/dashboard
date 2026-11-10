@@ -575,6 +575,7 @@ export default function App() {
                 onDeletePedido={deletePedido}
                 onOpenConversation={openConversation}
                 onUpdateLead={updateLead}
+                onSendDocument={sendDocument}
               />
             )}
             {activeTab === 'comentarios' && (

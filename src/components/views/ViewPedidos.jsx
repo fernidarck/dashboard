@@ -3,9 +3,11 @@ import {
   X, Pencil, Trash2, Users, Phone, Plus, Search,
   ChevronLeft, ChevronRight, CheckCircle2, ShoppingBag,
   DollarSign, Clock, ArrowRight, MessageSquare, Truck, Package,
-  ExternalLink, Check, Calendar, CalendarPlus, CalendarClock, Tag, Printer
+  ExternalLink, Check, Calendar, CalendarPlus, CalendarClock, Tag, Printer,
+  Send, Download, Loader2
 } from 'lucide-react';
 import StickerPrint from '../StickerPrint.jsx';
+import { generateQuotePdf } from '../../utils/quotePdfGenerator.js';
 
 function getCleanWhatsAppUrl(phone) {
   if (!phone) return null;
@@ -44,12 +46,14 @@ export default function ViewPedidos({
   onSavePedido,
   onDeletePedido,
   onOpenConversation,
-  onUpdateLead
+  onUpdateLead,
+  onSendDocument
 }) {
   const [editingPedido, setEditingPedido] = useState(null);
   const [stickerPedido, setStickerPedido] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [sendingCotizId, setSendingCotizId] = useState(null);
   const [productCatalogSearch, setProductCatalogSearch] = useState('');
 
   const filteredCatalogProducts = useMemo(() => {
@@ -65,6 +69,70 @@ export default function ViewPedidos({
 
   // Una cotización NO es venta: se excluye de los totales de dinero.
   const esCotiz = (p) => /cotiz/i.test(p?.estado || '');
+
+  // ── Cotización PDF desde un pedido guardado ──────────────────────────────
+  // Reusa el MISMO generador membretado del cotizador. Arma 1 renglón con el
+  // producto/cantidad/precio del pedido para que el total cuadre.
+  const buildQuoteArgs = (pedido, matchingLead) => {
+    const qty = parseInt(String(pedido.cantidad || '1').replace(/\D/g, ''), 10) || 1;
+    const total = parseMoney(pedido.precio);
+    const unit_price = qty > 0 ? total / qty : total;
+    const lead = matchingLead || {
+      id: null,
+      nombre: pedido.cliente || 'Cliente',
+      phone: pedido.phone || '',
+      direccion: '', nit: '', zona: ''
+    };
+    return {
+      selectedLead: lead,
+      items: [{
+        name: pedido.producto || 'Producto',
+        qty,
+        unit_price,
+        description: ''
+      }],
+      subtotal: total,
+      discountAmount: 0,
+      total,
+      presetNotes: {},
+      customNotes: pedido.notas || '',
+      payMethods: splitPago(pedido.metodo_pago)
+    };
+  };
+
+  const handleDownloadCotiz = (pedido, matchingLead) => {
+    try {
+      const { file } = generateQuotePdf(buildQuoteArgs(pedido, matchingLead));
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error descargando cotización:', err);
+      alert('No se pudo generar el PDF: ' + err.message);
+    }
+  };
+
+  const handleSendCotiz = async (pedido, matchingLead) => {
+    if (!matchingLead || !matchingLead.id) {
+      alert('Este pedido no tiene un chat/cliente ligado, así que no se puede enviar solo. Puede Descargar el PDF y mandarlo a mano.');
+      return;
+    }
+    if (!onSendDocument) { alert('No se puede enviar desde aquí.'); return; }
+    setSendingCotizId(pedido.id);
+    try {
+      const { file, quoteNum } = generateQuotePdf(buildQuoteArgs(pedido, matchingLead));
+      const caption = `📄 *Cotización Formal ONE CONTROL (${quoteNum})*\nHola ${matchingLead.nombre || ''}, le adjunto la cotización en PDF con los detalles y precios. ¡Quedo a la orden!`;
+      await onSendDocument(matchingLead.id, file, caption);
+    } catch (err) {
+      console.error('Error enviando cotización:', err);
+      alert('No se pudo enviar la cotización: ' + err.message);
+    } finally {
+      setSendingCotizId(null);
+    }
+  };
 
   const totalVendido = useMemo(() => {
     return (pedidos || [])
@@ -600,6 +668,33 @@ export default function ViewPedidos({
                         <Tag size={13} className="text-[#FF6B00]" />
                         <span>🏷️ Imprimir Sticker de Envío</span>
                       </button>
+
+                      {/* COTIZACIÓN: enviar por WhatsApp o descargar el PDF membretado */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSendCotiz(pedido, matchingLead)}
+                          disabled={sendingCotizId === pedido.id}
+                          className={`py-2.5 px-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1.5 cursor-pointer transition-all border ${
+                            sendingCotizId === pedido.id
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-wait'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-2xs active:scale-[0.98]'
+                          }`}
+                          title={matchingLead ? 'Enviar la cotización en PDF por WhatsApp' : 'Sin chat ligado: use Descargar'}
+                        >
+                          {sendingCotizId === pedido.id
+                            ? <><Loader2 size={13} className="animate-spin" /> Enviando…</>
+                            : <><Send size={13} /> Enviar cotización</>}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadCotiz(pedido, matchingLead)}
+                          className="py-2.5 px-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1.5 cursor-pointer transition-all border bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 active:scale-[0.98]"
+                          title="Descargar la cotización en PDF"
+                        >
+                          <Download size={13} /> Descargar
+                        </button>
+                      </div>
 
                       {/* Acciones de Estado Dinámicas */}
                       <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
