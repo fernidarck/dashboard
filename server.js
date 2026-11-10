@@ -695,6 +695,36 @@ async function getChannelConfig(channelPhone) {
   }
 }
 
+// RESPALDO DE MEDIA (fotos / PDF / video): si el número del cliente está "en recuperación"
+// (no registrado en YCloud y rechaza archivos), mandamos SOLO el archivo por un canal bueno.
+// El texto y el bot NO pasan por aquí, así que no se tocan. El canal bueno tampoco entra aquí.
+// Se puede ajustar sin deploy con los settings:
+//   media_block_phones  = números que NO pueden enviar media (coma-separados, últimos dígitos)
+//   media_fallback_phone = número bueno por el que sale el archivo
+async function getMediaChannel(channel) {
+  try {
+    if (!channel || !channel.phone) return channel;
+    const blockRaw = await getDynamicSetting('media_block_phones', '59658803,44315578');
+    const fallbackRaw = await getDynamicSetting('media_fallback_phone', '59658666');
+    const blocked = String(blockRaw || '').split(',').map(s => s.replace(/\D/g, '')).filter(Boolean);
+    const fbClean = String(fallbackRaw || '').replace(/\D/g, '');
+    if (!fbClean || blocked.length === 0) return channel;
+    const chanClean = String(channel.phone).replace(/\D/g, '');
+    const isBlocked = blocked.some(b => chanClean.endsWith(b.slice(-8)));
+    if (!isBlocked) return channel;                        // canal bueno → NO se toca
+    if (chanClean.endsWith(fbClean.slice(-8))) return channel; // ya es el de respaldo
+    const fb = await db.get("SELECT * FROM whatsapp_channels WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') LIKE ? AND active = 1", `%${fbClean.slice(-8)}`);
+    if (fb && fb.api_key && fb.phone) {
+      console.log(`📎 Media: canal ${channel.phone} en recuperación → enviando archivo por respaldo ${fb.phone}`);
+      return fb;
+    }
+    return channel; // respaldo no disponible → no romper, intentar con el original
+  } catch (e) {
+    console.error('⚠️ getMediaChannel error, uso canal original:', e.message);
+    return channel;
+  }
+}
+
 // Helper: Clasifica con precisión la necesidad del cliente (motor / controles / servicio / marca)
 // para asignarla a leads.motor (columna "¿Qué necesita?" en CRM / Dashboard).
 function detectLeadNecesidad(text, existingMotor = null, products = []) {
@@ -834,7 +864,7 @@ async function fetchWithTimeout(url, options = {}, ms = 20000) {
 
 async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone = null) {
   try {
-    const channel = await getChannelConfig(channelPhone);
+    const channel = await getMediaChannel(await getChannelConfig(channelPhone));
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
     if (!apiKey || !fromNum || !toPhone || !imageUrl) {
@@ -906,7 +936,7 @@ async function sendImageViaYCloud(toPhone, imageUrl, caption = '', channelPhone 
 // Enviar un documento (PDF, etc.) por YCloud
 async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf', caption = '', channelPhone = null) {
   try {
-    const channel = await getChannelConfig(channelPhone);
+    const channel = await getMediaChannel(await getChannelConfig(channelPhone));
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
     if (!apiKey || !fromNum || !toPhone || !docUrl) {
@@ -976,7 +1006,7 @@ async function sendDocumentViaYCloud(toPhone, docUrl, fileName = 'documento.pdf'
 // Enviar un VIDEO por YCloud (WhatsApp: mp4, máx 16MB)
 async function sendVideoViaYCloud(toPhone, videoUrl, caption = '', channelPhone = null) {
   try {
-    const channel = await getChannelConfig(channelPhone);
+    const channel = await getMediaChannel(await getChannelConfig(channelPhone));
     const apiKey = channel ? channel.api_key : await getDynamicSetting('ycloud_api_key', process.env.YCLOUD_API_KEY);
     const fromNum = channel ? channel.phone : await getDynamicSetting('ycloud_from', process.env.YCLOUD_FROM);
     if (!apiKey || !fromNum || !toPhone || !videoUrl) return { ok: false, error: 'faltan datos para enviar video' };
@@ -3370,7 +3400,7 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
 
 // Marcador de versión para confirmar qué código está desplegado (diagnóstico de deploys).
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'senddoc-nonblocking-v2', ts: new Date().toISOString() });
+  res.json({ version: 'media-fallback-v1', ts: new Date().toISOString() });
 });
 
 app.post('/api/auth/change-token', async (req, res) => {
