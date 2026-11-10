@@ -335,6 +335,13 @@ export default function QuickQuoteDrawer({
         notas: `Cotizado desde chat. Subtotal: Q${fmtQ(subtotal)}, Descuento: Q${fmtQ(discountAmount)}. ${customNotes || ''}`,
         fecha_entrega: fechaEntregaCombined,
         metodo_pago: metodoPagoText,
+        // Desglose completo por renglón, para reenviar/descargar la cotización IGUAL (ítems y montos separados)
+        cotizacion_json: JSON.stringify({
+          items: items.map(i => ({ name: i.name, qty: i.qty, unit_price: i.unit_price, description: i.description || '' })),
+          subtotal, discountAmount, total,
+          payMethods: activePayMethods,
+          customNotes: customNotes || ''
+        }),
         estado: asCotizacion ? 'Cotización' : (fechaEntregaCombined ? 'Visita Programada' : 'Nuevo')
       });
 

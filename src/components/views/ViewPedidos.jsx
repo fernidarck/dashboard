@@ -74,15 +74,47 @@ export default function ViewPedidos({
   // Reusa el MISMO generador membretado del cotizador. Arma 1 renglón con el
   // producto/cantidad/precio del pedido para que el total cuadre.
   const buildQuoteArgs = (pedido, matchingLead) => {
-    const qty = parseInt(String(pedido.cantidad || '1').replace(/\D/g, ''), 10) || 1;
-    const total = parseMoney(pedido.precio);
-    const unit_price = qty > 0 ? total / qty : total;
     const lead = matchingLead || {
       id: null,
       nombre: pedido.cliente || 'Cliente',
       phone: pedido.phone || '',
       direccion: '', nit: '', zona: ''
     };
+
+    // Si la cotización guardó su desglose (ítems y montos separados), lo usamos TAL CUAL
+    // para que el PDF salga igualito a como se armó en el cotizador.
+    let desglose = null;
+    try {
+      if (pedido.cotizacion_json) {
+        const d = JSON.parse(pedido.cotizacion_json);
+        if (d && Array.isArray(d.items) && d.items.length > 0) desglose = d;
+      }
+    } catch { desglose = null; }
+
+    if (desglose) {
+      return {
+        selectedLead: lead,
+        items: desglose.items.map(i => ({
+          name: i.name || 'Producto',
+          qty: parseFloat(i.qty) || 1,
+          unit_price: parseFloat(i.unit_price) || 0,
+          description: i.description || ''
+        })),
+        subtotal: parseFloat(desglose.subtotal) || parseMoney(pedido.precio),
+        discountAmount: parseFloat(desglose.discountAmount) || 0,
+        total: parseFloat(desglose.total) || parseMoney(pedido.precio),
+        presetNotes: {},
+        customNotes: desglose.customNotes || '',
+        payMethods: (Array.isArray(desglose.payMethods) && desglose.payMethods.length > 0)
+          ? desglose.payMethods
+          : splitPago(pedido.metodo_pago)
+      };
+    }
+
+    // Fallback: pedido viejo o manual sin desglose → una sola línea (como antes).
+    const qty = parseInt(String(pedido.cantidad || '1').replace(/\D/g, ''), 10) || 1;
+    const total = parseMoney(pedido.precio);
+    const unit_price = qty > 0 ? total / qty : total;
     return {
       selectedLead: lead,
       items: [{

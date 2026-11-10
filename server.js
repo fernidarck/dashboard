@@ -314,6 +314,7 @@ async function setup() {
         estado TEXT DEFAULT 'Nuevo',
         fecha_entrega TEXT,
         metodo_pago TEXT,
+        cotizacion_json TEXT,
         timestamp TEXT
       );
 
@@ -481,6 +482,7 @@ async function setup() {
     try { await db.exec("ALTER TABLE agenda ADD COLUMN notas TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE pedidos ADD COLUMN fecha_entrega TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE pedidos ADD COLUMN metodo_pago TEXT"); } catch(e){}
+    try { await db.exec("ALTER TABLE pedidos ADD COLUMN cotizacion_json TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagen TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN imagenes TEXT"); } catch(e){}
     try { await db.exec("ALTER TABLE products ADD COLUMN catalog_link TEXT"); } catch(e){}
@@ -2844,7 +2846,7 @@ app.post('/api/system-alert/clear', async (_req, res) => {
 
 app.post('/api/pedidos', async (req, res) => {
   try {
-    const { cliente, phone, producto, cantidad, precio, notas, fecha_entrega, estado, metodo_pago } = req.body;
+    const { cliente, phone, producto, cantidad, precio, notas, fecha_entrega, estado, metodo_pago, cotizacion_json } = req.body;
     if (!producto) return res.status(400).json({ error: 'Falta el producto' });
     // estado opcional: 'Cotización' para guardar una cotización pendiente (no es pedido aún).
     const est = (estado && String(estado).trim()) ? String(estado).trim() : 'Nuevo';
@@ -2857,8 +2859,8 @@ app.post('/api/pedidos', async (req, res) => {
       String(guateTime.getUTCHours()).padStart(2,'0') + ':' +
       String(guateTime.getUTCMinutes()).padStart(2,'0');
     const result = await db.run(
-      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, metodo_pago, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', est, fecha_entrega || '', metodo_pago || '', timestamp
+      `INSERT INTO pedidos (cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, metodo_pago, cotizacion_json, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      cliente || 'Cliente', phone || '', producto, cantidad || '1', precio || '', notas || '', est, fecha_entrega || '', metodo_pago || '', cotizacion_json || '', timestamp
     );
     console.log(`🛒 ${esCotizacion ? 'Cotización' : 'Nuevo pedido'} #${result.lastID}: ${producto} — ${cliente} (Entrega/Visita: ${fecha_entrega || 'Sin fecha'})`);
 
@@ -2928,7 +2930,7 @@ app.post('/api/pedidos/status', async (req, res) => {
 
 app.put('/api/pedidos/:id', async (req, res) => {
   try {
-    const { cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, metodo_pago } = req.body;
+    const { cliente, phone, producto, cantidad, precio, notas, estado, fecha_entrega, metodo_pago, cotizacion_json } = req.body;
     await db.run(
       'UPDATE pedidos SET cliente=?, phone=?, producto=?, cantidad=?, precio=?, notas=?, estado=?, fecha_entrega=? WHERE id=?',
       cliente, phone, producto, cantidad || '1', precio || '', notas || '', estado, fecha_entrega || '', req.params.id
@@ -2936,6 +2938,10 @@ app.put('/api/pedidos/:id', async (req, res) => {
     // metodo_pago se actualiza solo si viene en el body (no se borra en ediciones que no lo mandan)
     if (metodo_pago !== undefined) {
       await db.run('UPDATE pedidos SET metodo_pago=? WHERE id=?', metodo_pago || '', req.params.id);
+    }
+    // cotizacion_json (desglose por renglón) idem: solo si viene, para no borrarlo al editar campos sueltos
+    if (cotizacion_json !== undefined) {
+      await db.run('UPDATE pedidos SET cotizacion_json=? WHERE id=?', cotizacion_json || '', req.params.id);
     }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -3400,7 +3406,7 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
 
 // Marcador de versión para confirmar qué código está desplegado (diagnóstico de deploys).
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'media-fallback-v1', ts: new Date().toISOString() });
+  res.json({ version: 'cotiz-desglose-v1', ts: new Date().toISOString() });
 });
 
 app.post('/api/auth/change-token', async (req, res) => {
