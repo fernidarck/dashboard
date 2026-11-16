@@ -198,6 +198,7 @@ export default function ViewConversaciones({
   pedidos = [],
   onUpdatePedidoEstado,
   onUpdateLead,
+  onLogGuia,
   messagesContainerRef,
   messagesEndRef,
   openChatNonce = 0
@@ -2225,6 +2226,7 @@ export default function ViewConversaciones({
           leads={leads}
           onUpdateLead={onUpdateLead}
           onSavePedido={onSavePedido}
+          onLogGuia={onLogGuia}
         />
       )}
     </div>

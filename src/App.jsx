@@ -3,7 +3,7 @@ import {
   LayoutDashboard, MessageSquare, Users, Calendar, ShoppingBag,
   Brain, Database, Zap, Search, Bell, X, MoreVertical,
   Power, ShieldCheck, LogOut, RefreshCw, Globe, KeyRound, ChevronDown, AtSign, AlertTriangle, Paperclip,
-  GraduationCap, Laptop, Megaphone
+  GraduationCap, Laptop, Megaphone, Truck
 } from 'lucide-react';
 import Login from './components/Login.jsx';
 import LogoMark from './components/LogoMark.jsx';
@@ -13,6 +13,7 @@ import ViewConversaciones from './components/views/ViewConversaciones.jsx';
 import ViewCRM from './components/views/ViewCRM.jsx';
 import ViewAgenda from './components/views/ViewAgenda.jsx';
 import ViewPedidos from './components/views/ViewPedidos.jsx';
+import ViewGuias from './components/views/ViewGuias.jsx';
 import ViewCerebro from './components/views/ViewCerebro.jsx';
 import ViewRAG from './components/views/ViewRAG.jsx';
 import ViewComentarios from './components/views/ViewComentarios.jsx';
@@ -66,7 +67,7 @@ export default function App() {
 
   const {
     currentUser, users,
-    leads, messages, agenda, pedidos, documents, products, webProducts,
+    leads, messages, agenda, pedidos, guias, documents, products, webProducts,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
     trainingRules, trainingStats, metaInsights,
     agentConfig, setAgentConfig, prompts, setPrompts,
@@ -74,10 +75,11 @@ export default function App() {
     loading, notification, setNotification,
     channels, selectedChannel, setSelectedChannel,
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
-    fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
+    fetchPedidos, fetchGuias, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
     fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, sendDocument, checkLastDelivery, fetchDeliveryStatuses, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
+    logGuia, updateGuia, deleteGuia,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,
@@ -187,6 +189,7 @@ export default function App() {
     fetchRAG();
     fetchAgenda();
     fetchPedidos();
+    fetchGuias();
     fetchHandoff();
     fetchLearning();
     fetchTrainingRules();
@@ -351,6 +354,7 @@ export default function App() {
               <SidebarItem icon={Users}         label="Leads"            id="crm" />
               <SidebarItem icon={Calendar}      label="Agenda IA"        id="agenda" />
               <SidebarItem icon={ShoppingBag}   label="Pedidos IA"       id="pedidos" />
+              <SidebarItem icon={Truck}         label="Guías / Cobros"   id="guias" />
               <SidebarItem icon={Megaphone}     label="Publicidad"       id="publicidad" />
               <div className="relative">
                 <SidebarItem icon={Globe}         label="Redes Sociales"  id="comentarios" />
@@ -539,6 +543,7 @@ export default function App() {
                 pedidos={pedidos}
                 onUpdatePedidoEstado={updatePedidoEstado}
                 onUpdateLead={updateLead}
+                onLogGuia={logGuia}
                 onOpenLeads={(leadId) => {
                   if (leadId) setSelectedChatId(leadId);
                   setActiveTab('crm');
@@ -576,6 +581,14 @@ export default function App() {
                 onOpenConversation={openConversation}
                 onUpdateLead={updateLead}
                 onSendDocument={sendDocument}
+                onLogGuia={logGuia}
+              />
+            )}
+            {activeTab === 'guias' && (
+              <ViewGuias
+                guias={guias}
+                onUpdateGuia={updateGuia}
+                onDeleteGuia={deleteGuia}
               />
             )}
             {activeTab === 'comentarios' && (

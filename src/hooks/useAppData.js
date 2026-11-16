@@ -32,6 +32,7 @@ export function useAppData(apiBase, authToken) {
   const [messages, setMessages] = useState([]);
   const [agenda, setAgenda] = useState([]);
   const [pedidos, setPedidos] = useState([]);
+  const [guias, setGuias] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [products, setProducts] = useState([]);
   const [webProducts, setWebProducts] = useState([]);
@@ -395,6 +396,40 @@ export function useAppData(apiBase, authToken) {
       knownPedidoCount.current = count;
     } catch (err) { console.error(err); }
   }, [apiFetch, apiBase]);
+
+  // ── GUÍAS / COBROS ─────────────────────────────────────────────────────────
+  const fetchGuias = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/guias`);
+      const data = await res.json();
+      if (Array.isArray(data)) setGuias(data);
+    } catch (err) { console.error(err); }
+  }, [apiFetch, apiBase]);
+
+  // Registrar una guía (se llama solo al imprimir el sticker). Silencioso: no estorba.
+  const logGuia = useCallback(async (guia) => {
+    try {
+      const res = await apiFetch(`${apiBase}/api/guias`, { method: 'POST', body: JSON.stringify(guia) });
+      if (res.ok) { fetchGuias(); return true; }
+      return false;
+    } catch { return false; }
+  }, [apiFetch, apiBase, fetchGuias]);
+
+  const updateGuia = useCallback(async (guia) => {
+    try {
+      await apiFetch(`${apiBase}/api/guias/${guia.id}`, { method: 'PUT', body: JSON.stringify(guia) });
+      fetchGuias();
+      return true;
+    } catch { notify('❌ Error al guardar la guía'); return false; }
+  }, [apiFetch, apiBase, fetchGuias, notify]);
+
+  const deleteGuia = useCallback(async (id) => {
+    if (!window.confirm('¿Eliminar esta guía del registro?')) return;
+    try {
+      await apiFetch(`${apiBase}/api/guias/${id}`, { method: 'DELETE' });
+      fetchGuias();
+    } catch (err) { console.error(err); }
+  }, [apiFetch, apiBase, fetchGuias]);
 
   const fetchHandoff = useCallback(async () => {
     try {
@@ -1049,7 +1084,7 @@ export function useAppData(apiBase, authToken) {
   return {
     // State
     currentUser, users, setCurrentUser,
-    leads, messages, agenda, pedidos, documents, products, webProducts,
+    leads, messages, agenda, pedidos, guias, documents, products, webProducts,
     stats, captureStats, aiInsights, aiKnowledge, handoffTriggers, setHandoffTriggers,
     trainingRules, trainingStats, metaInsights,
     agentConfig, setAgentConfig, prompts, setPrompts,
@@ -1058,11 +1093,12 @@ export function useAppData(apiBase, authToken) {
     channels, selectedChannel, setSelectedChannel,
     // Fetch
     fetchLeads, fetchMessages, fetchSettings, fetchRAG, fetchAgenda,
-    fetchPedidos, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
+    fetchPedidos, fetchGuias, fetchHandoff, fetchLearning, fetchStats, fetchCaptureStats,
     fetchChannels, fetchUsers, fetchTrainingRules, fetchMetaInsights,
     // Mutations
     saveSetting, toggleBot, deleteMessages, archiveLead, updateLead,
     sendMessage, sendDocument, checkLastDelivery, fetchDeliveryStatuses, markLeadRead, updatePedidoEstado, savePedido, deletePedido,
+    logGuia, updateGuia, deleteGuia,
     createCita, deleteCita, saveHandoffTriggers,
     saveCard, updateCard, deleteCard,
     saveProduct, updateProduct, deleteProduct,

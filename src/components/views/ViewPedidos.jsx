@@ -47,7 +47,8 @@ export default function ViewPedidos({
   onDeletePedido,
   onOpenConversation,
   onUpdateLead,
-  onSendDocument
+  onSendDocument,
+  onLogGuia
 }) {
   const [editingPedido, setEditingPedido] = useState(null);
   const [stickerPedido, setStickerPedido] = useState(null);
@@ -1246,6 +1247,7 @@ export default function ViewPedidos({
           leads={leads}
           onUpdateLead={onUpdateLead}
           onSavePedido={onSavePedido}
+          onLogGuia={onLogGuia}
         />
       )}
     </div>

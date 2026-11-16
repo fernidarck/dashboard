@@ -249,7 +249,8 @@ export default function StickerPrint({
   pedido,
   leads = [],
   onUpdateLead,
-  onSavePedido
+  onSavePedido,
+  onLogGuia
 }) {
   if (!isOpen || !pedido) return null;
 
@@ -965,7 +966,31 @@ export default function StickerPrint({
     }, 280);
   };
 
+  // ── REGISTRO AUTOMÁTICO DE GUÍA (para control de cobros) ───────────────────
+  // Cada vez que se imprime, guardamos la guía sola. Deduplicamos por si imprime
+  // dos veces la misma (no crea registros repetidos salvo que cambien los datos).
+  const guiaLoggedRef = useRef('');
+  const registrarGuia = () => {
+    if (!onLogGuia) return;
+    const key = `${pedido?.id || ''}|${form.cliente || ''}|${form.producto || ''}|${form.precio || ''}`;
+    if (guiaLoggedRef.current === key) return;
+    guiaLoggedRef.current = key;
+    try {
+      onLogGuia({
+        pedido_id: pedido?.id || null,
+        cliente: form.cliente || '',
+        phone: form.phone || '',
+        producto: form.producto || '',
+        monto: form.precio || '',
+        direccion: form.direccion || '',
+        notas: form.notas || '',
+        estado_pago: 'Pendiente'
+      });
+    } catch (e) { console.warn('No se pudo registrar la guía:', e); }
+  };
+
   const handlePrint = () => {
+    registrarGuia();
     const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (typeof window !== 'undefined' && window.innerWidth < 768);
     if (isMobileDevice) {
       setShowPrintChoiceModal(true);

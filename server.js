@@ -318,6 +318,21 @@ async function setup() {
         timestamp TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS guias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pedido_id INTEGER,
+        cliente TEXT,
+        phone TEXT,
+        producto TEXT,
+        monto TEXT,
+        direccion TEXT,
+        repartidor TEXT,
+        estado_pago TEXT DEFAULT 'Pendiente',
+        fecha_pago TEXT,
+        notas TEXT,
+        timestamp TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS handoff_triggers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         keyword TEXT,
@@ -2955,6 +2970,62 @@ app.delete('/api/pedidos/:id', async (req, res) => {
 });
 // ──────────────────────────────────────────────────────────────────────────────
 
+// ─── GUÍAS / ENVÍOS (control de cobros) ───────────────────────────────────────
+// Cada vez que se imprime un sticker se guarda una guía aquí para llevar control
+// de lo que salió y cobrar (estado_pago: Pendiente / Pagado).
+app.get('/api/guias', async (_req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM guias ORDER BY id DESC');
+    res.json(rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/guias', async (req, res) => {
+  try {
+    const { pedido_id, cliente, phone, producto, monto, direccion, repartidor, estado_pago, notas } = req.body;
+    const now = new Date();
+    const g = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+    const timestamp = g.getUTCFullYear() + '-' + String(g.getUTCMonth()+1).padStart(2,'0') + '-' +
+      String(g.getUTCDate()).padStart(2,'0') + ' ' + String(g.getUTCHours()).padStart(2,'0') + ':' +
+      String(g.getUTCMinutes()).padStart(2,'0');
+    const result = await db.run(
+      `INSERT INTO guias (pedido_id, cliente, phone, producto, monto, direccion, repartidor, estado_pago, notas, timestamp)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      pedido_id || null, cliente || 'Cliente', phone || '', producto || '', monto || '',
+      direccion || '', repartidor || '', (estado_pago && String(estado_pago).trim()) ? estado_pago : 'Pendiente', notas || '', timestamp
+    );
+    console.log(`🏷️ Guía #${result.lastID} registrada: ${producto || ''} — ${cliente || ''} (${monto || 's/monto'})`);
+    res.json({ success: true, id: result.lastID });
+  } catch(err) { console.error('❌ Error creando guía:', err); res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/guias/:id', async (req, res) => {
+  try {
+    const { cliente, phone, producto, monto, direccion, repartidor, estado_pago, fecha_pago, notas } = req.body;
+    // Si pasa a Pagado y no manda fecha_pago, ponemos la de hoy (Guatemala).
+    let fPago = fecha_pago;
+    if (estado_pago === 'Pagado' && !fecha_pago) {
+      const g = new Date(Date.now() - (6 * 60 * 60 * 1000));
+      fPago = g.getUTCFullYear() + '-' + String(g.getUTCMonth()+1).padStart(2,'0') + '-' + String(g.getUTCDate()).padStart(2,'0');
+    }
+    if (estado_pago === 'Pendiente') fPago = '';
+    await db.run(
+      `UPDATE guias SET cliente=?, phone=?, producto=?, monto=?, direccion=?, repartidor=?, estado_pago=?, fecha_pago=?, notas=? WHERE id=?`,
+      cliente || '', phone || '', producto || '', monto || '', direccion || '', repartidor || '',
+      (estado_pago && String(estado_pago).trim()) ? estado_pago : 'Pendiente', fPago || '', notas || '', req.params.id
+    );
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/guias/:id', async (req, res) => {
+  try {
+    await db.run('DELETE FROM guias WHERE id = ?', req.params.id);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+// ──────────────────────────────────────────────────────────────────────────────
+
 app.get('/api/settings', async (req, res) => {
   try {
     const rows = await db.all("SELECT * FROM settings");
@@ -3406,7 +3477,7 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
 
 // Marcador de versión para confirmar qué código está desplegado (diagnóstico de deploys).
 app.get('/api/version', (req, res) => {
-  res.json({ version: 'cotiz-desglose-v1', ts: new Date().toISOString() });
+  res.json({ version: 'guias-cobros-v1', ts: new Date().toISOString() });
 });
 
 app.post('/api/auth/change-token', async (req, res) => {
