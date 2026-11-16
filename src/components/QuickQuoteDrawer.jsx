@@ -425,7 +425,7 @@ export default function QuickQuoteDrawer({
       <img src="${window.location.origin}/logo-onecontrol.png" alt="OneControl" style="height: 48px; width: auto; object-fit: contain; margin-bottom: 8px; display: block;" onerror="this.style.display='none'" />
       <h1>ONE<span>CONTROL</span></h1>
       <p>Automatización de Portones y Control de Acceso Inteligente</p>
-      <p>PBX / WhatsApp: +502 5965-8803 | Guatemala</p>
+      <p>PBX / WhatsApp: +502 5965-8666 | Guatemala</p>
       <p>www.onecontrol.shop</p>
     </div>
     <div class="meta">

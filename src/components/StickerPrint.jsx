@@ -213,7 +213,7 @@ function formatCleanAddress(rawDir) {
 
 const QR_TARGETS = [
   { id: 'web', label: 'Página Web & Redes (onecontrol.shop)', url: 'https://onecontrol.shop' },
-  { id: 'whatsapp', label: 'WhatsApp Directo (+502 5965-8803)', url: 'https://wa.me/50259658803' },
+  { id: 'whatsapp', label: 'WhatsApp Directo (+502 5965-8666)', url: 'https://wa.me/50259658666' },
   { id: 'catalogo', label: 'Catálogo de Productos (onecontrol.shop/tienda)', url: 'https://onecontrol.shop/tienda/' },
   { id: 'custom', label: 'Enlace Personalizado', url: '' }
 ];
@@ -237,7 +237,7 @@ const DEFAULT_OPTIONS = {
   showInstagram: true,
   showFacebook: true,
   showWhatsapp: true,
-  whatsappNumber: '5965-8803',
+  whatsappNumber: '5965-8666',
   prominentSocials: true,
   socialQrTarget: 'web',
   customQrUrl: ''
@@ -2447,7 +2447,7 @@ export default function StickerPrint({
                                 lineHeight: 1.1
                               }}
                             >
-                              PBX / WA: {options.whatsappNumber || '5965-8803'}
+                              PBX / WA: {options.whatsappNumber || '5965-8666'}
                             </div>
                           )}
                         </div>

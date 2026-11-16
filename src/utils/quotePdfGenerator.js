@@ -56,7 +56,7 @@ export function generateQuotePdf({
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text('PBX / WhatsApp: +502 5965-8803  •  Guatemala  •  www.onecontrol.shop', 132, 62);
+  doc.text('PBX / WhatsApp: +502 5965-8666  •  Guatemala  •  www.onecontrol.shop', 132, 62);
   doc.text('Soluciones Inteligentes Residenciales y Comerciales', 132, 73);
   doc.text('Garantía Oficial de 1 Año en Motores y Equipos', 132, 84);
 
@@ -369,7 +369,7 @@ export function generateQuotePdf({
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      'OneControl Guatemala  •  PBX / WhatsApp: +502 5965-8803  •  ¡Gracias por su preferencia!',
+      'OneControl Guatemala  •  PBX / WhatsApp: +502 5965-8666  •  ¡Gracias por su preferencia!',
       306,
       765,
       { align: 'center' }
